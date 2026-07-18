@@ -1,0 +1,17 @@
+[
+  {
+    "outlet": "The Handbasket",
+    "defaultAuthor": "Marisa Kabas",
+    "feedUrl": "https://rss.beehiiv.com/feeds/40ZQ7CSldT.xml",
+    "beatKeywords": {
+      "Immigration": ["ice", "detention", "deportation", "border"],
+      "Courts & Rights": ["court", "lawyer", "charges", "grand jury", "sentencing", "legal"],
+      "Labor": ["union", "strike", "worker", "labor"],
+      "Foreign Policy": ["belfast", "gaza", "ukraine", "war", "embassy"],
+      "Media": ["cbs", "media", "newsroom", "journalist", "press"],
+      "Politics": ["senate", "primary", "election", "congress", "governor"],
+      "Data Centers": ["data center", "data centers", "server farm", "power grid", "cooling water", "ai infrastructure"]
+    },
+    "fallbackBeat": "Politics"
+  }
+]

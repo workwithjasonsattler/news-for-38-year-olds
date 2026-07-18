@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>N38 Admin</title>
+<style>
+  :root{
+    --ink:#14171F; --paper:#EDE6D6; --text:#201E19; --text-muted:#6B655A;
+    --wire-red:#B33A3A; --support-teal:#2F6F62;
+    --mono:'IBM Plex Mono','Courier New',monospace;
+    --body:'Source Sans 3','Helvetica Neue',Arial,sans-serif;
+  }
+  *{box-sizing:border-box;}
+  body{background:var(--ink);color:var(--paper);font-family:var(--body);margin:0;padding:30px;}
+  h1{font-family:var(--mono);font-size:18px;letter-spacing:.05em;}
+  .panel{background:var(--paper);color:var(--text);border-radius:4px;padding:22px;margin-bottom:24px;max-width:1000px;}
+  label{display:block;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--text-muted);margin:10px 0 4px;}
+  input, select, textarea{width:100%;padding:8px 10px;border:1px solid rgba(0,0,0,.2);border-radius:3px;font-family:var(--body);font-size:14px;}
+  textarea{resize:vertical;min-height:50px;}
+  button{font-family:var(--mono);font-size:12.5px;padding:9px 16px;border:none;border-radius:3px;cursor:pointer;margin-top:14px;}
+  .btn-primary{background:var(--support-teal);color:#fff;}
+  .btn-secondary{background:#ddd;color:#222;margin-left:8px;}
+  .btn-danger{background:var(--wire-red);color:#fff;padding:4px 10px;font-size:11px;margin:0;}
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:13px;}
+  th,td{text-align:left;padding:7px 8px;border-bottom:1px solid rgba(0,0,0,.1);}
+  th{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;color:var(--text-muted);}
+  .stat-row{display:flex;gap:20px;flex-wrap:wrap;margin-bottom:16px;}
+  .stat-box{background:rgba(255,255,255,.06);padding:14px 20px;border-radius:4px;min-width:140px;}
+  .stat-box .num{font-family:var(--mono);font-size:26px;font-weight:700;}
+  .stat-box .label{font-family:var(--mono);font-size:10.5px;color:#9B968A;text-transform:uppercase;}
+  .bar-row{display:flex;align-items:center;gap:10px;margin:6px 0;font-family:var(--mono);font-size:12px;}
+  .bar-track{flex:1;background:rgba(0,0,0,.08);border-radius:3px;height:14px;overflow:hidden;}
+  .bar-fill{background:var(--support-teal);height:100%;}
+  #loginPanel input{margin-bottom:10px;}
+  .hidden{display:none;}
+  a.link-cell{word-break:break-all;font-size:11px;color:#666;}
+</style>
+</head>
+<body>
+
+<h1>NEWS FOR 38 YEAR OLDS — ADMIN</h1>
+
+<div class="panel" id="loginPanel">
+  <label>Admin password</label>
+  <input type="password" id="loginPassword" placeholder="Enter admin password">
+  <button class="btn-primary" onclick="login()">Log in</button>
+  <p id="loginError" style="color:#B33A3A;font-family:var(--mono);font-size:12px;"></p>
+</div>
+
+<div id="adminArea" class="hidden">
+
+  <div class="panel" id="statsPanel">
+    <h2 style="font-family:var(--mono);font-size:14px;">STATS</h2>
+    <div class="stat-row" id="statBoxes"></div>
+    <h3 style="font-family:var(--mono);font-size:12px;">TOP STORIES BY CLICKS</h3>
+    <div id="topClicksBars"></div>
+    <h3 style="font-family:var(--mono);font-size:12px;">CLICKS BY SECTION</h3>
+    <div id="sectionBars"></div>
+  </div>
+
+  <div class="panel">
+    <h2 style="font-family:var(--mono);font-size:14px;">ADD A DISPATCH</h2>
+    <label>Reporter name</label><input id="f_name">
+    <label>Outlet</label><input id="f_outlet">
+    <label>Section / beat</label><input id="f_beat" placeholder="e.g. Data Centers, Labor, Politics">
+    <label>Date (e.g. Jul 17)</label><input id="f_date">
+    <label>Headline</label><input id="f_headline">
+    <label>Excerpt</label><textarea id="f_excerpt"></textarea>
+    <label>Link (original article URL)</label><input id="f_link">
+    <label><input type="checkbox" id="f_pinned" style="width:auto;display:inline-block;"> Pin to top (becomes the big Wire View headline)</label>
+    <button class="btn-primary" onclick="submitDispatch()">Save dispatch</button>
+    <button class="btn-secondary" onclick="clearForm()">Clear</button>
+    <p id="formMsg" style="font-family:var(--mono);font-size:12px;"></p>
+  </div>
+
+  <div class="panel">
+    <h2 style="font-family:var(--mono);font-size:14px;">IMPORT FROM feeds.json</h2>
+    <p style="font-size:13px;color:#666;">Pulls the latest posts from every feed configured in <code>feeds.json</code> and adds any new ones (duplicates by link are skipped automatically).</p>
+    <button class="btn-primary" onclick="importFeeds()">Run import now</button>
+    <p id="importMsg" style="font-family:var(--mono);font-size:12px;"></p>
+  </div>
+
+  <div class="panel">
+    <h2 style="font-family:var(--mono);font-size:14px;">ALL DISPATCHES</h2>
+    <table id="dispatchTable">
+      <thead><tr><th>Pin</th><th>Name</th><th>Outlet</th><th>Beat</th><th>Headline</th><th>Link</th><th></th></tr></thead>
+      <tbody id="dispatchRows"></tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+let TOKEN = localStorage.getItem('n38_admin_token') || '';
+
+async function login(){
+  const password = document.getElementById('loginPassword').value;
+  const res = await fetch('/api/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password})});
+  const data = await res.json();
+  if (data.ok){
+    TOKEN = data.token;
+    localStorage.setItem('n38_admin_token', TOKEN);
+    showAdmin();
+  } else {
+    document.getElementById('loginError').textContent = 'Wrong password.';
+  }
+}
+
+function authHeaders(){ return {'Content-Type':'application/json','X-Admin-Token':TOKEN}; }
+
+async function showAdmin(){
+  document.getElementById('loginPanel').classList.add('hidden');
+  document.getElementById('adminArea').classList.remove('hidden');
+  await loadStats();
+  await loadDispatches();
+}
+
+async function loadStats(){
+  const res = await fetch('/api/stats', {headers: authHeaders()});
+  if (res.status === 401){ localStorage.removeItem('n38_admin_token'); location.reload(); return; }
+  const s = await res.json();
+
+  document.getElementById('statBoxes').innerHTML = `
+    <div class="stat-box"><div class="num">${s.totalDispatches}</div><div class="label">Dispatches</div></div>
+    <div class="stat-box"><div class="num">${s.totalClicks}</div><div class="label">Outbound clicks</div></div>
+    <div class="stat-box"><div class="num">${s.totalTipClicks}</div><div class="label">Tip clicks</div></div>
+    <div class="stat-box"><div class="num">$${s.totalTipAmountEstimate}</div><div class="label">Tip $ selected (demo)</div></div>
+    ${s.viewsByType.map(v => `<div class="stat-box"><div class="num">${v.n}</div><div class="label">${v.view_type} views</div></div>`).join('')}
+  `;
+
+  const maxClicks = Math.max(1, ...s.topByClicks.map(t=>t.clicks));
+  document.getElementById('topClicksBars').innerHTML = s.topByClicks.map(t => `
+    <div class="bar-row">
+      <div style="width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${t.headline}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(t.clicks/maxClicks*100)}%;"></div></div>
+      <div>${t.clicks}</div>
+    </div>
+  `).join('') || '<p style="font-size:12px;color:#666;">No clicks yet.</p>';
+
+  const maxSection = Math.max(1, ...s.bySection.map(b=>b.clicks));
+  document.getElementById('sectionBars').innerHTML = s.bySection.map(b => `
+    <div class="bar-row">
+      <div style="width:160px;">${b.beat}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(b.clicks/maxSection*100)}%;"></div></div>
+      <div>${b.clicks} clicks · ${b.stories} stories</div>
+    </div>
+  `).join('') || '<p style="font-size:12px;color:#666;">No data yet.</p>';
+}
+
+let allDispatches = [];
+async function loadDispatches(){
+  const res = await fetch('/api/dispatches');
+  allDispatches = await res.json();
+  document.getElementById('dispatchRows').innerHTML = allDispatches.map(d => `
+    <tr>
+      <td>${d.pinned ? '📌' : ''}</td>
+      <td>${d.name}</td>
+      <td>${d.outlet}</td>
+      <td>${d.beat}</td>
+      <td>${d.headline}</td>
+      <td><a class="link-cell" href="${d.link}" target="_blank">${d.link}</a></td>
+      <td><button class="btn-danger" onclick="deleteDispatch(${d.id})">Delete</button></td>
+    </tr>
+  `).join('');
+}
+
+async function submitDispatch(){
+  const body = {
+    name: document.getElementById('f_name').value,
+    outlet: document.getElementById('f_outlet').value,
+    beat: document.getElementById('f_beat').value,
+    date: document.getElementById('f_date').value,
+    headline: document.getElementById('f_headline').value,
+    excerpt: document.getElementById('f_excerpt').value,
+    link: document.getElementById('f_link').value,
+    pinned: document.getElementById('f_pinned').checked,
+  };
+  const res = await fetch('/api/dispatches', {method:'POST', headers: authHeaders(), body: JSON.stringify(body)});
+  const data = await res.json();
+  const msg = document.getElementById('formMsg');
+  if (res.ok){
+    msg.style.color = 'green'; msg.textContent = 'Saved.';
+    clearForm(); await loadDispatches(); await loadStats();
+  } else {
+    msg.style.color = '#B33A3A'; msg.textContent = data.error || 'Error saving.';
+  }
+}
+
+function clearForm(){
+  ['f_name','f_outlet','f_beat','f_date','f_headline','f_excerpt','f_link'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('f_pinned').checked = false;
+}
+
+async function deleteDispatch(id){
+  if (!confirm('Delete this dispatch?')) return;
+  await fetch(`/api/dispatches/${id}`, {method:'DELETE', headers: authHeaders()});
+  await loadDispatches(); await loadStats();
+}
+
+async function importFeeds(){
+  const msg = document.getElementById('importMsg');
+  msg.textContent = 'Importing…';
+  const res = await fetch('/api/import-feeds', {method:'POST', headers: authHeaders()});
+  const data = await res.json();
+  msg.textContent = `Added ${data.added} new dispatch(es).` + (data.errors?.length ? ` Errors: ${data.errors.join('; ')}` : '');
+  await loadDispatches(); await loadStats();
+}
+
+if (TOKEN) showAdmin();
+</script>
+
+</body>
+</html>

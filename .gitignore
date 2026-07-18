@@ -1,0 +1,6 @@
+node_modules/
+n38.db
+n38.db-shm
+n38.db-wal
+server.log
+.env
