@@ -23,6 +23,8 @@ db.exec(`
     headline TEXT NOT NULL,
     excerpt TEXT,
     link TEXT NOT NULL UNIQUE,
+    tip_url TEXT,
+    subscribe_url TEXT,
     pinned INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
@@ -43,7 +45,61 @@ db.exec(`
     amount INTEGER,
     ts TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE TABLE IF NOT EXISTS headlines (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    link TEXT,
+    image_url TEXT,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS feeds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    outlet TEXT NOT NULL,
+    default_author TEXT,
+    feed_url TEXT NOT NULL UNIQUE,
+    tip_url TEXT,
+    subscribe_url TEXT,
+    fallback_beat TEXT NOT NULL DEFAULT 'Indie Media',
+    beat_keywords TEXT NOT NULL DEFAULT '{}',
+    items_per_feed INTEGER NOT NULL DEFAULT 3,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
+
+// migrate existing tables if they predate newer columns
+for (const stmt of [
+  `ALTER TABLE dispatches ADD COLUMN tip_url TEXT`,
+  `ALTER TABLE dispatches ADD COLUMN subscribe_url TEXT`,
+  `ALTER TABLE feeds ADD COLUMN subscribe_url TEXT`,
+]) {
+  try { db.exec(stmt); } catch { /* column already exists */ }
+}
+
+// one-time migration: if feeds.json exists and the feeds table is empty, import it
+async function migrateFeedsJsonIfNeeded() {
+  const existing = db.prepare(`SELECT COUNT(*) AS n FROM feeds`).get().n;
+  if (existing > 0) return;
+  try {
+    const feeds = JSON.parse(await readFile(path.join(__dirname, "feeds.json"), "utf8"));
+    const insert = db.prepare(`
+      INSERT OR IGNORE INTO feeds (outlet, default_author, feed_url, fallback_beat, beat_keywords, items_per_feed)
+      VALUES (@outlet, @default_author, @feed_url, @fallback_beat, @beat_keywords, @items_per_feed)
+    `);
+    for (const f of feeds) {
+      insert.run({
+        outlet: f.outlet,
+        default_author: f.defaultAuthor || "",
+        feed_url: f.feedUrl,
+        fallback_beat: f.fallbackBeat || "Indie Media",
+        beat_keywords: JSON.stringify(f.beatKeywords || {}),
+        items_per_feed: f.itemsPerFeed || 3,
+      });
+    }
+    console.log(`Migrated ${feeds.length} feed(s) from feeds.json into the database.`);
+  } catch { /* no feeds.json, nothing to migrate */ }
+}
+await migrateFeedsJsonIfNeeded();
 
 // ---------- auto-seed on startup if the database is empty ----------
 // Render's free tier resets the disk on spin-down/redeploy, so instead of
@@ -152,15 +208,15 @@ app.post("/api/track-tip", (req, res) => {
 
 // ---------- admin write endpoints ----------
 app.post("/api/dispatches", requireAdmin, (req, res) => {
-  const { name, outlet, beat, date, headline, excerpt, link, pinned } = req.body;
+  const { name, outlet, beat, date, headline, excerpt, link, tip_url, subscribe_url, pinned } = req.body;
   if (!name || !outlet || !beat || !headline || !link) {
     return res.status(400).json({ error: "name, outlet, beat, headline, and link are required" });
   }
   try {
     const info = db
-      .prepare(`INSERT INTO dispatches (name, outlet, beat, date, headline, excerpt, link, pinned)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-      .run(name, outlet, beat, date || "", headline, excerpt || "", link, pinned ? 1 : 0);
+      .prepare(`INSERT INTO dispatches (name, outlet, beat, date, headline, excerpt, link, tip_url, subscribe_url, pinned)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(name, outlet, beat, date || "", headline, excerpt || "", link, tip_url || "", subscribe_url || "", pinned ? 1 : 0);
     res.json({ id: info.lastInsertRowid });
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -168,15 +224,42 @@ app.post("/api/dispatches", requireAdmin, (req, res) => {
 });
 
 app.put("/api/dispatches/:id", requireAdmin, (req, res) => {
-  const { name, outlet, beat, date, headline, excerpt, link, pinned } = req.body;
+  const { name, outlet, beat, date, headline, excerpt, link, tip_url, subscribe_url, pinned } = req.body;
   db.prepare(
-    `UPDATE dispatches SET name=?, outlet=?, beat=?, date=?, headline=?, excerpt=?, link=?, pinned=? WHERE id=?`
-  ).run(name, outlet, beat, date || "", headline, excerpt || "", link, pinned ? 1 : 0, req.params.id);
+    `UPDATE dispatches SET name=?, outlet=?, beat=?, date=?, headline=?, excerpt=?, link=?, tip_url=?, subscribe_url=?, pinned=? WHERE id=?`
+  ).run(name, outlet, beat, date || "", headline, excerpt || "", link, tip_url || "", subscribe_url || "", pinned ? 1 : 0, req.params.id);
   res.json({ ok: true });
 });
 
 app.delete("/api/dispatches/:id", requireAdmin, (req, res) => {
   db.prepare(`DELETE FROM dispatches WHERE id = ?`).run(req.params.id);
+  res.json({ ok: true });
+});
+
+// ---------- editor headlines (always manual, never from feeds) ----------
+app.get("/api/headlines", (req, res) => {
+  const rows = db.prepare(`SELECT * FROM headlines ORDER BY sort_order ASC, id ASC`).all();
+  res.json(rows);
+});
+
+app.post("/api/headlines", requireAdmin, (req, res) => {
+  const { text, link, image_url, sort_order } = req.body;
+  if (!text) return res.status(400).json({ error: "text is required" });
+  const info = db
+    .prepare(`INSERT INTO headlines (text, link, image_url, sort_order) VALUES (?, ?, ?, ?)`)
+    .run(text, link || "", image_url || "", sort_order || 0);
+  res.json({ id: info.lastInsertRowid });
+});
+
+app.put("/api/headlines/:id", requireAdmin, (req, res) => {
+  const { text, link, image_url, sort_order } = req.body;
+  db.prepare(`UPDATE headlines SET text=?, link=?, image_url=?, sort_order=? WHERE id=?`)
+    .run(text, link || "", image_url || "", sort_order || 0, req.params.id);
+  res.json({ ok: true });
+});
+
+app.delete("/api/headlines/:id", requireAdmin, (req, res) => {
+  db.prepare(`DELETE FROM headlines WHERE id = ?`).run(req.params.id);
   res.json({ ok: true });
 });
 
@@ -267,37 +350,76 @@ function extractItems(parsed) {
   return [];
 }
 
-app.post("/api/import-feeds", requireAdmin, async (req, res) => {
-  let feeds;
+// ---------- feeds (DB-backed, managed from the admin UI) ----------
+app.get("/api/feeds", requireAdmin, (req, res) => {
+  const rows = db.prepare(`SELECT * FROM feeds ORDER BY outlet ASC`).all();
+  res.json(rows);
+});
+
+app.post("/api/feeds", requireAdmin, (req, res) => {
+  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed } = req.body;
+  if (!outlet || !feed_url) return res.status(400).json({ error: "outlet and feed_url are required" });
   try {
-    feeds = JSON.parse(await readFile(path.join(__dirname, "feeds.json"), "utf8"));
-  } catch {
-    return res.status(400).json({ error: "feeds.json not found or invalid" });
+    const info = db.prepare(`
+      INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed)
+      VALUES (?, ?, ?, ?, ?, ?, '{}', ?)
+    `).run(outlet, default_author || "", feed_url, tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3);
+    res.json({ id: info.lastInsertRowid });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
   }
+});
+
+app.put("/api/feeds/:id", requireAdmin, (req, res) => {
+  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed } = req.body;
+  if (!outlet || !feed_url) return res.status(400).json({ error: "outlet and feed_url are required" });
+  try {
+    db.prepare(`
+      UPDATE feeds SET outlet=?, default_author=?, feed_url=?, tip_url=?, subscribe_url=?, fallback_beat=?, items_per_feed=?
+      WHERE id=?
+    `).run(outlet, default_author || "", feed_url, tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.delete("/api/feeds/:id", requireAdmin, (req, res) => {
+  db.prepare(`DELETE FROM feeds WHERE id = ?`).run(req.params.id);
+  res.json({ ok: true });
+});
+
+async function importAllFeeds() {
+  const feeds = db.prepare(`SELECT * FROM feeds`).all();
+  if (feeds.length === 0) return { added: 0, errors: ["No feeds configured yet — add one below."] };
+
   const insert = db.prepare(
-    `INSERT OR IGNORE INTO dispatches (name, outlet, beat, date, headline, excerpt, link) VALUES (?,?,?,?,?,?,?)`
+    `INSERT OR IGNORE INTO dispatches (name, outlet, beat, date, headline, excerpt, link, tip_url, subscribe_url) VALUES (?,?,?,?,?,?,?,?,?)`
   );
   let added = 0;
   const errors = [];
   for (const feed of feeds) {
     try {
-      const r = await fetch(feed.feedUrl, { headers: { "User-Agent": "n38-cms/1.0" } });
+      const r = await fetch(feed.feed_url, { headers: { "User-Agent": "n38-cms/1.0" } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const xml = await r.text();
       const parsed = xmlParser.parse(xml);
-      const items = extractItems(parsed).slice(0, feed.itemsPerFeed || 3);
+      const beatKeywords = JSON.parse(feed.beat_keywords || "{}");
+      const items = extractItems(parsed).slice(0, feed.items_per_feed || 3);
       for (const item of items) {
         const headline = stripHtml(item.title);
         const excerpt = truncate(stripHtml(item.summary), 160);
         if (!headline || !item.link) continue;
         const info = insert.run(
-          item.author?.trim() || feed.defaultAuthor || feed.outlet,
+          item.author?.trim() || feed.default_author || feed.outlet,
           feed.outlet,
-          pickBeat(`${headline} ${excerpt}`, feed.beatKeywords, feed.fallbackBeat || "General"),
+          pickBeat(`${headline} ${excerpt}`, beatKeywords, feed.fallback_beat || "Indie Media"),
           formatDate(item.pubDate),
           headline,
           excerpt,
-          item.link
+          item.link,
+          feed.tip_url || "",
+          feed.subscribe_url || ""
         );
         if (info.changes) added++;
       }
@@ -305,7 +427,23 @@ app.post("/api/import-feeds", requireAdmin, async (req, res) => {
       errors.push(`${feed.outlet}: ${err.message}`);
     }
   }
-  res.json({ added, errors });
+  return { added, errors };
+}
+
+app.post("/api/import-feeds", requireAdmin, async (req, res) => {
+  const result = await importAllFeeds();
+  res.json(result);
 });
+
+// ---------- scheduled auto-import ----------
+// Refreshes every feed on an interval so the site stays current without a
+// manual click. Defaults to every 3 hours; override with AUTO_IMPORT_MINUTES.
+const AUTO_IMPORT_MINUTES = Number(process.env.AUTO_IMPORT_MINUTES || 180);
+if (AUTO_IMPORT_MINUTES > 0) {
+  setInterval(async () => {
+    const result = await importAllFeeds();
+    console.log(`Auto-import: added ${result.added} dispatch(es).` + (result.errors.length ? ` Errors: ${result.errors.join("; ")}` : ""));
+  }, AUTO_IMPORT_MINUTES * 60 * 1000);
+}
 
 app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));

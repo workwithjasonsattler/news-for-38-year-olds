@@ -60,25 +60,77 @@
   </div>
 
   <div class="panel">
-    <h2 style="font-family:var(--mono);font-size:14px;">ADD A DISPATCH</h2>
+    <h2 style="font-family:var(--mono);font-size:14px;" id="dispatchFormTitle">ADD A DISPATCH</h2>
     <label>Reporter name</label><input id="f_name">
     <label>Outlet</label><input id="f_outlet">
-    <label>Section / beat</label><input id="f_beat" placeholder="e.g. Data Centers, Labor, Politics">
+    <label>Section / beat</label>
+    <select id="f_beat" onchange="document.getElementById('f_beat_custom').style.display = this.value==='__custom' ? 'block' : 'none';">
+      <option value="Politics">Politics (Indie Media)</option>
+      <option value="Media">Media (Indie Media)</option>
+      <option value="Foreign Policy">Foreign Policy (Indie Media)</option>
+      <option value="Labor">Labor (People Power)</option>
+      <option value="Immigration">Immigration (People Power)</option>
+      <option value="Courts & Rights">Courts & Rights (People Power)</option>
+      <option value="Data Centers">Data Centers</option>
+      <option value="__custom">Custom…</option>
+    </select>
+    <input id="f_beat_custom" placeholder="Custom beat name" style="display:none;margin-top:6px;">
     <label>Date (e.g. Jul 17)</label><input id="f_date">
     <label>Headline</label><input id="f_headline">
     <label>Excerpt</label><textarea id="f_excerpt"></textarea>
     <label>Link (original article URL)</label><input id="f_link">
+    <label>Tip URL (optional — direct tip link for this outlet)</label><input id="f_tip_url" placeholder="https://...">
+    <label>Subscribe URL (optional — direct subscribe link for this outlet)</label><input id="f_subscribe_url" placeholder="https://...">
     <label><input type="checkbox" id="f_pinned" style="width:auto;display:inline-block;"> Pin as a big headline above the masthead (you can pin more than one)</label>
-    <button class="btn-primary" onclick="submitDispatch()">Save dispatch</button>
-    <button class="btn-secondary" onclick="clearForm()">Clear</button>
+    <button class="btn-primary" id="dispatchSubmitBtn" onclick="submitDispatch()">Save dispatch</button>
+    <button class="btn-secondary" onclick="clearForm()">Clear / Cancel edit</button>
     <p id="formMsg" style="font-family:var(--mono);font-size:12px;"></p>
   </div>
 
   <div class="panel">
-    <h2 style="font-family:var(--mono);font-size:14px;">IMPORT FROM feeds.json</h2>
-    <p style="font-size:13px;color:#666;">Pulls the latest posts from every feed configured in <code>feeds.json</code> and adds any new ones (duplicates by link are skipped automatically).</p>
-    <button class="btn-primary" onclick="importFeeds()">Run import now</button>
+    <h2 style="font-family:var(--mono);font-size:14px;">FEEDS</h2>
+    <p style="font-size:13px;color:#666;">Add an outlet's RSS/Atom feed here — no file editing needed. Feeds refresh automatically in the background; "Run import now" pulls immediately if you don't want to wait.</p>
+
+    <table id="feedTable" style="margin-bottom:16px;">
+      <thead><tr><th>Outlet</th><th>Feed URL</th><th>Default section</th><th></th></tr></thead>
+      <tbody id="feedRows"></tbody>
+    </table>
+
+    <h3 style="font-family:var(--mono);font-size:12px;" id="feedFormTitle">ADD A FEED</h3>
+    <label>Outlet name</label><input id="ff_outlet">
+    <label>Default author (used if the feed doesn't list one)</label><input id="ff_author">
+    <label>Feed URL</label><input id="ff_url" placeholder="https://example.com/feed">
+    <label>Tip URL (optional — applies to every story pulled from this feed)</label><input id="ff_tip_url" placeholder="https://...">
+    <label>Subscribe URL (optional — applies to every story pulled from this feed)</label><input id="ff_subscribe_url" placeholder="https://...">
+    <label>Default section</label>
+    <select id="ff_section">
+      <option value="Indie Media">Indie Media</option>
+      <option value="Data Centers">Data Centers</option>
+      <option value="People Power">People Power</option>
+    </select>
+    <button class="btn-primary" id="feedSubmitBtn" onclick="submitFeed()">Add feed</button>
+    <button class="btn-secondary" onclick="clearFeedForm()">Clear / Cancel edit</button>
+    <p id="feedFormMsg" style="font-family:var(--mono);font-size:12px;"></p>
+
+    <button class="btn-primary" onclick="importFeeds()" style="margin-top:20px;">Run import now</button>
     <p id="importMsg" style="font-family:var(--mono);font-size:12px;"></p>
+  </div>
+
+  <div class="panel">
+    <h2 style="font-family:var(--mono);font-size:14px;">TOP HEADLINES (yours only — never pulled from feeds)</h2>
+    <table id="headlineTable" style="margin-bottom:16px;">
+      <thead><tr><th>Headline</th><th>Link</th><th>Image</th><th></th></tr></thead>
+      <tbody id="headlineRows"></tbody>
+    </table>
+
+    <h3 style="font-family:var(--mono);font-size:12px;" id="headlineFormTitle">ADD A HEADLINE</h3>
+    <label>Headline text</label><input id="h_text">
+    <label>Link (optional — leave blank for a non-clickable headline)</label><input id="h_link" placeholder="https://...">
+    <label>Image URL (optional)</label><input id="h_image" placeholder="https://...">
+    <label>Order (lower numbers show first)</label><input id="h_order" type="number" value="0">
+    <button class="btn-primary" id="headlineSubmitBtn" onclick="submitHeadline()">Add headline</button>
+    <button class="btn-secondary" onclick="clearHeadlineForm()">Clear / Cancel edit</button>
+    <p id="headlineFormMsg" style="font-family:var(--mono);font-size:12px;"></p>
   </div>
 
   <div class="panel">
@@ -114,6 +166,8 @@ async function showAdmin(){
   document.getElementById('adminArea').classList.remove('hidden');
   await loadStats();
   await loadDispatches();
+  await loadFeeds();
+  await loadHeadlines();
 }
 
 async function loadStats(){
@@ -149,6 +203,8 @@ async function loadStats(){
 }
 
 let allDispatches = [];
+let editingDispatchId = null;
+
 async function loadDispatches(){
   const res = await fetch('/api/dispatches');
   allDispatches = await res.json();
@@ -160,27 +216,64 @@ async function loadDispatches(){
       <td>${d.beat}</td>
       <td>${d.headline}</td>
       <td><a class="link-cell" href="${d.link}" target="_blank">${d.link}</a></td>
-      <td><button class="btn-danger" onclick="deleteDispatch(${d.id})">Delete</button></td>
+      <td>
+        <button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="editDispatch(${d.id})">Edit</button>
+        <button class="btn-danger" onclick="deleteDispatch(${d.id})">Delete</button>
+      </td>
     </tr>
   `).join('');
 }
 
+function editDispatch(id){
+  const d = allDispatches.find(x => x.id === id);
+  if (!d) return;
+  editingDispatchId = id;
+  document.getElementById('f_name').value = d.name;
+  document.getElementById('f_outlet').value = d.outlet;
+  const beatSelect = document.getElementById('f_beat');
+  const knownBeats = [...beatSelect.options].map(o=>o.value);
+  if (knownBeats.includes(d.beat)) {
+    beatSelect.value = d.beat;
+    document.getElementById('f_beat_custom').style.display = 'none';
+  } else {
+    beatSelect.value = '__custom';
+    document.getElementById('f_beat_custom').style.display = 'block';
+    document.getElementById('f_beat_custom').value = d.beat;
+  }
+  document.getElementById('f_date').value = d.date || '';
+  document.getElementById('f_headline').value = d.headline;
+  document.getElementById('f_excerpt').value = d.excerpt || '';
+  document.getElementById('f_link').value = d.link;
+  document.getElementById('f_tip_url').value = d.tip_url || '';
+  document.getElementById('f_subscribe_url').value = d.subscribe_url || '';
+  document.getElementById('f_pinned').checked = !!d.pinned;
+  document.getElementById('dispatchFormTitle').textContent = `EDITING DISPATCH #${id}`;
+  document.getElementById('dispatchSubmitBtn').textContent = 'Update dispatch';
+  window.scrollTo({top: document.getElementById('dispatchFormTitle').offsetTop - 20, behavior:'smooth'});
+}
+
 async function submitDispatch(){
+  const beatSelect = document.getElementById('f_beat').value;
+  const beat = beatSelect === '__custom' ? document.getElementById('f_beat_custom').value : beatSelect;
   const body = {
     name: document.getElementById('f_name').value,
     outlet: document.getElementById('f_outlet').value,
-    beat: document.getElementById('f_beat').value,
+    beat,
     date: document.getElementById('f_date').value,
     headline: document.getElementById('f_headline').value,
     excerpt: document.getElementById('f_excerpt').value,
     link: document.getElementById('f_link').value,
+    tip_url: document.getElementById('f_tip_url').value,
+    subscribe_url: document.getElementById('f_subscribe_url').value,
     pinned: document.getElementById('f_pinned').checked,
   };
-  const res = await fetch('/api/dispatches', {method:'POST', headers: authHeaders(), body: JSON.stringify(body)});
+  const url = editingDispatchId ? `/api/dispatches/${editingDispatchId}` : '/api/dispatches';
+  const method = editingDispatchId ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers: authHeaders(), body: JSON.stringify(body)});
   const data = await res.json();
   const msg = document.getElementById('formMsg');
   if (res.ok){
-    msg.style.color = 'green'; msg.textContent = 'Saved.';
+    msg.style.color = 'green'; msg.textContent = editingDispatchId ? 'Updated.' : 'Saved.';
     clearForm(); await loadDispatches(); await loadStats();
   } else {
     msg.style.color = '#B33A3A'; msg.textContent = data.error || 'Error saving.';
@@ -188,8 +281,13 @@ async function submitDispatch(){
 }
 
 function clearForm(){
-  ['f_name','f_outlet','f_beat','f_date','f_headline','f_excerpt','f_link'].forEach(id => document.getElementById(id).value = '');
+  ['f_name','f_outlet','f_date','f_headline','f_excerpt','f_link','f_tip_url','f_subscribe_url','f_beat_custom'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('f_pinned').checked = false;
+  document.getElementById('f_beat').value = 'Politics';
+  document.getElementById('f_beat_custom').style.display = 'none';
+  editingDispatchId = null;
+  document.getElementById('dispatchFormTitle').textContent = 'ADD A DISPATCH';
+  document.getElementById('dispatchSubmitBtn').textContent = 'Save dispatch';
 }
 
 async function deleteDispatch(id){
@@ -205,6 +303,142 @@ async function importFeeds(){
   const data = await res.json();
   msg.textContent = `Added ${data.added} new dispatch(es).` + (data.errors?.length ? ` Errors: ${data.errors.join('; ')}` : '');
   await loadDispatches(); await loadStats();
+}
+
+let allFeeds = [];
+let editingFeedId = null;
+
+async function loadFeeds(){
+  const res = await fetch('/api/feeds', {headers: authHeaders()});
+  allFeeds = await res.json();
+  document.getElementById('feedRows').innerHTML = allFeeds.map(f => `
+    <tr>
+      <td>${f.outlet}</td>
+      <td><a class="link-cell" href="${f.feed_url}" target="_blank">${f.feed_url}</a></td>
+      <td>${f.fallback_beat}</td>
+      <td>
+        <button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="editFeed(${f.id})">Edit</button>
+        <button class="btn-danger" onclick="deleteFeed(${f.id})">Delete</button>
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="4" style="color:#666;">No feeds yet — add one below.</td></tr>';
+}
+
+function editFeed(id){
+  const f = allFeeds.find(x => x.id === id);
+  if (!f) return;
+  editingFeedId = id;
+  document.getElementById('ff_outlet').value = f.outlet;
+  document.getElementById('ff_author').value = f.default_author || '';
+  document.getElementById('ff_url').value = f.feed_url;
+  document.getElementById('ff_tip_url').value = f.tip_url || '';
+  document.getElementById('ff_subscribe_url').value = f.subscribe_url || '';
+  document.getElementById('ff_section').value = f.fallback_beat;
+  document.getElementById('feedFormTitle').textContent = `EDITING FEED #${id}`;
+  document.getElementById('feedSubmitBtn').textContent = 'Update feed';
+  window.scrollTo({top: document.getElementById('feedFormTitle').offsetTop - 20, behavior:'smooth'});
+}
+
+async function submitFeed(){
+  const body = {
+    outlet: document.getElementById('ff_outlet').value,
+    default_author: document.getElementById('ff_author').value,
+    feed_url: document.getElementById('ff_url').value,
+    tip_url: document.getElementById('ff_tip_url').value,
+    subscribe_url: document.getElementById('ff_subscribe_url').value,
+    fallback_beat: document.getElementById('ff_section').value,
+  };
+  const url = editingFeedId ? `/api/feeds/${editingFeedId}` : '/api/feeds';
+  const method = editingFeedId ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers: authHeaders(), body: JSON.stringify(body)});
+  const data = await res.json();
+  const msg = document.getElementById('feedFormMsg');
+  if (res.ok){
+    msg.style.color = 'green'; msg.textContent = editingFeedId ? 'Feed updated.' : 'Feed added.';
+    clearFeedForm(); await loadFeeds();
+  } else {
+    msg.style.color = '#B33A3A'; msg.textContent = data.error || 'Error saving feed.';
+  }
+}
+
+function clearFeedForm(){
+  ['ff_outlet','ff_author','ff_url','ff_tip_url','ff_subscribe_url'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('ff_section').value = 'Indie Media';
+  editingFeedId = null;
+  document.getElementById('feedFormTitle').textContent = 'ADD A FEED';
+  document.getElementById('feedSubmitBtn').textContent = 'Add feed';
+}
+
+async function deleteFeed(id){
+  if (!confirm('Remove this feed? (Stories already imported from it will stay.)')) return;
+  await fetch(`/api/feeds/${id}`, {method:'DELETE', headers: authHeaders()});
+  await loadFeeds();
+}
+
+let allHeadlines = [];
+let editingHeadlineId = null;
+
+async function loadHeadlines(){
+  const res = await fetch('/api/headlines');
+  allHeadlines = await res.json();
+  document.getElementById('headlineRows').innerHTML = allHeadlines.map(h => `
+    <tr>
+      <td>${h.text}</td>
+      <td>${h.link ? `<a class="link-cell" href="${h.link}" target="_blank">${h.link}</a>` : '—'}</td>
+      <td>${h.image_url ? '🖼️' : '—'}</td>
+      <td>
+        <button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="editHeadline(${h.id})">Edit</button>
+        <button class="btn-danger" onclick="deleteHeadline(${h.id})">Delete</button>
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="4" style="color:#666;">No headlines yet — add one below.</td></tr>';
+}
+
+function editHeadline(id){
+  const h = allHeadlines.find(x => x.id === id);
+  if (!h) return;
+  editingHeadlineId = id;
+  document.getElementById('h_text').value = h.text;
+  document.getElementById('h_link').value = h.link || '';
+  document.getElementById('h_image').value = h.image_url || '';
+  document.getElementById('h_order').value = h.sort_order || 0;
+  document.getElementById('headlineFormTitle').textContent = `EDITING HEADLINE #${id}`;
+  document.getElementById('headlineSubmitBtn').textContent = 'Update headline';
+  window.scrollTo({top: document.getElementById('headlineFormTitle').offsetTop - 20, behavior:'smooth'});
+}
+
+async function submitHeadline(){
+  const body = {
+    text: document.getElementById('h_text').value,
+    link: document.getElementById('h_link').value,
+    image_url: document.getElementById('h_image').value,
+    sort_order: Number(document.getElementById('h_order').value) || 0,
+  };
+  const url = editingHeadlineId ? `/api/headlines/${editingHeadlineId}` : '/api/headlines';
+  const method = editingHeadlineId ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers: authHeaders(), body: JSON.stringify(body)});
+  const data = await res.json();
+  const msg = document.getElementById('headlineFormMsg');
+  if (res.ok){
+    msg.style.color = 'green'; msg.textContent = editingHeadlineId ? 'Headline updated.' : 'Headline added.';
+    clearHeadlineForm(); await loadHeadlines();
+  } else {
+    msg.style.color = '#B33A3A'; msg.textContent = data.error || 'Error saving headline.';
+  }
+}
+
+function clearHeadlineForm(){
+  ['h_text','h_link','h_image'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('h_order').value = 0;
+  editingHeadlineId = null;
+  document.getElementById('headlineFormTitle').textContent = 'ADD A HEADLINE';
+  document.getElementById('headlineSubmitBtn').textContent = 'Add headline';
+}
+
+async function deleteHeadline(id){
+  if (!confirm('Delete this headline?')) return;
+  await fetch(`/api/headlines/${id}`, {method:'DELETE', headers: authHeaders()});
+  await loadHeadlines();
 }
 
 if (TOKEN) showAdmin();
