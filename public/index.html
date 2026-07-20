@@ -73,7 +73,7 @@
   .wire-col{border-top:2px solid #111;padding-top:6px;}
   .wire-col h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:10px 0;}
   .wire-item{padding:7px 0;border-bottom:1px solid #e5e5e5;font-size:14px;line-height:1.35;font-family:Georgia,'Times New Roman',serif;}
-  .wire-item a{font-weight:700;color:var(--wire-blue);}
+  .wire-item a{font-weight:700;color:#111;}
   .wire-item a:visited{color:#551A8B;}
   .wire-item a:hover{text-decoration:underline;}
   .wire-item .wire-meta{display:block;font-family:var(--mono);font-size:10.5px;color:#888;margin-top:2px;}
@@ -81,6 +81,14 @@
   @media (max-width:820px){ .wire-columns{grid-template-columns:1fr;} }
 
   footer.colophon{border-top:1px solid #ccc;padding:26px 24px 50px;text-align:center;font-family:var(--mono);font-size:11px;color:#888;letter-spacing:.04em;}
+
+  .headline-history{max-width:900px;margin:10px auto 30px;padding:20px 24px 0;border-top:1px solid #ccc;}
+  .headline-history h3{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#888;margin:0 0 12px;text-align:center;}
+  .headline-history ul{list-style:none;margin:0;padding:0;}
+  .headline-history li{display:flex;gap:12px;padding:6px 0;border-bottom:1px solid #eee;font-family:Georgia,'Times New Roman',serif;font-size:13px;}
+  .headline-history .hh-date{font-family:var(--mono);font-size:10.5px;color:#999;white-space:nowrap;min-width:70px;padding-top:2px;}
+  .headline-history a{color:#333;}
+  .headline-history a:hover{text-decoration:underline;}
 
 </style>
 </head>
@@ -106,6 +114,8 @@
 
 <main class="grid" id="grid"></main>
 <section class="wire" id="wireView"></section>
+
+<section class="headline-history" id="headlineHistory"></section>
 
 <footer class="colophon">
   NEWS FOR 38 YEAR OLDS · PROTOTYPE — BUILT AS A DEMO · NOT AN ACTIVE NEWS SERVICE
@@ -135,6 +145,13 @@ let DISPATCHES = [];
 let activeBeat = "All";
 let currentView = "dispatch";
 
+function formatDisplayDate(iso){
+  if (!iso) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso; // already display text (legacy row), show as-is
+  const d = new Date(iso + "T00:00:00");
+  return isNaN(d) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
 async function loadDispatches(){
   const res = await fetch(`${API}/api/dispatches`);
   DISPATCHES = await res.json();
@@ -155,6 +172,25 @@ async function loadTopHeadlines(){
       : `<a class="${i % 2 === 0 ? 'thl-red' : 'thl-black'}" style="cursor:default;">${h.text}</a>`
     }
   `).join('');
+
+  renderHeadlineHistory(headlines);
+}
+
+function renderHeadlineHistory(headlines){
+  const el = document.getElementById('headlineHistory');
+  if (!headlines.length) { el.innerHTML = ''; return; }
+  const sorted = [...headlines].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  el.innerHTML = `
+    <h3>Headline History</h3>
+    <ul>
+      ${sorted.map(h => `
+        <li>
+          <span class="hh-date">${formatDisplayDate(h.created_at.slice(0,10))}</span>
+          ${h.link ? `<a href="${h.link}" target="_blank" rel="noopener">${h.text}</a>` : `<span>${h.text}</span>`}
+        </li>
+      `).join('')}
+    </ul>
+  `;
 }
 
 function renderFilters(beats){
@@ -175,7 +211,7 @@ function renderGrid(){
   grid.innerHTML = items.map(d => `
     <article class="dispatch">
       <div class="stamp">${d.beat}</div>
-      <div class="byline-row"><span class="name">${d.name}</span> · ${d.outlet} · ${d.date}</div>
+      <div class="byline-row"><span class="name">${d.name}</span> · ${d.outlet} · ${formatDisplayDate(d.date)}</div>
       <h3 class="headline">${d.headline}</h3>
       <p class="excerpt">${d.excerpt||''}</p>
       <div class="dispatch-footer">
@@ -221,7 +257,7 @@ function renderWire(){
       ${alsoBig.map(d => `
         <div class="wire-item">
           <a href="/go/${d.id}" target="_blank" rel="noopener">${d.headline}</a>
-          <span class="wire-meta">${d.outlet} — ${d.date}${d.tip_url ? ` · <a href="${d.tip_url}" target="_blank" rel="noopener" style="color:var(--support-teal-dark);">Tip ${d.outlet}</a>` : ''}</span>
+          <span class="wire-meta">${d.outlet} — ${formatDisplayDate(d.date)}${d.tip_url ? ` · <a href="${d.tip_url}" target="_blank" rel="noopener" style="color:var(--wire-blue);">Tip ${d.outlet}</a>` : ''}</span>
         </div>
       `).join('')}
     </div>
@@ -233,7 +269,7 @@ function renderWire(){
           ${bySection[sec].length ? bySection[sec].map(d => `
             <div class="wire-item">
               <a href="/go/${d.id}" target="_blank" rel="noopener">${d.headline}</a>
-              <span class="wire-meta">${d.outlet} — ${d.date}${d.tip_url ? ` · <a href="${d.tip_url}" target="_blank" rel="noopener" style="color:var(--support-teal-dark);">Tip ${d.outlet}</a>` : ''}</span>
+              <span class="wire-meta">${d.outlet} — ${formatDisplayDate(d.date)}${d.tip_url ? ` · <a href="${d.tip_url}" target="_blank" rel="noopener" style="color:var(--wire-blue);">Tip ${d.outlet}</a>` : ''}</span>
             </div>
           `).join('') : `<div class="wire-empty">No dispatches yet — add one in the CMS.</div>`}
         </div>
@@ -255,9 +291,15 @@ function switchView(view){
 }
 switchView('wire');
 
-// dateline
+// dateline counters (calculated live so they never go stale)
+const MIDTERM_DATE = new Date('2026-11-03T00:00:00');
+const IRAN_WAR_START = new Date('2026-02-28T00:00:00'); // date the current round of US-Iran fighting began
+function daysBetween(a, b){ return Math.round((b - a) / 86400000); }
+const today = new Date();
+const daysToMidterms = daysBetween(today, MIDTERM_DATE);
+const warDay = daysBetween(IRAN_WAR_START, today) + 1;
 document.getElementById('dateline').textContent =
-  "EDITION — " + new Date().toLocaleDateString('en-US', { weekday:'long', month:'long', day:'numeric', year:'numeric' }).toUpperCase();
+  `${daysToMidterms} DAYS TO THE MIDTERMS · DAY ${warDay} OF THE IRAN WAR`;
 
 // tip modal
 const tipOverlay = document.getElementById('tipOverlay');

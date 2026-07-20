@@ -101,43 +101,62 @@ async function migrateFeedsJsonIfNeeded() {
 }
 await migrateFeedsJsonIfNeeded();
 
+// one-time migration: old rows stored "Jul 18" style text which sorts
+// alphabetically, not chronologically (e.g. "Jun" < "Jul" as text but
+// scrambles once months mix). Convert those to sortable ISO dates.
+function migrateDateFormats() {
+  const rows = db.prepare(`SELECT id, date FROM dispatches WHERE date IS NOT NULL AND date != ''`).all();
+  const update = db.prepare(`UPDATE dispatches SET date = ? WHERE id = ?`);
+  let fixed = 0;
+  for (const row of rows) {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(row.date)) continue; // already ISO
+    const parsed = new Date(`${row.date}, 2026`);
+    if (!isNaN(parsed)) {
+      update.run(parsed.toISOString().slice(0, 10), row.id);
+      fixed++;
+    }
+  }
+  if (fixed) console.log(`Migrated ${fixed} dispatch date(s) to sortable ISO format.`);
+}
+migrateDateFormats();
+
 // ---------- auto-seed on startup if the database is empty ----------
 // Render's free tier resets the disk on spin-down/redeploy, so instead of
 // relying on a separate `node seed.mjs` step, the server seeds itself.
 const STARTER_DISPATCHES = [
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Politics", date:"Jul 8",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Politics", date:"2026-07-08",
     headline:"The warning signs on a Maine Senate candidate were there long before the headline-grabbing allegation",
     excerpt:"A look at how a candidate's allies kept building him up as a model of positive masculinity while brushing off months of red flags.",
     link:"https://www.thehandbasket.co/p/graham-platner-rape-accusation-maine-senate", pinned:1 },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Courts & Rights", date:"Jun 29",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Courts & Rights", date:"2026-06-29",
     headline:"An exclusive excerpt on a former HUD attorney's fight against the administration",
     excerpt:"A book excerpt following one civil rights lawyer's decision to push back from inside the system.",
     link:"https://www.thehandbasket.co/p/on-courage-excerpt-paul-osadebe-julia-angwin-ami-fields-meyer" },
-  { name:"Kim Kelly", outlet:"The Handbasket", beat:"Labor", date:"Jun 26",
+  { name:"Kim Kelly", outlet:"The Handbasket", beat:"Labor", date:"2026-06-26",
     headline:"A 19th-century labor massacre and a present-day prison sentence, read side by side",
     excerpt:"A guest essay drawing a line from the Haymarket affair to a recent, unusually harsh sentencing.",
     link:"https://www.thehandbasket.co/p/haymarket-prairieland-sentencing-kim-kelly" },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Politics", date:"Jun 24",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Politics", date:"2026-06-24",
     headline:"How some progressive Jewish New Yorkers are decoupling their faith from Zionism at the ballot box",
     excerpt:"A dispatch on a shifting political identity taking shape in New York City primaries.",
     link:"https://www.thehandbasket.co/p/progressive-jewish-new-yorkers-brad-lander-primary" },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Immigration", date:"Jun 18",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Immigration", date:"2026-06-18",
     headline:"What it actually means that ICE is getting rid of seven detention warehouses",
     excerpt:"A Q&A digging into the real significance behind the agency shedding a batch of facilities.",
     link:"https://www.thehandbasket.co/p/ice-warehouses-offloading-project-salt-box-q-and-a" },
-  { name:"Lee Hurley", outlet:"The Handbasket", beat:"Foreign Policy", date:"Jun 16",
+  { name:"Lee Hurley", outlet:"The Handbasket", beat:"Foreign Policy", date:"2026-06-16",
     headline:"Pinning Belfast's racist violence on one billionaire lets everyone else off the hook",
     excerpt:"A guest essay arguing a single online figure makes for a convenient scapegoat, but the causes run deeper.",
     link:"https://www.thehandbasket.co/p/elon-musk-belfast-pogrom-lee-hurley" },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Media", date:"Jun 3",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Media", date:"2026-06-03",
     headline:"Two very different paths for women in media, and what journalists actually owe people",
     excerpt:"A personal reflection comparing two contrasting career paths in journalism right now.",
     link:"https://www.thehandbasket.co/p/bari-weiss-cbs-scott-pelley-marisa-kabas" },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Immigration", date:"May 29",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Immigration", date:"2026-05-29",
     headline:"On the ground reporting from inside a violent ICE detention standoff in New Jersey",
     excerpt:"First-hand, on-site reporting on conditions and clashes at a New Jersey detention facility.",
     link:"https://www.thehandbasket.co/p/delaney-hall-hunger-strike-newark-new-jersey-ice-violence-protests" },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Courts & Rights", date:"May 25",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Courts & Rights", date:"2026-05-25",
     headline:"A conversation with one of the activists cleared after a grand jury misconduct finding",
     excerpt:"A Q&A with a member of a group of activists who had charges against them dropped.",
     link:"https://www.thehandbasket.co/p/kat-abughazaleh-broadview-six-grand-jury-charges-dropped" },
@@ -315,7 +334,7 @@ function truncate(str, max = 160) {
 }
 function formatDate(pubDate) {
   const d = new Date(pubDate);
-  return isNaN(d) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  return isNaN(d) ? "" : d.toISOString().slice(0, 10); // sortable ISO date, e.g. "2026-07-18"
 }
 function pickBeat(text, beatKeywords = {}, fallbackBeat = "General") {
   const lower = text.toLowerCase();
