@@ -2,10 +2,12 @@
   "name": "n38-cms",
   "version": "1.0.0",
   "type": "module",
-  "scripts": { "start": "node server.mjs" },
+  "scripts": {
+    "start": "node server.mjs"
+  },
   "dependencies": {
+    "@libsql/client": "^0.17.4",
     "express": "^4.19.2",
-    "better-sqlite3": "^11.3.0",
     "fast-xml-parser": "^4.4.1"
   }
 }
