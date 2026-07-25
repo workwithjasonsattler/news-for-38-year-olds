@@ -399,6 +399,32 @@ app.post("/api/feeds", requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/api/feeds/bulk", requireAdmin, async (req, res) => {
+  const { feeds } = req.body;
+  if (!Array.isArray(feeds) || feeds.length === 0) {
+    return res.status(400).json({ error: "feeds must be a non-empty array" });
+  }
+  let added = 0;
+  const errors = [];
+  for (const f of feeds) {
+    if (!f.outlet || !f.feed_url) {
+      errors.push(`Skipped a row — missing outlet or feed URL: ${JSON.stringify(f)}`);
+      continue;
+    }
+    try {
+      await dbRun(
+        `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed)
+         VALUES (?, ?, ?, ?, ?, ?, '{}', ?)`,
+        [f.outlet, f.default_author || "", f.feed_url, f.tip_url || "", f.subscribe_url || "", f.fallback_beat || "Indie Media", f.items_per_feed || 3]
+      );
+      added++;
+    } catch (err) {
+      errors.push(`${f.outlet}: ${err.message}`);
+    }
+  }
+  res.json({ added, errors });
+});
+
 app.put("/api/feeds/:id", requireAdmin, async (req, res) => {
   const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed } = req.body;
   if (!outlet || !feed_url) return res.status(400).json({ error: "outlet and feed_url are required" });
