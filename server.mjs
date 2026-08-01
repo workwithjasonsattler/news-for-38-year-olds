@@ -1,10 +1,6 @@
 // server.mjs — News for 38 Year Olds: minimal CMS + stats + wire feed
-// Uses libSQL (Turso's client) instead of better-sqlite3 so the database
-// lives outside the app's disk — survives redeploys, restarts, and Render's
-// free-tier ephemeral filesystem. Falls back to a local file automatically
-// when no TURSO_DATABASE_URL is set, so local dev needs no extra setup.
 import express from "express";
-import { createClient } from "@libsql/client";
+import Database from "better-sqlite3";
 import { XMLParser } from "fast-xml-parser";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -14,190 +10,109 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "letmein";
 const PORT = process.env.PORT || 3000;
 
-const DB_URL = process.env.TURSO_DATABASE_URL || `file:${path.join(__dirname, "n38.db")}`;
-const client = createClient({
-  url: DB_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN, // ignored/undefined for local file mode
-});
-console.log(`Database: ${DB_URL.startsWith("file:") ? "local file (dev mode)" : "remote Turso"}`);
+const db = new Database(path.join(__dirname, "n38.db"));
+db.pragma("journal_mode = WAL");
 
-// ---------- thin helpers so the rest of the file reads like sync SQLite ----------
-async function dbAll(sql, args = []) {
-  const res = await client.execute({ sql, args });
-  return res.rows;
-}
-async function dbGet(sql, args = []) {
-  const rows = await dbAll(sql, args);
-  return rows[0];
-}
-async function dbRun(sql, args = []) {
-  const res = await client.execute({ sql, args });
-  return { lastInsertRowid: Number(res.lastInsertRowid ?? 0), changes: res.rowsAffected ?? 0 };
-}
-
-// ---------- schema ----------
-async function initSchema() {
-  const statements = [
-    `CREATE TABLE IF NOT EXISTS dispatches (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      outlet TEXT NOT NULL,
-      beat TEXT NOT NULL,
-      date TEXT,
-      headline TEXT NOT NULL,
-      excerpt TEXT,
-      link TEXT NOT NULL UNIQUE,
-      tip_url TEXT,
-      subscribe_url TEXT,
-      pinned INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )`,
-    `CREATE TABLE IF NOT EXISTS clicks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      dispatch_id INTEGER NOT NULL,
-      ts TEXT NOT NULL DEFAULT (datetime('now'))
-    )`,
-    `CREATE TABLE IF NOT EXISTS page_views (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      view_type TEXT NOT NULL,
-      ts TEXT NOT NULL DEFAULT (datetime('now'))
-    )`,
-    `CREATE TABLE IF NOT EXISTS tip_clicks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      dispatch_id INTEGER,
-      amount INTEGER,
-      ts TEXT NOT NULL DEFAULT (datetime('now'))
-    )`,
-    `CREATE TABLE IF NOT EXISTS headlines (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      text TEXT NOT NULL,
-      link TEXT,
-      image_url TEXT,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )`,
-    `CREATE TABLE IF NOT EXISTS feeds (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      outlet TEXT NOT NULL,
-      default_author TEXT,
-      feed_url TEXT NOT NULL UNIQUE,
-      tip_url TEXT,
-      subscribe_url TEXT,
-      fallback_beat TEXT NOT NULL DEFAULT 'Indie Media',
-      beat_keywords TEXT NOT NULL DEFAULT '{}',
-      items_per_feed INTEGER NOT NULL DEFAULT 3,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )`,
-  ];
-  for (const sql of statements) await dbRun(sql);
-
-  // migrate existing tables if they predate newer columns
-  for (const stmt of [
-    `ALTER TABLE dispatches ADD COLUMN tip_url TEXT`,
-    `ALTER TABLE dispatches ADD COLUMN subscribe_url TEXT`,
-    `ALTER TABLE feeds ADD COLUMN subscribe_url TEXT`,
-  ]) {
-    try { await dbRun(stmt); } catch { /* column already exists */ }
-  }
-}
-
-// one-time migration: if feeds.json exists and the feeds table is empty, import it
-async function migrateFeedsJsonIfNeeded() {
-  const existing = (await dbGet(`SELECT COUNT(*) AS n FROM feeds`)).n;
-  if (existing > 0) return;
-  try {
-    const feeds = JSON.parse(await readFile(path.join(__dirname, "feeds.json"), "utf8"));
-    for (const f of feeds) {
-      await dbRun(
-        `INSERT OR IGNORE INTO feeds (outlet, default_author, feed_url, fallback_beat, beat_keywords, items_per_feed)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-        [f.outlet, f.defaultAuthor || "", f.feedUrl, f.fallbackBeat || "Indie Media", JSON.stringify(f.beatKeywords || {}), f.itemsPerFeed || 3]
-      );
-    }
-    console.log(`Migrated ${feeds.length} feed(s) from feeds.json into the database.`);
-  } catch { /* no feeds.json, nothing to migrate */ }
-}
-
-// one-time migration: old rows stored "Jul 18" style text which sorts
-// alphabetically, not chronologically (e.g. "Jun" < "Jul" as text but
-// scrambles once months mix). Convert those to sortable ISO dates.
-async function migrateDateFormats() {
-  const rows = await dbAll(`SELECT id, date FROM dispatches WHERE date IS NOT NULL AND date != ''`);
-  let fixed = 0;
-  for (const row of rows) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(row.date)) continue; // already ISO
-    const parsed = new Date(`${row.date}, 2026`);
-    if (!isNaN(parsed)) {
-      await dbRun(`UPDATE dispatches SET date = ? WHERE id = ?`, [parsed.toISOString().slice(0, 10), row.id]);
-      fixed++;
-    }
-  }
-  if (fixed) console.log(`Migrated ${fixed} dispatch date(s) to sortable ISO format.`);
-}
+db.exec(`
+  CREATE TABLE IF NOT EXISTS dispatches (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    outlet TEXT NOT NULL,
+    beat TEXT NOT NULL,
+    date TEXT,
+    headline TEXT NOT NULL,
+    excerpt TEXT,
+    link TEXT NOT NULL UNIQUE,
+    pinned INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS clicks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dispatch_id INTEGER NOT NULL,
+    ts TEXT NOT NULL DEFAULT (datetime('now')),
+    FOREIGN KEY(dispatch_id) REFERENCES dispatches(id) ON DELETE CASCADE
+  );
+  CREATE TABLE IF NOT EXISTS page_views (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    view_type TEXT NOT NULL,
+    ts TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+  CREATE TABLE IF NOT EXISTS tip_clicks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    dispatch_id INTEGER,
+    amount INTEGER,
+    ts TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+`);
 
 // ---------- auto-seed on startup if the database is empty ----------
+// Render's free tier resets the disk on spin-down/redeploy, so instead of
+// relying on a separate `node seed.mjs` step, the server seeds itself.
 const STARTER_DISPATCHES = [
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Politics", date:"2026-07-08",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Politics", date:"Jul 8",
     headline:"The warning signs on a Maine Senate candidate were there long before the headline-grabbing allegation",
     excerpt:"A look at how a candidate's allies kept building him up as a model of positive masculinity while brushing off months of red flags.",
     link:"https://www.thehandbasket.co/p/graham-platner-rape-accusation-maine-senate", pinned:1 },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Courts & Rights", date:"2026-06-29",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Courts & Rights", date:"Jun 29",
     headline:"An exclusive excerpt on a former HUD attorney's fight against the administration",
     excerpt:"A book excerpt following one civil rights lawyer's decision to push back from inside the system.",
     link:"https://www.thehandbasket.co/p/on-courage-excerpt-paul-osadebe-julia-angwin-ami-fields-meyer" },
-  { name:"Kim Kelly", outlet:"The Handbasket", beat:"Labor", date:"2026-06-26",
+  { name:"Kim Kelly", outlet:"The Handbasket", beat:"Labor", date:"Jun 26",
     headline:"A 19th-century labor massacre and a present-day prison sentence, read side by side",
     excerpt:"A guest essay drawing a line from the Haymarket affair to a recent, unusually harsh sentencing.",
     link:"https://www.thehandbasket.co/p/haymarket-prairieland-sentencing-kim-kelly" },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Politics", date:"2026-06-24",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Politics", date:"Jun 24",
     headline:"How some progressive Jewish New Yorkers are decoupling their faith from Zionism at the ballot box",
     excerpt:"A dispatch on a shifting political identity taking shape in New York City primaries.",
     link:"https://www.thehandbasket.co/p/progressive-jewish-new-yorkers-brad-lander-primary" },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Immigration", date:"2026-06-18",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Immigration", date:"Jun 18",
     headline:"What it actually means that ICE is getting rid of seven detention warehouses",
     excerpt:"A Q&A digging into the real significance behind the agency shedding a batch of facilities.",
     link:"https://www.thehandbasket.co/p/ice-warehouses-offloading-project-salt-box-q-and-a" },
-  { name:"Lee Hurley", outlet:"The Handbasket", beat:"Foreign Policy", date:"2026-06-16",
+  { name:"Lee Hurley", outlet:"The Handbasket", beat:"Foreign Policy", date:"Jun 16",
     headline:"Pinning Belfast's racist violence on one billionaire lets everyone else off the hook",
     excerpt:"A guest essay arguing a single online figure makes for a convenient scapegoat, but the causes run deeper.",
     link:"https://www.thehandbasket.co/p/elon-musk-belfast-pogrom-lee-hurley" },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Media", date:"2026-06-03",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Media", date:"Jun 3",
     headline:"Two very different paths for women in media, and what journalists actually owe people",
     excerpt:"A personal reflection comparing two contrasting career paths in journalism right now.",
     link:"https://www.thehandbasket.co/p/bari-weiss-cbs-scott-pelley-marisa-kabas" },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Immigration", date:"2026-05-29",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Immigration", date:"May 29",
     headline:"On the ground reporting from inside a violent ICE detention standoff in New Jersey",
     excerpt:"First-hand, on-site reporting on conditions and clashes at a New Jersey detention facility.",
     link:"https://www.thehandbasket.co/p/delaney-hall-hunger-strike-newark-new-jersey-ice-violence-protests" },
-  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Courts & Rights", date:"2026-05-25",
+  { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Courts & Rights", date:"May 25",
     headline:"A conversation with one of the activists cleared after a grand jury misconduct finding",
     excerpt:"A Q&A with a member of a group of activists who had charges against them dropped.",
     link:"https://www.thehandbasket.co/p/kat-abughazaleh-broadview-six-grand-jury-charges-dropped" },
 ];
 
-async function autoSeedIfEmpty() {
-  const count = (await dbGet(`SELECT COUNT(*) AS n FROM dispatches`)).n;
+function autoSeedIfEmpty() {
+  const count = db.prepare(`SELECT COUNT(*) AS n FROM dispatches`).get().n;
   if (count > 0) return;
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO dispatches (name, outlet, beat, date, headline, excerpt, link, pinned)
+    VALUES (@name, @outlet, @beat, @date, @headline, @excerpt, @link, @pinned)
+  `);
   let added = 0;
   for (const d of STARTER_DISPATCHES) {
-    const info = await dbRun(
-      `INSERT OR IGNORE INTO dispatches (name, outlet, beat, date, headline, excerpt, link, pinned)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      [d.name, d.outlet, d.beat, d.date, d.headline, d.excerpt || "", d.link, d.pinned ? 1 : 0]
-    );
+    const info = insert.run({ pinned: 0, excerpt: "", ...d });
     if (info.changes) added++;
   }
   console.log(`Auto-seeded ${added} starter dispatch(es) (database was empty).`);
 }
+autoSeedIfEmpty();
 
-// ---------- express app ----------
 const app = express();
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
+// ---------- admin auth (simple shared-password header check) ----------
 function requireAdmin(req, res, next) {
   const token = req.headers["x-admin-token"];
-  if (token !== ADMIN_PASSWORD) return res.status(401).json({ error: "unauthorized" });
+  if (token !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
   next();
 }
 
@@ -208,111 +123,85 @@ app.post("/api/login", (req, res) => {
 });
 
 // ---------- public read endpoints ----------
-app.get("/api/dispatches", async (req, res) => {
+app.get("/api/dispatches", (req, res) => {
   const { beat } = req.query;
   const rows = beat
-    ? await dbAll(`SELECT * FROM dispatches WHERE beat = ? ORDER BY pinned DESC, date DESC, id DESC`, [beat])
-    : await dbAll(`SELECT * FROM dispatches ORDER BY pinned DESC, date DESC, id DESC`);
+    ? db.prepare(`SELECT * FROM dispatches WHERE beat = ? ORDER BY pinned DESC, date DESC, id DESC`).all(beat)
+    : db.prepare(`SELECT * FROM dispatches ORDER BY pinned DESC, date DESC, id DESC`).all();
   res.json(rows);
 });
 
-app.get("/go/:id", async (req, res) => {
-  const row = await dbGet(`SELECT link FROM dispatches WHERE id = ?`, [req.params.id]);
+app.get("/go/:id", (req, res) => {
+  const row = db.prepare(`SELECT link FROM dispatches WHERE id = ?`).get(req.params.id);
   if (!row) return res.status(404).send("Not found");
-  await dbRun(`INSERT INTO clicks (dispatch_id) VALUES (?)`, [req.params.id]);
+  db.prepare(`INSERT INTO clicks (dispatch_id) VALUES (?)`).run(req.params.id);
   res.redirect(302, row.link);
 });
 
-app.post("/api/track-view", async (req, res) => {
+app.post("/api/track-view", (req, res) => {
   const { view_type } = req.body || {};
-  await dbRun(`INSERT INTO page_views (view_type) VALUES (?)`, [view_type || "unknown"]);
+  db.prepare(`INSERT INTO page_views (view_type) VALUES (?)`).run(view_type || "unknown");
   res.json({ ok: true });
 });
 
-app.post("/api/track-tip", async (req, res) => {
+app.post("/api/track-tip", (req, res) => {
   const { dispatch_id, amount } = req.body || {};
-  await dbRun(`INSERT INTO tip_clicks (dispatch_id, amount) VALUES (?, ?)`, [dispatch_id || null, amount || 0]);
+  db.prepare(`INSERT INTO tip_clicks (dispatch_id, amount) VALUES (?, ?)`).run(dispatch_id || null, amount || 0);
   res.json({ ok: true });
 });
 
-// ---------- admin write endpoints: dispatches ----------
-app.post("/api/dispatches", requireAdmin, async (req, res) => {
-  const { name, outlet, beat, date, headline, excerpt, link, tip_url, subscribe_url, pinned } = req.body;
+// ---------- admin write endpoints ----------
+app.post("/api/dispatches", requireAdmin, (req, res) => {
+  const { name, outlet, beat, date, headline, excerpt, link, pinned } = req.body;
   if (!name || !outlet || !beat || !headline || !link) {
     return res.status(400).json({ error: "name, outlet, beat, headline, and link are required" });
   }
   try {
-    const info = await dbRun(
-      `INSERT INTO dispatches (name, outlet, beat, date, headline, excerpt, link, tip_url, subscribe_url, pinned)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [name, outlet, beat, date || "", headline, excerpt || "", link, tip_url || "", subscribe_url || "", pinned ? 1 : 0]
-    );
+    const info = db
+      .prepare(`INSERT INTO dispatches (name, outlet, beat, date, headline, excerpt, link, pinned)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(name, outlet, beat, date || "", headline, excerpt || "", link, pinned ? 1 : 0);
     res.json({ id: info.lastInsertRowid });
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 });
 
-app.put("/api/dispatches/:id", requireAdmin, async (req, res) => {
-  const { name, outlet, beat, date, headline, excerpt, link, tip_url, subscribe_url, pinned } = req.body;
-  await dbRun(
-    `UPDATE dispatches SET name=?, outlet=?, beat=?, date=?, headline=?, excerpt=?, link=?, tip_url=?, subscribe_url=?, pinned=? WHERE id=?`,
-    [name, outlet, beat, date || "", headline, excerpt || "", link, tip_url || "", subscribe_url || "", pinned ? 1 : 0, req.params.id]
-  );
+app.put("/api/dispatches/:id", requireAdmin, (req, res) => {
+  const { name, outlet, beat, date, headline, excerpt, link, pinned } = req.body;
+  db.prepare(
+    `UPDATE dispatches SET name=?, outlet=?, beat=?, date=?, headline=?, excerpt=?, link=?, pinned=? WHERE id=?`
+  ).run(name, outlet, beat, date || "", headline, excerpt || "", link, pinned ? 1 : 0, req.params.id);
   res.json({ ok: true });
 });
 
-app.delete("/api/dispatches/:id", requireAdmin, async (req, res) => {
-  await dbRun(`DELETE FROM dispatches WHERE id = ?`, [req.params.id]);
-  res.json({ ok: true });
-});
-
-// ---------- editor headlines (always manual, never from feeds) ----------
-app.get("/api/headlines", async (req, res) => {
-  const rows = await dbAll(`SELECT * FROM headlines ORDER BY sort_order ASC, id ASC`);
-  res.json(rows);
-});
-
-app.post("/api/headlines", requireAdmin, async (req, res) => {
-  const { text, link, image_url, sort_order } = req.body;
-  if (!text) return res.status(400).json({ error: "text is required" });
-  const info = await dbRun(
-    `INSERT INTO headlines (text, link, image_url, sort_order) VALUES (?, ?, ?, ?)`,
-    [text, link || "", image_url || "", sort_order || 0]
-  );
-  res.json({ id: info.lastInsertRowid });
-});
-
-app.put("/api/headlines/:id", requireAdmin, async (req, res) => {
-  const { text, link, image_url, sort_order } = req.body;
-  await dbRun(
-    `UPDATE headlines SET text=?, link=?, image_url=?, sort_order=? WHERE id=?`,
-    [text, link || "", image_url || "", sort_order || 0, req.params.id]
-  );
-  res.json({ ok: true });
-});
-
-app.delete("/api/headlines/:id", requireAdmin, async (req, res) => {
-  await dbRun(`DELETE FROM headlines WHERE id = ?`, [req.params.id]);
+app.delete("/api/dispatches/:id", requireAdmin, (req, res) => {
+  db.prepare(`DELETE FROM dispatches WHERE id = ?`).run(req.params.id);
   res.json({ ok: true });
 });
 
 // ---------- stats ----------
-app.get("/api/stats", requireAdmin, async (req, res) => {
-  const totalDispatches = (await dbGet(`SELECT COUNT(*) AS n FROM dispatches`)).n;
-  const totalClicks = (await dbGet(`SELECT COUNT(*) AS n FROM clicks`)).n;
-  const totalTips = await dbGet(`SELECT COUNT(*) AS n, COALESCE(SUM(amount),0) AS sum FROM tip_clicks`);
-  const viewsByType = await dbAll(`SELECT view_type, COUNT(*) AS n FROM page_views GROUP BY view_type`);
-  const topByClicks = await dbAll(
-    `SELECT d.id, d.headline, d.outlet, d.name, COUNT(c.id) AS clicks
-     FROM dispatches d LEFT JOIN clicks c ON c.dispatch_id = d.id
-     GROUP BY d.id ORDER BY clicks DESC LIMIT 10`
-  );
-  const bySection = await dbAll(
-    `SELECT d.beat, COUNT(DISTINCT d.id) AS stories, COUNT(c.id) AS clicks
-     FROM dispatches d LEFT JOIN clicks c ON c.dispatch_id = d.id
-     GROUP BY d.beat ORDER BY clicks DESC`
-  );
+app.get("/api/stats", requireAdmin, (req, res) => {
+  const totalDispatches = db.prepare(`SELECT COUNT(*) AS n FROM dispatches`).get().n;
+  const totalClicks = db.prepare(`SELECT COUNT(*) AS n FROM clicks`).get().n;
+  const totalTips = db.prepare(`SELECT COUNT(*) AS n, COALESCE(SUM(amount),0) AS sum FROM tip_clicks`).get();
+  const viewsByType = db
+    .prepare(`SELECT view_type, COUNT(*) AS n FROM page_views GROUP BY view_type`)
+    .all();
+  const topByClicks = db
+    .prepare(
+      `SELECT d.id, d.headline, d.outlet, d.name, COUNT(c.id) AS clicks
+       FROM dispatches d LEFT JOIN clicks c ON c.dispatch_id = d.id
+       GROUP BY d.id ORDER BY clicks DESC LIMIT 10`
+    )
+    .all();
+  const bySection = db
+    .prepare(
+      `SELECT d.beat, COUNT(DISTINCT d.id) AS stories, COUNT(c.id) AS clicks
+       FROM dispatches d LEFT JOIN clicks c ON c.dispatch_id = d.id
+       GROUP BY d.beat ORDER BY clicks DESC`
+    )
+    .all();
   res.json({
     totalDispatches,
     totalClicks,
@@ -324,7 +213,7 @@ app.get("/api/stats", requireAdmin, async (req, res) => {
   });
 });
 
-// ---------- feed import helpers ----------
+// ---------- feed import (reuses the standalone ingest logic) ----------
 const xmlParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_", textNodeName: "#text" });
 
 function textOf(field) {
@@ -343,7 +232,7 @@ function truncate(str, max = 160) {
 }
 function formatDate(pubDate) {
   const d = new Date(pubDate);
-  return isNaN(d) ? "" : d.toISOString().slice(0, 10); // sortable ISO date, e.g. "2026-07-18"
+  return isNaN(d) ? "" : d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 function pickBeat(text, beatKeywords = {}, fallbackBeat = "General") {
   const lower = text.toLowerCase();
@@ -378,104 +267,37 @@ function extractItems(parsed) {
   return [];
 }
 
-// ---------- feeds (DB-backed, managed from the admin UI) ----------
-app.get("/api/feeds", requireAdmin, async (req, res) => {
-  const rows = await dbAll(`SELECT * FROM feeds ORDER BY outlet ASC`);
-  res.json(rows);
-});
-
-app.post("/api/feeds", requireAdmin, async (req, res) => {
-  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed } = req.body;
-  if (!outlet || !feed_url) return res.status(400).json({ error: "outlet and feed_url are required" });
+app.post("/api/import-feeds", requireAdmin, async (req, res) => {
+  let feeds;
   try {
-    const info = await dbRun(
-      `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed)
-       VALUES (?, ?, ?, ?, ?, ?, '{}', ?)`,
-      [outlet, default_author || "", feed_url, tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3]
-    );
-    res.json({ id: info.lastInsertRowid });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+    feeds = JSON.parse(await readFile(path.join(__dirname, "feeds.json"), "utf8"));
+  } catch {
+    return res.status(400).json({ error: "feeds.json not found or invalid" });
   }
-});
-
-app.post("/api/feeds/bulk", requireAdmin, async (req, res) => {
-  const { feeds } = req.body;
-  if (!Array.isArray(feeds) || feeds.length === 0) {
-    return res.status(400).json({ error: "feeds must be a non-empty array" });
-  }
-  let added = 0;
-  const errors = [];
-  for (const f of feeds) {
-    if (!f.outlet || !f.feed_url) {
-      errors.push(`Skipped a row — missing outlet or feed URL: ${JSON.stringify(f)}`);
-      continue;
-    }
-    try {
-      await dbRun(
-        `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed)
-         VALUES (?, ?, ?, ?, ?, ?, '{}', ?)`,
-        [f.outlet, f.default_author || "", f.feed_url, f.tip_url || "", f.subscribe_url || "", f.fallback_beat || "Indie Media", f.items_per_feed || 3]
-      );
-      added++;
-    } catch (err) {
-      errors.push(`${f.outlet}: ${err.message}`);
-    }
-  }
-  res.json({ added, errors });
-});
-
-app.put("/api/feeds/:id", requireAdmin, async (req, res) => {
-  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed } = req.body;
-  if (!outlet || !feed_url) return res.status(400).json({ error: "outlet and feed_url are required" });
-  try {
-    await dbRun(
-      `UPDATE feeds SET outlet=?, default_author=?, feed_url=?, tip_url=?, subscribe_url=?, fallback_beat=?, items_per_feed=?
-       WHERE id=?`,
-      [outlet, default_author || "", feed_url, tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, req.params.id]
-    );
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.delete("/api/feeds/:id", requireAdmin, async (req, res) => {
-  await dbRun(`DELETE FROM feeds WHERE id = ?`, [req.params.id]);
-  res.json({ ok: true });
-});
-
-async function importAllFeeds() {
-  const feeds = await dbAll(`SELECT * FROM feeds`);
-  if (feeds.length === 0) return { added: 0, errors: ["No feeds configured yet — add one below."] };
-
+  const insert = db.prepare(
+    `INSERT OR IGNORE INTO dispatches (name, outlet, beat, date, headline, excerpt, link) VALUES (?,?,?,?,?,?,?)`
+  );
   let added = 0;
   const errors = [];
   for (const feed of feeds) {
     try {
-      const r = await fetch(feed.feed_url, { headers: { "User-Agent": "n38-cms/1.0" } });
+      const r = await fetch(feed.feedUrl, { headers: { "User-Agent": "n38-cms/1.0" } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const xml = await r.text();
       const parsed = xmlParser.parse(xml);
-      const beatKeywords = JSON.parse(feed.beat_keywords || "{}");
-      const items = extractItems(parsed).slice(0, feed.items_per_feed || 3);
+      const items = extractItems(parsed).slice(0, feed.itemsPerFeed || 3);
       for (const item of items) {
         const headline = stripHtml(item.title);
         const excerpt = truncate(stripHtml(item.summary), 160);
         if (!headline || !item.link) continue;
-        const info = await dbRun(
-          `INSERT OR IGNORE INTO dispatches (name, outlet, beat, date, headline, excerpt, link, tip_url, subscribe_url) VALUES (?,?,?,?,?,?,?,?,?)`,
-          [
-            item.author?.trim() || feed.default_author || feed.outlet,
-            feed.outlet,
-            pickBeat(`${headline} ${excerpt}`, beatKeywords, feed.fallback_beat || "Indie Media"),
-            formatDate(item.pubDate),
-            headline,
-            excerpt,
-            item.link,
-            feed.tip_url || "",
-            feed.subscribe_url || "",
-          ]
+        const info = insert.run(
+          item.author?.trim() || feed.defaultAuthor || feed.outlet,
+          feed.outlet,
+          pickBeat(`${headline} ${excerpt}`, feed.beatKeywords, feed.fallbackBeat || "General"),
+          formatDate(item.pubDate),
+          headline,
+          excerpt,
+          item.link
         );
         if (info.changes) added++;
       }
@@ -483,29 +305,7 @@ async function importAllFeeds() {
       errors.push(`${feed.outlet}: ${err.message}`);
     }
   }
-  return { added, errors };
-}
-
-app.post("/api/import-feeds", requireAdmin, async (req, res) => {
-  const result = await importAllFeeds();
-  res.json(result);
+  res.json({ added, errors });
 });
 
-// ---------- scheduled auto-import ----------
-const AUTO_IMPORT_MINUTES = Number(process.env.AUTO_IMPORT_MINUTES || 180);
-if (AUTO_IMPORT_MINUTES > 0) {
-  setInterval(async () => {
-    const result = await importAllFeeds();
-    console.log(`Auto-import: added ${result.added} dispatch(es).` + (result.errors.length ? ` Errors: ${result.errors.join("; ")}` : ""));
-  }, AUTO_IMPORT_MINUTES * 60 * 1000);
-}
-
-// ---------- startup ----------
-async function start() {
-  await initSchema();
-  await migrateFeedsJsonIfNeeded();
-  await migrateDateFormats();
-  await autoSeedIfEmpty();
-  app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
-}
-start();
+app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
