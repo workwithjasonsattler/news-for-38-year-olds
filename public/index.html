@@ -35,35 +35,8 @@
   .top-headlines .thl-img{max-width:100%;max-height:160px;display:block;margin:8px auto;border-radius:2px;}
   .subtext{font-family:var(--mono);font-size:12px;letter-spacing:.1em;color:var(--wire-red);margin:14px 0 0;font-weight:700;}
 
-  .view-toggle{display:flex;justify-content:center;gap:8px;margin:18px auto 0;}
-  .toggle-btn{font-family:var(--mono);font-size:12px;letter-spacing:.06em;padding:8px 16px;border:1px solid #999;background:transparent;color:#111;cursor:pointer;border-radius:2px;}
-  .toggle-btn.active{background:#111;color:#fff;border-color:#111;}
-
-  .filter-bar{max-width:1180px;margin:26px auto 6px;padding:0 24px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
-  .filter-label{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#888;margin-right:6px;}
-  .filter-btn{font-family:var(--mono);font-size:12px;padding:7px 13px;border:1px solid #ccc;border-radius:2px;background:transparent;color:#111;cursor:pointer;}
-  .filter-btn.active{background:#111;color:#fff;border-color:#111;}
-
-  /* ---- Dispatch (card) view ---- */
-  .grid{max-width:1180px;margin:26px auto 60px;padding:0 24px;display:grid;grid-template-columns:repeat(auto-fill,minmax(310px,1fr));gap:26px;}
-  .dispatch{background:var(--paper-card);color:var(--text);position:relative;padding:26px 24px 20px;
-    border:1px solid var(--paper-hairline);border-radius:3px;
-    display:flex;flex-direction:column;min-height:270px;}
-  .stamp{position:absolute;top:14px;right:16px;font-family:var(--mono);font-size:9.5px;text-transform:uppercase;border:1.5px solid var(--wire-red);color:var(--wire-red);padding:3px 7px;border-radius:50%/60%;transform:rotate(7deg);}
-  .byline-row{font-family:var(--mono);font-size:11px;color:var(--text-muted);padding-bottom:10px;margin-bottom:12px;border-bottom:1px dashed var(--paper-hairline);}
-  .byline-row .name{font-weight:700;color:var(--text);}
-  .headline{font-family:var(--display);font-size:21px;line-height:1.18;font-weight:700;margin:0 0 10px;}
-  .excerpt{font-size:14px;line-height:1.5;color:#453F35;margin:0 0 16px;flex-grow:1;font-family:var(--body);}
-  .dispatch-footer{margin-top:auto;}
-  .read-link{display:inline-block;font-size:13px;font-weight:600;color:#111;border-bottom:1px solid #111;margin-bottom:14px;font-family:var(--mono);}
-  .cta-row{display:flex;gap:10px;}
-  .btn{flex:1;text-align:center;font-size:13px;font-weight:600;padding:9px 10px;border-radius:3px;cursor:pointer;border:1.5px solid transparent;font-family:var(--mono);}
-  .btn-tip{background:var(--support-teal);color:#F3EFE4;}
-  .btn-subscribe{background:transparent;border-color:#111;color:#111;}
-
   /* ---- Wire (Drudge-style) view ---- */
-  .wire{max-width:1180px;margin:20px auto 70px;padding:0 24px;display:none;}
-  .wire.active{display:block;}
+  .wire{max-width:1180px;margin:20px auto 70px;padding:0 24px;display:block;}
 
   .wire-alsobig{border-bottom:1px solid #ccc;padding-bottom:14px;margin-bottom:20px;column-count:2;column-gap:32px;}
   .wire-alsobig .wire-item{break-inside:avoid;}
@@ -102,18 +75,9 @@
   <div class="top-headlines" id="topHeadlines"></div>
   <img src="/logo.png" alt="News for 38 Year Olds" class="logo-img">
   <p class="subtext">TIP YOUR REPORTER — PEOPLE FIRST NEWS</p>
-  <div class="view-toggle">
-    <button class="toggle-btn active" id="btnDispatch">Dispatch View</button>
-    <button class="toggle-btn" id="btnWire">Wire View</button>
-  </div>
 </header>
 
-<nav class="filter-bar" id="filterBar">
-  <span class="filter-label">Filter by section</span>
-</nav>
-
-<main class="grid" id="grid"></main>
-<section class="wire" id="wireView"></section>
+<main class="wire" id="wireView"></main>
 
 <section class="headline-history" id="headlineHistory"></section>
 
@@ -142,8 +106,6 @@
 <script>
 const API = ""; // same-origin
 let DISPATCHES = [];
-let activeBeat = "All";
-let currentView = "dispatch";
 
 function formatDisplayDate(iso){
   if (!iso) return "";
@@ -155,9 +117,6 @@ function formatDisplayDate(iso){
 async function loadDispatches(){
   const res = await fetch(`${API}/api/dispatches`);
   DISPATCHES = await res.json();
-  const beats = ["All", ...new Set(DISPATCHES.map(d=>d.beat))];
-  renderFilters(beats);
-  renderGrid();
   renderWire();
 }
 
@@ -191,41 +150,6 @@ function renderHeadlineHistory(headlines){
       `).join('')}
     </ul>
   `;
-}
-
-function renderFilters(beats){
-  const bar = document.getElementById('filterBar');
-  bar.querySelectorAll('.filter-btn').forEach(b=>b.remove());
-  beats.forEach(beat=>{
-    const btn = document.createElement('button');
-    btn.className = 'filter-btn' + (beat===activeBeat ? ' active' : '');
-    btn.textContent = beat;
-    btn.onclick = () => { activeBeat = beat; renderFilters(beats); renderGrid(); };
-    bar.appendChild(btn);
-  });
-}
-
-function renderGrid(){
-  const grid = document.getElementById('grid');
-  const items = activeBeat==="All" ? DISPATCHES : DISPATCHES.filter(d=>d.beat===activeBeat);
-  grid.innerHTML = items.map(d => `
-    <article class="dispatch">
-      <div class="stamp">${d.beat}</div>
-      <div class="byline-row"><span class="name">${d.name}</span> · ${d.outlet} · ${formatDisplayDate(d.date)}</div>
-      <h3 class="headline">${d.headline}</h3>
-      <p class="excerpt">${d.excerpt||''}</p>
-      <div class="dispatch-footer">
-        <a class="read-link" href="/go/${d.id}" target="_blank" rel="noopener">Read the full dispatch →</a>
-        <div class="cta-row">
-          <button class="btn btn-tip" onclick="openTipModal('${d.name.replace(/'/g,"\\'")}', ${d.id})">Tip what you can</button>
-          ${d.subscribe_url
-            ? `<a class="btn btn-subscribe" href="${d.subscribe_url}" target="_blank" rel="noopener" style="text-decoration:none;">Subscribe</a>`
-            : `<button class="btn btn-subscribe" onclick="return false;" title="No subscribe link set yet">Subscribe</button>`}
-        </div>
-        ${d.tip_url ? `<a class="read-link" style="margin-top:8px;" href="${d.tip_url}" target="_blank" rel="noopener">Tip ${d.outlet} directly →</a>` : ''}
-      </div>
-    </article>
-  `).join("");
 }
 
 // ---- Wire (Drudge-style) view ----
@@ -278,19 +202,6 @@ function renderWire(){
   `;
 }
 
-document.getElementById('btnDispatch').onclick = () => switchView('dispatch');
-document.getElementById('btnWire').onclick = () => switchView('wire');
-function switchView(view){
-  currentView = view;
-  document.getElementById('btnDispatch').classList.toggle('active', view==='dispatch');
-  document.getElementById('btnWire').classList.toggle('active', view==='wire');
-  document.getElementById('grid').style.display = view==='dispatch' ? 'grid' : 'none';
-  document.getElementById('filterBar').style.display = view==='dispatch' ? 'flex' : 'none';
-  document.getElementById('wireView').classList.toggle('active', view==='wire');
-  fetch(`${API}/api/track-view`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({view_type: view})});
-}
-switchView('wire');
-
 // dateline counters (calculated live so they never go stale)
 const MIDTERM_DATE = new Date('2026-11-03T00:00:00');
 const IRAN_WAR_START = new Date('2026-02-28T00:00:00'); // date the current round of US-Iran fighting began
@@ -337,7 +248,7 @@ function sendTip(){
 
 loadDispatches();
 loadTopHeadlines();
-fetch(`${API}/api/track-view`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({view_type:'dispatch'})});
+fetch(`${API}/api/track-view`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({view_type:'wire'})});
 </script>
 
 </body>
