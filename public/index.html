@@ -3,1232 +3,289 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Trillionaire Kill Chain</title>
-<meta name="description" content="The kind of person who wants to be a trillionaire is exactly who should never be one. A warning to our neighbors.">
-<link rel="icon" type="image/png" href="assets/image_01.png">
-<meta property="og:title" content="Trillionaire Kill Chain">
-<meta property="og:description" content="The kind of person who wants to be a trillionaire is exactly who should never be one. A warning to our neighbors.">
-<meta property="og:image" content="https://stopthetrillionaires.com/assets/cleanogpreview.png">
-<meta property="og:image:width" content="1200">
-<meta property="og:image:height" content="630">
-<meta property="og:image:type" content="image/png">
-<meta property="og:url" content="https://stopthetrillionaires.com/">
-<meta property="og:type" content="website">
-<meta property="og:site_name" content="Trillionaire Kill Chain">
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="Trillionaire Kill Chain">
-<meta name="twitter:description" content="The kind of person who wants to be a trillionaire is exactly who should never be one. A warning to our neighbors.">
-<meta name="twitter:image" content="https://stopthetrillionaires.com/assets/cleanogpreview.png">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Serif+Display:ital@0;1&family=DM+Sans:wght@300;400;500&family=Playfair+Display:ital,wght@0,700;1,400&display=swap" rel="stylesheet">
+<title>News for 38 Year Olds — A Left Alternative to Substack</title>
 <style>
-*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-:root{--ink:#0e0e0e;--paper:#f2efe8;--red:#c8271a;--red-dark:#9e1e12;--gold:#d4a520}
-html{scroll-behavior:smooth}
-body{background:var(--ink);color:var(--paper);font-family:'DM Sans',sans-serif;font-weight:300;line-height:1.6;overflow-x:hidden}
-body::before{content:'';position:fixed;inset:0;background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");pointer-events:none;z-index:1000;opacity:.4}
-/* NAV */
-nav{position:fixed;top:0;left:0;right:0;z-index:100;height:52px;padding:0 40px;display:flex;align-items:stretch;justify-content:space-between;border-bottom:1px solid rgba(242,239,232,.08);background:rgba(14,14,14,.95);backdrop-filter:blur(16px)}
-.nav-logo{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.06em;color:var(--paper);text-decoration:none;display:flex;align-items:center;gap:8px;white-space:nowrap;flex-shrink:0}
-.nav-logo img{height:30px;width:30px;object-fit:contain}
-.nav-logo .tld{color:var(--red)}
-.nav-right{display:flex;align-items:stretch;gap:2px}
-.nav-page-btn{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.08em;color:rgba(242,239,232,.65);background:rgba(242,239,232,.06);border:1px solid rgba(242,239,232,.12);padding:0 22px;cursor:pointer;display:flex;align-items:center;transition:all .2s;white-space:nowrap}
-.nav-page-btn:hover{background:rgba(242,239,232,.12);color:var(--paper);border-color:rgba(242,239,232,.25)}
-.nav-page-btn.active{background:rgba(242,239,232,.13);color:var(--paper);border-color:rgba(242,239,232,.3)}
-.nav-cta{font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.1em;color:var(--paper);background:var(--red);padding:0 28px;transition:background .2s;cursor:pointer;border:none;display:flex;align-items:center;text-decoration:none}
-.nav-cta:hover{background:var(--red-dark)}
-.btn-primary{font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.12em;background:var(--red);color:var(--paper);padding:20px 52px;border-radius:2px;text-decoration:none;display:inline-block;transition:background .2s,transform .15s;cursor:pointer;border:none}
-.btn-primary:hover{background:var(--red-dark);transform:translateY(-2px)}
-.btn-secondary{font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.08em;color:rgba(242,239,232,.45);text-decoration:none;border-bottom:1px solid rgba(242,239,232,.2);padding-bottom:1px;white-space:nowrap}
-/* TICKER */
-.ticker{background:var(--red);padding:11px 0;overflow:hidden;white-space:nowrap}
-.ticker-inner{display:inline-block;animation:ticker 38s linear infinite}
-.ticker-item{display:inline-block;font-family:'DM Serif Display',serif;font-style:italic;font-size:14px;letter-spacing:.02em;padding:0 36px;opacity:.9}
-.ticker-dot{display:inline-block;width:4px;height:4px;background:rgba(242,239,232,.5);border-radius:50%;vertical-align:middle;margin:0 4px}
-/* SECTIONS */
-.section{padding:88px 40px}
-.section-inner{max-width:1060px;margin:0 auto}
-.section-eyebrow{font-size:10px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:rgba(242,239,232,.3);margin-bottom:16px;font-family:'DM Sans',sans-serif}
-.section-eyebrow.red{color:var(--red)}
-.section-eyebrow.gold{color:var(--gold)}
-/* STAT GRID */
-.stat-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:2px}
-.stat-block{background:rgba(242,239,232,.04);border:1px solid rgba(242,239,232,.08);padding:36px 32px}
-.stat-block.highlight{background:rgba(242,239,232,.06);border-color:rgba(200,39,26,.25)}
-.stat-num{font-family:'Bebas Neue',sans-serif;font-size:clamp(44px,6vw,80px);line-height:1;color:var(--red);letter-spacing:.01em}
-.stat-label{font-size:13px;color:rgba(242,239,232,.5);margin-top:10px;font-family:'DM Sans',sans-serif;line-height:1.5}
-/* STAGE BAR */
-.stage-bar{display:flex;gap:2px;margin:28px 0}
-.stage{flex:1;padding:10px 8px;text-align:center;font-family:'DM Sans',sans-serif;font-size:9px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;background:rgba(242,239,232,.06);color:rgba(242,239,232,.4);line-height:1.3}
-.stage.active{background:var(--red);color:var(--paper)}
-/* THREE COL */
-.three-col{display:grid;grid-template-columns:repeat(3,1fr);gap:2px;background:rgba(242,239,232,.05)}
-.col-block{background:var(--ink);padding:32px 28px;border-top:3px solid var(--red)}
-.col-block.dim{background:rgba(242,239,232,.02);border-top-color:rgba(200,39,26,.4)}
-.col-num{font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,4vw,56px);color:var(--red);line-height:1;margin-bottom:8px}
-.col-head{font-size:12px;font-weight:500;letter-spacing:.08em;text-transform:uppercase;color:rgba(242,239,232,.45);margin-bottom:14px;font-family:'DM Sans',sans-serif}
-.col-body{font-size:13px;color:rgba(242,239,232,.45);line-height:1.65;font-family:'DM Sans',sans-serif}
-/* PROOF PAIR */
-.proof-pair{display:grid;grid-template-columns:1fr 1fr;gap:2px;background:rgba(242,239,232,.05)}
-.proof-block{background:var(--ink);padding:40px 36px}
-.proof-label{font-size:10px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:rgba(242,239,232,.3);margin-bottom:16px;font-family:'DM Sans',sans-serif}
-.proof-head{font-family:'DM Serif Display',serif;font-size:clamp(18px,2vw,24px);font-style:italic;color:var(--paper);line-height:1.3;margin-bottom:14px}
-.proof-body{font-size:14px;color:rgba(242,239,232,.55);line-height:1.7;font-family:'DM Sans',sans-serif}
-.proof-verdict{margin-top:20px;font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--gold)}
-/* CONTROLLING IDEA */
-.controlling-idea{padding:88px 40px;background:var(--ink);border-top:1px solid rgba(242,239,232,.07);border-bottom:1px solid rgba(242,239,232,.07)}
-.controlling-idea blockquote{font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(22px,3vw,38px);line-height:1.45;color:var(--paper);max-width:840px;border-left:4px solid var(--red);padding-left:36px}
-.controlling-idea cite{display:block;margin-top:20px;font-family:'DM Sans',sans-serif;font-size:12px;font-style:normal;color:rgba(242,239,232,.3);letter-spacing:.08em;text-transform:uppercase}
-/* FEED */
-.corruption-feed{border-top:4px solid var(--red)}
-.feed-header{padding:24px 40px;border-bottom:1px solid rgba(200,39,26,.3);display:flex;align-items:baseline;gap:12px}
-.feed-label{font-size:11px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--red);font-family:'DM Sans',sans-serif}
-.feed-sub{font-size:15px;color:rgba(242,239,232,.35);font-family:'DM Serif Display',serif;font-style:italic}
-.feed-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));background:rgba(242,239,232,.04);counter-reset:feed-count}
-.feed-item{background:rgba(10,10,10,.6);padding:28px 32px;border:1px solid rgba(200,39,26,.12);border-top:none;border-left:none;transition:background .3s}
-.feed-item:hover{background:rgba(200,39,26,.06)}
-.feed-item::before{content:'COUNT ' counter(feed-count);counter-increment:feed-count;display:block;font-family:'DM Sans',sans-serif;font-size:9px;font-weight:500;letter-spacing:.22em;color:rgba(200,39,26,.5);margin-bottom:8px}
-.feed-cat{font-size:9px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:rgba(242,239,232,.3);margin-bottom:8px;font-family:'DM Sans',sans-serif}
-.feed-head{font-family:'DM Sans',sans-serif;font-size:14px;font-weight:500;color:var(--paper);line-height:1.4;margin-bottom:10px}
-.feed-body{font-size:12px;color:rgba(242,239,232,.38);line-height:1.65;font-family:'DM Sans',sans-serif}
-.feed-num{margin-top:14px;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:500;color:var(--red)}
-.feed-num-label{font-size:9px;color:rgba(200,39,26,.45);letter-spacing:.12em;text-transform:uppercase;margin-top:2px;font-family:'DM Sans',sans-serif}
-/* ASK */
-.ask-section{padding:100px 40px;background:var(--paper);color:var(--ink);border-left:8px solid var(--red);position:relative;overflow:hidden}
-.ask-section::before{content:'$10';position:absolute;top:-20px;right:-10px;font-family:'Bebas Neue',sans-serif;font-size:380px;color:rgba(14,14,14,.04);line-height:1;pointer-events:none;user-select:none}
-.ask-inner{max-width:860px;position:relative}
-.ask-eyebrow{font-size:10px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--red);margin-bottom:16px;font-family:'DM Sans',sans-serif}
-.ask-head{font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,6vw,88px);line-height:.9;color:var(--ink);margin-bottom:24px}
-.ask-head em{font-style:normal;color:var(--red)}
-.ask-sub{font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(18px,2vw,24px);color:rgba(14,14,14,.6);line-height:1.55;max-width:640px;margin-bottom:32px}
-.ask-what{display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-bottom:40px}
-.ask-col-head{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--red);margin-bottom:14px;font-family:'DM Sans',sans-serif;font-weight:500}
-.ask-item{font-size:13px;color:rgba(14,14,14,.55);padding:8px 0;border-bottom:1px solid rgba(14,14,14,.07);display:flex;gap:10px;align-items:flex-start;line-height:1.4}
-.ask-item::before{content:'→';color:var(--red);flex-shrink:0;font-family:'Bebas Neue',sans-serif;font-size:16px}
-/* CLOSE */
-.close-section{padding:120px 40px;background:var(--red);position:relative;overflow:hidden}
-.close-section::before{content:'';position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(0,0,0,.06) 3px,rgba(0,0,0,.06) 4px);pointer-events:none}
-.close-inner{max-width:860px;position:relative}
-.close-head{font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5.5vw,80px);line-height:.92;color:var(--paper);margin-bottom:28px}
-.close-body{font-size:clamp(15px,1.8vw,20px);color:rgba(242,239,232,.8);line-height:1.65;max-width:620px;margin-bottom:20px;font-family:'DM Serif Display',serif;font-style:italic}
-.close-charge{font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(18px,2.2vw,26px);color:var(--paper);line-height:1.5;max-width:680px;margin-bottom:44px}
-.close-url{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.1em;color:rgba(242,239,232,.55);margin-top:16px}
-/* COUNTDOWN */
-.countdown-strip{background:rgba(200,39,26,.1);border-top:2px solid rgba(200,39,26,.4);border-bottom:1px solid rgba(200,39,26,.2);padding:16px 40px;display:flex;align-items:center;justify-content:space-between;gap:24px;flex-wrap:wrap}
-.countdown-units{display:flex;gap:20px;align-items:baseline}
-.countdown-unit{text-align:center}
-.countdown-num{font-family:'Bebas Neue',sans-serif;font-size:clamp(32px,4.5vw,52px);color:var(--red);line-height:1;letter-spacing:.04em}
-.countdown-label{font-size:9px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:rgba(242,239,232,.3);margin-top:2px}
-.countdown-sep{color:rgba(200,39,26,.4);font-family:'Bebas Neue',sans-serif;font-size:42px;line-height:1;padding-bottom:18px}
-.countdown-ctx{font-family:'DM Serif Display',serif;font-style:italic;font-size:15px;color:rgba(242,239,232,.45);line-height:1.5;max-width:320px}
-/* FILM */
-.film-section{padding:88px 40px;border-top:1px solid rgba(242,239,232,.07)}
-.film-inner{max-width:1060px;margin:0 auto}
-.film-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(48px,7vw,96px);line-height:.88;margin-bottom:12px}
-.film-title em{font-style:normal;color:var(--gold)}
-.episodes{display:grid;grid-template-columns:repeat(5,1fr);border:1px solid rgba(242,239,232,.1);margin-top:40px}
-.episode{padding:26px 18px;border-right:1px solid rgba(242,239,232,.07);transition:background .3s}
-.episode:last-child{border-right:none;background:rgba(200,39,26,.08)}
-.episode:hover{background:rgba(242,239,232,.04)}
-.episode-num{font-family:'Bebas Neue',sans-serif;font-size:36px;color:rgba(242,239,232,.08);line-height:1;margin-bottom:10px}
-.episode-title{font-size:11px;font-weight:500;letter-spacing:.05em;text-transform:uppercase;color:rgba(242,239,232,.5);line-height:1.4}
-/* FOOTER */
-footer{padding:44px 40px;border-top:1px solid rgba(242,239,232,.08)}
-.footer-top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:24px}
-.footer-logo{font-family:'Bebas Neue',sans-serif;font-size:19px;letter-spacing:.1em;color:rgba(242,239,232,.3)}
-.footer-logo span{color:var(--red)}
-.footer-nav{display:flex;gap:24px;flex-wrap:wrap}
-.footer-nav a{font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:.1em;color:rgba(242,239,232,.25);text-decoration:none;transition:color .2s;cursor:pointer}
-.footer-nav a:hover{color:rgba(242,239,232,.5)}
-.footer-credit{font-size:11px;color:rgba(242,239,232,.15)}
-/* MOBILE NAV */
-.nav-hamburger{display:none;flex-direction:column;justify-content:center;gap:5px;background:transparent;border:none;cursor:pointer;padding:8px;margin-left:8px}
-.nav-hamburger span{display:block;width:22px;height:2px;background:var(--paper);transition:all .3s}
-.nav-hamburger.open span:nth-child(1){transform:translateY(7px) rotate(45deg)}
-.nav-hamburger.open span:nth-child(2){opacity:0}
-.nav-hamburger.open span:nth-child(3){transform:translateY(-7px) rotate(-45deg)}
-.nav-drawer{display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(14,14,14,.97);z-index:99;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:80px 40px}
-.nav-drawer.open{display:flex}
-.nav-drawer-btn{font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,5vw,42px);letter-spacing:.08em;color:rgba(242,239,232,.7);background:transparent;border:1px solid rgba(242,239,232,.12);padding:18px 48px;cursor:pointer;width:100%;max-width:340px;text-align:center;transition:all .2s}
-.nav-drawer-btn:hover{color:var(--paper);border-color:rgba(242,239,232,.35);background:rgba(242,239,232,.06)}
-.nav-drawer-cta{font-family:'Bebas Neue',sans-serif;font-size:clamp(24px,4vw,36px);letter-spacing:.1em;background:var(--red);color:var(--paper);border:none;padding:20px 48px;cursor:pointer;width:100%;max-width:340px;margin-top:12px;transition:background .2s;text-decoration:none;display:flex;align-items:center;justify-content:center}
-.nav-drawer-cta:hover{background:var(--red-dark)}
-/* UTILS */
-.reveal{opacity:0;transform:translateY(28px);transition:opacity .75s ease,transform .75s ease}
-.reveal.visible{opacity:1;transform:none}
-.red-rule{width:60px;height:4px;background:var(--red);margin-bottom:28px}
-@keyframes fadeUp{from{opacity:0;transform:translateY(22px)}to{opacity:1;transform:translateY(0)}}
-@keyframes ticker{from{transform:translateX(0)}to{transform:translateX(-50%)}}
-@media(max-width:800px){
-  nav{padding:0 16px;height:52px}
-  .nav-right{display:none}
-  .nav-hamburger{display:flex}
-  .section{padding:56px 20px}
-  .section-inner{padding:0}
-  .controlling-idea{padding:52px 20px}
-  .controlling-idea blockquote{font-size:clamp(19px,5vw,28px);padding-left:20px;border-left-width:3px}
-  .corruption-feed .feed-header{padding:20px}
-  .film-section{padding:56px 20px}
-  .ask-section{padding:56px 20px;border-left-width:4px}
-  .ask-section::before{font-size:220px;top:auto;bottom:-20px}
-  .close-section{padding:64px 20px}
-  .countdown-strip{padding:20px;flex-direction:column;align-items:flex-start;gap:16px}
-  .stat-grid{grid-template-columns:1fr}
-  .three-col{grid-template-columns:1fr}
-  .proof-pair{grid-template-columns:1fr}
-  .ask-what{grid-template-columns:1fr;gap:24px}
-  .stage-bar{flex-wrap:wrap;gap:2px}
-  .stage{flex:0 0 calc(50% - 1px);font-size:8px;padding:8px 4px}
-  .episodes{grid-template-columns:1fr 1fr;border:none;gap:2px}
-  .episode{border:1px solid rgba(242,239,232,.07);border-right:1px solid rgba(242,239,232,.07)!important}
-  .feed-grid{grid-template-columns:1fr}
-  .film-title{font-size:clamp(52px,14vw,80px)}
-  footer{padding:28px 20px}
-  .footer-top{flex-direction:column;align-items:flex-start}
-  .ticker-item{font-size:12px;padding:0 20px}
-  .stat-num{font-size:clamp(40px,12vw,72px)}
-  .col-num{font-size:clamp(32px,10vw,52px)}
-}
-@media(max-width:480px){
-  .section{padding:44px 16px}
-  .ask-section{padding:44px 16px}
-  .close-section{padding:52px 16px}
-  .film-section{padding:44px 16px}
-  .controlling-idea{padding:44px 16px}
-  .countdown-strip{padding:16px}
-  .col-block,.proof-block{padding:24px 20px}
-  .stat-block{padding:24px 20px}
-}
-@media(min-width:701px){.nav-drawer{display:none!important}}
-@media(max-width:800px){
-  #exhaustion-block{padding:0 20px 56px}
-  .hungary-grid{grid-template-columns:1fr!important}
-  .hungary-grid>div:last-child{border-left:none!important;padding-left:0!important;border-top:4px solid var(--red);padding-top:28px!important}
-  .feed-header{padding:20px!important}
-  .feed-grid>div:last-child{display:none}
-}
+  :root{
+    --paper:#FFFFFF; --paper-card:#F7F5EF; --text:#111111; --text-muted:#666;
+    --wire-red:#B33A3A; --wire-blue:#0000CC; --support-teal:#2F6F62; --support-teal-dark:#24564B;
+    --hairline:#ddd; --paper-hairline:#e2e2e2;
+    --display:Georgia,'Times New Roman',serif;
+    --body:Georgia,'Times New Roman',serif;
+    --mono:'IBM Plex Mono','Courier New',monospace;
+  }
+  *{box-sizing:border-box;} html,body{margin:0;padding:0;}
+  body{background:var(--paper);color:var(--text);font-family:var(--body);-webkit-font-smoothing:antialiased;}
+  a{color:inherit;text-decoration:none;}
+
+  header.masthead{padding:20px 24px 8px;text-align:center;max-width:1180px;margin:0 auto;}
+  .eyebrow-row{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#555;max-width:100%;margin:0 auto 14px;}
+  h1.nameplate{
+    font-family:Georgia,'Times New Roman',serif;font-style:italic;font-weight:900;
+    font-size:clamp(34px,7vw,72px);letter-spacing:-.02em;margin:0;line-height:.95;color:#111;
+    text-shadow:2px 2px 0 #bbb;
+  }
+  .nameplate .amp{color:#111;font-style:italic;}
+  .logo-img{max-width:640px;width:100%;height:auto;margin:6px auto 0;display:block;}
+  .top-headlines{max-width:900px;margin:0 auto 10px;}
+  .top-headlines a{display:block;font-family:Georgia,'Times New Roman',serif;font-weight:800;
+    font-size:clamp(19px,3vw,29px);line-height:1.18;margin:5px 0;text-decoration:underline;}
+  .top-headlines a:hover{opacity:.75;}
+  .top-headlines a.thl-red{color:var(--wire-red);}
+  .top-headlines a.thl-black{color:#111;}
+  .top-headlines .thl-img{max-width:100%;max-height:160px;display:block;margin:8px auto;border-radius:2px;}
+  .subtext{font-family:var(--mono);font-size:12px;letter-spacing:.1em;color:var(--wire-red);margin:14px 0 0;font-weight:700;}
+
+  /* ---- Wire (Drudge-style) view ---- */
+  .wire{max-width:1180px;margin:20px auto 70px;padding:0 24px;display:block;}
+
+  .wire-alsobig{border-bottom:1px solid #ccc;padding-bottom:14px;margin-bottom:20px;column-count:3;column-gap:32px;}
+  .wire-alsobig .wire-item{break-inside:avoid;}
+  @media (max-width:820px){ .wire-alsobig{column-count:2;} }
+  @media (max-width:500px){ .wire-alsobig{column-count:1;} }
+
+  .wire-sources{border-bottom:1px solid #ccc;padding-bottom:14px;margin-bottom:20px;}
+  .wire-sources h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 10px;}
+  .sources-list{display:grid;grid-template-columns:repeat(4,1fr);gap:4px 20px;}
+  @media (max-width:820px){ .sources-list{grid-template-columns:repeat(2,1fr);} }
+  @media (max-width:500px){ .sources-list{grid-template-columns:1fr;} }
+  .source-item{font-family:var(--mono);font-size:11.5px;padding:4px 0;border-bottom:1px solid #eee;display:flex;justify-content:space-between;gap:8px;}
+  .source-item .source-name{color:#111;}
+  .source-item .source-links a{color:var(--wire-blue);white-space:nowrap;}
+  .source-item .source-links a + a{margin-left:8px;}
+
+  .wire-columns{display:grid;grid-template-columns:repeat(3,1fr);gap:0 32px;}
+  .wire-col{border-top:2px solid #111;padding-top:6px;}
+  .wire-col h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:10px 0;}
+  .wire-item{padding:7px 0;border-bottom:1px solid #e5e5e5;font-size:14px;line-height:1.35;font-family:Georgia,'Times New Roman',serif;}
+  .wire-item a{font-weight:700;color:#111;}
+  .wire-item a:visited{color:#551A8B;}
+  .wire-item a:hover{text-decoration:underline;}
+  .wire-item .wire-meta{display:block;font-family:var(--mono);font-size:10.5px;color:#888;margin-top:2px;}
+  .wire-empty{font-family:var(--mono);font-size:11px;color:#999;padding:6px 0;}
+  @media (max-width:820px){ .wire-columns{grid-template-columns:1fr;} }
+
+  footer.colophon{border-top:1px solid #ccc;padding:26px 24px 50px;text-align:center;font-family:var(--mono);font-size:11px;color:#888;letter-spacing:.04em;}
+
+  .headline-history{max-width:900px;margin:10px auto 30px;padding:20px 24px 0;border-top:1px solid #ccc;}
+  .headline-history h3{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#888;margin:0 0 12px;text-align:center;}
+  .headline-history ul{list-style:none;margin:0;padding:0;}
+  .headline-history li{display:flex;gap:12px;padding:6px 0;border-bottom:1px solid #eee;font-family:Georgia,'Times New Roman',serif;font-size:13px;}
+  .headline-history .hh-date{font-family:var(--mono);font-size:10.5px;color:#999;white-space:nowrap;min-width:70px;padding-top:2px;}
+  .headline-history a{color:#333;}
+  .headline-history a:hover{text-decoration:underline;}
+
 </style>
 </head>
 <body>
-<nav>
-  <a href="https://stopthetrillionaires.com/" class="nav-logo">
-    <img src="assets/image_04.png" alt="$1T">
-    Trillionaire <span class="tld">Kill Chain</span>
-  </a>
-  <div class="nav-right">
-    <a class="nav-page-btn" href="trillionaire-status.html" style="text-decoration:none">Is He a Trillionaire?</a>
-    <button class="nav-page-btn" id="nav-ep1-btn" type="button" onclick="showEpisode1()">Episode 1</button>
-    <button class="nav-page-btn" id="nav-pitch-btn" type="button" onclick="showPitch()">Pitch Deck</button>
-    <button class="nav-page-btn" id="nav-why-btn" type="button" onclick="showWhy()">Why Not</button>
-    <button class="nav-page-btn" id="nav-action-btn" type="button" onclick="showAction()">Actions</button>
-    <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" class="nav-cta">Support This</a>
+
+<header class="masthead">
+  <div class="eyebrow-row">
+    <span id="dateline">EDITION — LOADING</span>
+    <span>THE BEST REPORTING · NO ALGORITHM · SAVE JOURNALISM</span>
   </div>
-  <button class="nav-hamburger" id="nav-hamburger" aria-label="Menu">
-    <span></span><span></span><span></span>
-  </button>
-</nav>
-<div class="nav-drawer" id="nav-drawer" role="dialog" aria-modal="true">
-  <a class="nav-drawer-btn" href="trillionaire-status.html" style="text-decoration:none">Is He a Trillionaire?</a>
-  <button class="nav-drawer-btn" type="button" onclick="showEpisode1()">Episode 1</button>
-<button class="nav-drawer-btn" type="button" onclick="showPitch()">Pitch Deck</button>
-  <button class="nav-drawer-btn" type="button" onclick="showWhy()">Why Not</button>
-  <button class="nav-drawer-btn" type="button" onclick="showAction()">Actions</button>
-  <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" class="nav-drawer-cta">Support This</a>
-</div>
-<div id="main-site">
+  <div class="top-headlines" id="topHeadlines"></div>
+  <img src="/logo.png" alt="News for 38 Year Olds" class="logo-img">
+  <p class="subtext">TIP YOUR REPORTER — PEOPLE FIRST NEWS</p>
+</header>
 
-<!-- UNIFIED HERO -->
-<style>
-.hero-split{min-height:100vh;min-height:100dvh;display:grid;grid-template-columns:1fr 1fr;position:relative;overflow:hidden;background:var(--ink)}
-.hero-left{display:flex;flex-direction:column;justify-content:center;padding:120px 56px 80px 48px;position:relative;z-index:2}
-.hero-right{position:relative;overflow:hidden}
-.hero-right img{position:absolute;bottom:0;left:50%;transform:translateX(-58%);width:190%;max-width:none;height:auto;opacity:.92;filter:contrast(1.05)}
-.hero-right-vignette{position:absolute;inset:0;background:linear-gradient(to right,var(--ink) 0%,transparent 30%),linear-gradient(to top,transparent 60%,rgba(14,14,14,.6) 100%);z-index:1}
-.hero-caption{position:absolute;bottom:28px;left:50%;transform:translateX(-50%);z-index:2;font-family:'DM Sans',sans-serif;font-size:9px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:rgba(242,239,232,.18);white-space:nowrap}
-.hero-bg-num{position:absolute;bottom:-40px;right:-20px;font-family:'Bebas Neue',sans-serif;font-size:clamp(280px,38vw,520px);color:rgba(200,39,26,.04);pointer-events:none;user-select:none;line-height:1;letter-spacing:-.02em;z-index:0}
-.hero-ep-badge{display:inline-flex;align-items:center;gap:8px;background:var(--red);padding:5px 12px;margin-bottom:22px;opacity:0;animation:fadeUp .6s .05s forwards}
-.hero-ep-badge span{font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:.16em;color:var(--paper)}
-.hero-kicker{font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:.24em;text-transform:uppercase;color:rgba(200,39,26,.5);margin-bottom:14px;opacity:0;animation:fadeUp .6s .15s forwards}
-.hero-h1{font-family:'Bebas Neue',sans-serif;font-size:clamp(52px,7.5vw,104px);line-height:.86;letter-spacing:.01em;margin-bottom:10px;opacity:0;animation:fadeUp .7s .22s forwards;color:var(--paper)}
-.hero-h1 .red{color:var(--red)}
-.hero-sub{font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2.2vw,24px);color:rgba(242,239,232,.65);line-height:1.35;margin-bottom:20px;max-width:520px;opacity:0;animation:fadeUp .7s .34s forwards}
-.hero-body{font-size:14px;color:rgba(242,239,232,.35);line-height:1.75;max-width:500px;font-family:'DM Sans',sans-serif;margin-bottom:32px;opacity:0;animation:fadeUp .7s .44s forwards}
-.hero-stats-row{display:flex;gap:2px;margin-bottom:32px;opacity:0;animation:fadeUp .7s .52s forwards}
-.hero-stat{background:rgba(242,239,232,.04);border:1px solid rgba(242,239,232,.07);padding:12px 16px;flex:1}
-.hero-stat-num{font-family:'Bebas Neue',sans-serif;font-size:clamp(20px,2.5vw,28px);color:var(--red);line-height:1}
-.hero-stat-lbl{font-size:9px;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif;letter-spacing:.08em;text-transform:uppercase;margin-top:4px;line-height:1.3}
-.hero-ctas{display:flex;align-items:center;gap:10px;flex-wrap:wrap;opacity:0;animation:fadeUp .7s .62s forwards}
-.hero-video-wrap{margin-top:36px;position:relative;width:100%;max-width:560px;aspect-ratio:16/9;background:#000;overflow:hidden;border-left:3px solid var(--red);opacity:0;animation:fadeUp .7s .8s forwards}
-.hero-video-wrap iframe{position:absolute;width:100%;height:100%;top:0;left:0;border:none}
-@media(max-width:900px){
-  .hero-split{grid-template-columns:1fr;grid-template-rows:auto}
-  .hero-left{padding:100px 20px 60px}
-  .hero-right{height:320px;grid-row:1}
-  .hero-right img{height:100%;width:100%;object-fit:cover;object-position:top center}
-  .hero-right-vignette{background:linear-gradient(to bottom,transparent 30%,var(--ink) 95%)}
-  .hero-video-wrap{max-width:100%}
-  .hero-stats-row{flex-wrap:wrap}
-  .hero-stat{flex:0 0 calc(50% - 1px)}
-}
-@media(max-width:480px){
-  .hero-left{padding:80px 16px 48px}
-  .hero-stat{flex:0 0 100%}
-}
-</style>
-<section class="hero-split">
-  <!-- LEFT: copy + CTAs -->
-  <div class="hero-left">
-    <div class="hero-ep-badge"><span>EPISODE 01 — NOW PLAYING</span></div>
-    <p class="hero-kicker">A podcast series — LOLGOP Studios</p>
-    <h1 class="hero-h1">Every Billionaire<br>is a Policy Failure.<br><span class="red" style="font-size:0.5em;line-height:1.05;display:inline-block;margin-top:6px">Every Trillionaire is Part of a Kill Chain.</span></h1>
-    <p class="hero-sub"><em>He thinks he's won. Let's make that the worst mistake of his life.</em></p>
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(15px,1.8vw,19px);color:rgba(242,239,232,.55);line-height:1.4;margin-bottom:12px;opacity:0;animation:fadeUp .7s .35s forwards">This documentary is a counter-influence weapon. We're building it to reach the 20% of voters who can still be moved — before October.</p>
-    <p style="font-size:11px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:rgba(200,39,26,.6);font-family:'DM Sans',sans-serif;margin-bottom:12px;opacity:0;animation:fadeUp .7s .38s forwards">Sixty years in the making</p>
-    <p class="hero-body" style="opacity:0;animation:fadeUp .7s .42s forwards">$291 million wasn't the price of the presidency. It was the final payment on a layaway plan that started in 1971. Now every billionaire wants sloppy seconds.</p>
-    <div style="border-left:3px solid rgba(200,39,26,.4);padding-left:16px;margin-bottom:24px;opacity:0;animation:fadeUp .7s .48s forwards">
-      <p style="font-size:13px;color:rgba(242,239,232,.35);line-height:1.7;font-family:'DM Sans',sans-serif"><em>The Trillionaire Kill Chain</em> maps how this happened — Dearborn to Doge, Powell to the SpaceX IPO — in a limited podcast and documentary funded by people who want this story in front of voters before they cast their ballots.</p>
-    </div>
-    <div class="hero-ctas">
-      <a href="https://podcasts.apple.com/us/podcast/the-trillionaire-kill-chain/id1896794909?ls=1" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.1em;background:var(--paper);color:var(--ink);padding:15px 28px;text-decoration:none;display:inline-flex;align-items:center;gap:9px;flex-shrink:0;transition:background .15s" onmouseover="this.style.background='#e8e5de'" onmouseout="this.style.background='var(--paper)'"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm.75 17.5v1.25a.75.75 0 0 1-1.5 0V17.5a5.25 5.25 0 1 1 1.5 0zm-.75-2a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5z"/></svg>Apple Podcasts</a>
-      <a href="https://feeds.libsyn.com/620120/rss" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.1em;background:transparent;color:rgba(242,239,232,.6);padding:15px 22px;text-decoration:none;display:inline-flex;align-items:center;gap:8px;flex-shrink:0;border:1px solid rgba(242,239,232,.18);transition:all .15s" onmouseover="this.style.borderColor='rgba(242,239,232,.45)';this.style.color='var(--paper)'" onmouseout="this.style.borderColor='rgba(242,239,232,.18)';this.style.color='rgba(242,239,232,.6)'"><svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19.01 7.38 20 6.18 20C4.98 20 4 19.01 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z"/></svg>RSS</a>
-      <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.1em;background:var(--red);color:var(--paper);padding:15px 28px;text-decoration:none;flex-shrink:0;transition:background .15s" onmouseover="this.style.background='var(--red-dark)'" onmouseout="this.style.background='var(--red)'">Back This</a>
-    </div>
-  </div>
-  <!-- RIGHT: image -->
-  <div class="hero-right">
-    <div class="hero-right-vignette"></div>
-    <img src="assets/hero_cheese.png" alt="The man who bought the presidency" loading="eager">
-    <div class="hero-bg-num">$1T</div>
-    <p class="hero-caption">The kind of person who wants to be a trillionaire is exactly who should never be one</p>
-  </div>
-</section>
-<!-- VIDEO -->
-<section style="padding:48px 40px 32px;background:var(--ink);border-top:1px solid rgba(242,239,232,.07)" class="reveal">
-  <div style="max-width:860px;margin:0 auto;margin-bottom:16px">
-    <p style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.2em;color:rgba(242,239,232,.25)">EPISODE 01 — RECONNAISSANCE — NOW PLAYING</p>
-  </div>
-  <div style="max-width:860px;margin:0 auto">
-    <div style="position:relative;width:100%;aspect-ratio:16/9;background:#000;overflow:hidden;border-left:4px solid var(--red)">
-      <iframe src="https://www.youtube.com/embed/jx1I5zl6_u4" title="The Trillionaire Kill Chain Episode 1" frameborder="0" allow="accelerometer;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen loading="lazy" style="position:absolute;width:100%;height:100%;top:0;left:0;border:none"></iframe>
-    </div>
-  </div>
-</section>
+<main class="wire" id="wireView"></main>
 
-<div class="ticker">
-  <div class="ticker-inner">
-    <span class="ticker-item">$291M — largest individual political spend in American history<span class="ticker-dot"></span></span>
-    <span class="ticker-item">$2.37B in federal liability quietly disappeared after the election<span class="ticker-dot"></span></span>
-    <span class="ticker-item">$400B+ wealth gain in six weeks after Election Day<span class="ticker-dot"></span></span>
-    <span class="ticker-item">DOGE gutted USAID — 760,000 confirmed deaths and counting<span class="ticker-dot"></span></span>
-    <span class="ticker-item">DOJ dropped Tesla autopilot investigation after Musk's Trump endorsement<span class="ticker-dot"></span></span>
-    <span class="ticker-item">SpaceX federal contracts surged past $15B as Musk joined the administration<span class="ticker-dot"></span></span>
-    <span class="ticker-item">Twitter bought for $44B — used as campaign megaphone, opposition reach suppressed<span class="ticker-dot"></span></span>
-    <span class="ticker-item">$430M+ pumped into 2026 midterms by just 50 billionaire families<span class="ticker-dot"></span></span>
-    <span class="ticker-item">California jury found Musk liable — up to $2.6B in damages<span class="ticker-dot"></span></span>
-    <span class="ticker-item">$291M — largest individual political spend in American history<span class="ticker-dot"></span></span>
-    <span class="ticker-item">$2.37B in federal liability quietly disappeared after the election<span class="ticker-dot"></span></span>
-    <span class="ticker-item">$400B+ wealth gain in six weeks after Election Day<span class="ticker-dot"></span></span>
-    <span class="ticker-item">DOGE gutted USAID — 760,000 confirmed deaths and counting<span class="ticker-dot"></span></span>
-    <span class="ticker-item">DOJ dropped Tesla autopilot investigation after Musk's Trump endorsement<span class="ticker-dot"></span></span>
-    <span class="ticker-item">SpaceX federal contracts surged past $15B as Musk joined the administration<span class="ticker-dot"></span></span>
-    <span class="ticker-item">Twitter bought for $44B — used as campaign megaphone, opposition reach suppressed<span class="ticker-dot"></span></span>
-    <span class="ticker-item">$430M+ pumped into 2026 midterms by just 50 billionaire families<span class="ticker-dot"></span></span>
-    <span class="ticker-item">California jury found Musk liable — up to $2.6B in damages<span class="ticker-dot"></span></span>
-  </div>
-</div>
+<section class="headline-history" id="headlineHistory"></section>
 
-<!-- THE STORY -->
-<section class="section reveal" style="background:rgba(242,239,232,.02);border-top:4px solid var(--red)">
-  <div style="max-width:780px;margin:0 auto;padding:80px 40px">
-
-    <div style="background:rgba(200,39,26,.06);border-left:4px solid var(--red);padding:20px 24px;margin-bottom:36px">
-      <p style="font-size:13px;color:rgba(242,239,232,.5);line-height:1.7;font-family:'DM Sans',sans-serif;margin-bottom:8px"><strong style="color:rgba(242,239,232,.8)">As you read this:</strong> Families in Belfast fled burning homes after Musk amplified calls for anti-immigrant violence to 240 million followers — masked mobs set neighborhoods on fire and researchers counted more than 3,900 calls for lynchings in the replies. More than 760,000 people have died from preventable causes since USAID was dismantled. The Lancet projects 9 million more by 2030. Yesterday, the SpaceX IPO closed. He became the first trillionaire in human history. This is what he bought the government for.</p>
-      <p style="font-size:12px;color:rgba(200,39,26,.5);font-family:'DM Sans',sans-serif;letter-spacing:.06em;text-transform:uppercase">Impunity by ungodly wealth.</p>
-    </div>
-
-    <p style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.22em;color:rgba(200,39,26,.5);margin-bottom:24px">Here is what actually happened</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,6vw,80px);line-height:.88;color:var(--paper);margin-bottom:40px">You knew something<br>had gone wrong.<br><span style="color:var(--red)">Here's what actually happened.</span></h2>
-
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(18px,2.2vw,26px);color:rgba(242,239,232,.8);line-height:1.65;margin-bottom:24px">He grew up in apartheid South Africa. He moved here and got rich on government contracts, government subsidies, a government internet. He fathered at least fourteen children while publicly lamenting that the wrong people aren't having enough babies. He looked at a multiracial democracy and saw a problem.</p>
-
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2vw,22px);color:rgba(242,239,232,.6);line-height:1.65;margin-bottom:24px">The government said it needed to look at his &ldquo;self-driving&rdquo; cars. His labor practices. His rockets. A wealth tax was on the table. A Black woman was in the executive branch. He decided it could not be allowed to stand.</p>
-
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2vw,22px);color:rgba(242,239,232,.6);line-height:1.65;margin-bottom:24px">$44 billion bought Twitter and restored the candidate banned for inciting an insurrection. Then $291 million. Muslim voters in Michigan got ads praising Harris's support for Israel. Their Jewish neighbors got the opposite. Same sender. Same week. The target wasn't their vote. It was their faith that voting changes anything.</p>
-
-    <div style="border-left:4px solid var(--red);padding-left:28px;margin:32px 0">
-      <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(20px,2.5vw,30px);color:var(--paper);line-height:1.45">"If he loses, I'm f—d."<br><span style="font-size:clamp(13px,1.5vw,17px);color:rgba(242,239,232,.35);font-style:normal;font-family:'DM Sans',sans-serif">— Elon Musk to Tucker Carlson, October 2024</span></p>
-    </div>
-
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2vw,22px);color:var(--paper);line-height:1.65;margin-bottom:32px">Then he collected. Investigations dropped. The FAA chief, gone. The CFPB: tombstone emoji. The SEC fraud case settled for the equivalent of 44 cents. Then USAID. Fourteen million people. Gone. His net worth up $170 billion in six weeks. Republicans spent fifty years hollowing democracy's defenses. He had the perfect vehicle in Trump. He did the unforgivable.</p>
-
-    <div style="background:rgba(200,39,26,.08);border-left:6px solid var(--red);padding:32px 36px;margin:8px 0 32px">
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:clamp(22px,3vw,36px);color:var(--paper);line-height:1.15;letter-spacing:.01em">The reward for assaulting our democracy and condemning 14 million of the most vulnerable people alive to death should not be a trillion dollars.</p>
-    </div>
-
-    <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.1em;color:rgba(200,39,26,.6);margin-bottom:28px">We cannot look at Elon Musk as a political actor. He is a threat actor. This is the attack sequence.</p>
-
-    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding-top:8px;border-top:1px solid rgba(242,239,232,.07)">
-      <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.1em;background:var(--red);color:var(--paper);padding:12px 22px;text-decoration:none;transition:background .2s" onmouseover="this.style.background='var(--red-dark)'" onmouseout="this.style.background='var(--red)'">Back This for $1 a Month</a>
-      <span style="font-size:12px;color:rgba(242,239,232,.25);font-family:'DM Sans',sans-serif">A dollar tells me to keep going. Cancel anytime.</span>
-    </div>
-  </div>
-</section>
-
-<!-- POWELL + KILL CHAIN FRAME -->
-<section class="section reveal" style="background:rgba(242,239,232,.02);border-top:1px solid rgba(242,239,232,.07);border-bottom:1px solid rgba(242,239,232,.07)">
-  <div class="section-inner">
-    <p class="section-eyebrow">Stages 1 &amp; 2 — 1971 to 2022</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(32px,4.5vw,64px);line-height:.92;margin-bottom:6px">Republicans Spent Fifty Years<br>Hollowing Democracy's Defenses.<br><span style="color:var(--red)">He Went for the Crown Jewels.</span></h2>
-    <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.06em;color:rgba(242,239,232,.3);margin-bottom:24px">Fifty years of legal infrastructure — built to be exploited by exactly this kind of attacker.</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-bottom:24px;max-width:900px">
-      <div style="background:rgba(242,239,232,.03);border:1px solid rgba(242,239,232,.07);padding:24px 22px">
-        <div style="font-size:9px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:rgba(200,39,26,.5);font-family:'DM Sans',sans-serif;margin-bottom:8px">Stage 1 — Reconnaissance · 1971</div>
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--paper);margin-bottom:8px">The Powell Memo</div>
-        <p style="font-size:13px;color:rgba(242,239,232,.45);line-height:1.6;font-family:'DM Sans',sans-serif">Eight months after Nixon signed the EPA into law — the year the Cuyahoga River was still remembered for catching fire — corporate lawyer Lewis Powell typed a secret memo to the U.S. Chamber of Commerce: capture the courts, fund the think tanks, own the media. Nixon put him on the Supreme Court two months later. The Senate never saw the memo. The Heritage Foundation, the Federalist Society, the judicial pipeline that kept Trump off trial — all of it traces back here. Musk didn't build this infrastructure. He inherited it.</p>
-      </div>
-      <div style="background:rgba(242,239,232,.03);border:1px solid rgba(242,239,232,.07);border-left:none;padding:24px 22px">
-        <div style="font-size:9px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:rgba(200,39,26,.5);font-family:'DM Sans',sans-serif;margin-bottom:8px">Stage 2 — Weaponization · 2022</div>
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:18px;color:var(--paper);margin-bottom:8px">The $44 Billion Town Square</div>
-        <p style="font-size:13px;color:rgba(242,239,232,.45);line-height:1.6;font-family:'DM Sans',sans-serif">Musk bought Twitter — the platform where political reality is negotiated — and immediately reinstated Trump, who had been banned for inciting an insurrection. He didn't buy a social network. He bought the thermometer the entire political press used to take the temperature of things. Then he set it to whatever he wanted.</p>
-      </div>
-    </div>
-    <div class="stage-bar">
-      <div class="stage" style="border-top:2px solid rgba(200,39,26,.3)">Reconnaissance<br><span style="font-size:8px;opacity:.5">Powell Memo, 1971</span></div>
-      <div class="stage" style="border-top:2px solid rgba(200,39,26,.3)">Weaponization<br><span style="font-size:8px;opacity:.5">Twitter, $44B</span></div>
-      <div class="stage" style="border-top:2px solid rgba(200,39,26,.3)">Delivery<br><span style="font-size:8px;opacity:.5">$291M campaign</span></div>
-      <div class="stage" style="border-top:2px solid rgba(200,39,26,.3)">Exploitation<br><span style="font-size:8px;opacity:.5">Facts failed</span></div>
-      <div class="stage active">Installation<br><span style="font-size:8px;opacity:.7">DOGE in gov</span></div>
-      <div class="stage active">Command<br>&amp; Control<br><span style="font-size:8px;opacity:.7">Contracts, access</span></div>
-      <div class="stage active">Actions on<br>Objective<br><span style="font-size:8px;opacity:.7">IPO runway</span></div>
-    </div>
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:15px;color:var(--red);margin-top:8px">We are past Installation. The attacker is inside the system.</p>
-    <p style="font-size:13px;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif;margin-top:6px;max-width:640px">Republicans spent fifty years hollowing democracy's defenses. He was the first one to decide to go for the crown jewels — $291 million, two neighbors in Dearborn, and four fake brands.</p>
-  </div>
-</section>
-
-<!-- DEARBORN + $291M -->
-<section class="section reveal" style="background:rgba(200,39,26,.05);border-top:4px solid var(--red);border-bottom:1px solid rgba(200,39,26,.15)">
-  <div class="section-inner">
-    <p class="section-eyebrow red">Stages 3 &amp; 4 — Delivery &amp; Exploitation — 2024</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(32px,4.5vw,64px);line-height:.92;margin-bottom:6px">$291 Million.<br><span style="color:var(--red)">Two Neighbors. One Sender.</span></h2>
-    <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.06em;color:rgba(242,239,232,.3);margin-bottom:20px">The weapon was loaded. Now it fired — at the voters who could stop him.</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;margin-bottom:24px" class="proof-pair">
-      <div class="proof-block" style="border-top:3px solid var(--red)">
-        <div class="proof-label">Dearborn, MI — October 2024</div>
-        <p class="proof-head">Muslim voters got ads in Harris campaign colors praising her support for Israel. Jewish voters got the opposite — same week, same sender.</p>
-        <p class="proof-body">Internal documents called it "false positives." Security professionals call it spear phishing.</p>
-        <div class="proof-verdict">Biden won Dearborn 74% in 2020. Harris got 36%.</div>
-      </div>
-      <div class="proof-block" style="border-top:3px solid rgba(200,39,26,.5)">
-        <div class="proof-label">Virginia — April 2026</div>
-        <p class="proof-head">Mailers with KKK imagery told voters Obama and Spanberger opposed a referendum both publicly supported.</p>
-        <p class="proof-body">Peter Thiel's dark money. Different attacker. Same playbook.</p>
-        <div class="proof-verdict">The Supreme Court nullified the votes of 3 million Virginians anyway.</div>
-      </div>
-    </div>
-    <div class="stat-grid">
-      <div class="stat-block">
-        <div class="stat-num">$291M</div>
-        <div class="stat-label"><strong style="color:rgba(242,239,232,.8)">What Musk spent</strong> — the largest individual political donation in American history</div>
-      </div>
-      <div class="stat-block">
-        <div class="stat-num">$2.37B</div>
-        <div class="stat-label"><strong style="color:rgba(242,239,232,.8)">What he got back</strong> — federal investigations dropped, agencies gutted. Source: Senate PSI Minority Staff Memo, April 2025</div>
-      </div>
-      <div class="stat-block">
-        <div class="stat-num">$400B+</div>
-        <div class="stat-label"><strong style="color:rgba(242,239,232,.8)">Wealth gain</strong> — in the six weeks after Election Day</div>
-      </div>
-      <div class="stat-block highlight">
-        <div class="stat-num">$430M+</div>
-        <div class="stat-label"><strong style="color:rgba(242,239,232,.8)">What they're spending in 2026</strong> — 50 billionaire families. Source: Americans for Tax Fairness, March 2026</div>
-      </div>
-    </div>
-    <div style="margin-top:20px;border-left:3px solid rgba(200,39,26,.3);padding-left:20px;max-width:640px">
-      <p style="font-size:13px;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif;line-height:1.65">He spent $291M. He got $2.37B in liability erased, $400B in new wealth, and a government that cannot touch him. Then every billionaire did the math.</p>
-    </div>
-  </div>
-</section>
-
-<!-- ROI SECTION -->
-<section class="section reveal" style="background:rgba(242,239,232,.02);border-top:1px solid rgba(242,239,232,.07)">
-  <div class="section-inner">
-    <p class="section-eyebrow red">What $291 million bought</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(32px,4.5vw,64px);line-height:.92;margin-bottom:8px">The Return on Investment<br><span style="color:var(--red)">Was Obscene.</span></h2>
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(16px,1.8vw,20px);color:rgba(242,239,232,.45);max-width:680px;line-height:1.6;margin-bottom:40px">No one has ever spent $291 million on a political campaign and gotten this much back. Here is what the receipt looks like.</p>
-    <div style="display:flex;flex-direction:column;gap:2px">
-      <div style="display:grid;grid-template-columns:200px 1fr;gap:0;border:1px solid rgba(242,239,232,.07);background:rgba(242,239,232,.02)">
-        <div style="background:rgba(200,39,26,.12);padding:28px 24px;border-right:1px solid rgba(242,239,232,.07)">
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.16em;color:rgba(200,39,26,.6);margin-bottom:8px">Line Item 01</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:15px;color:var(--paper);line-height:1.2">Temporary Control of the U.S. Government</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.08em;color:rgba(200,39,26,.5);margin-top:16px">VALUE: $400B+ IN SIX WEEKS</div>
-        </div>
-        <div style="padding:28px 32px">
-          <p style="font-size:14px;color:rgba(242,239,232,.5);line-height:1.65;font-family:'DM Sans',sans-serif">Six weeks after the election his net worth was up $400 billion. DOGE gutted the agencies with oversight of his companies. His investigators disappeared. His liability vanished. He ran the executive branch from a folding table in the Oval Office.</p>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:200px 1fr;gap:0;border:1px solid rgba(242,239,232,.07);border-top:none;background:rgba(242,239,232,.02)">
-        <div style="background:rgba(200,39,26,.16);padding:28px 24px;border-right:1px solid rgba(242,239,232,.07)">
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.16em;color:rgba(200,39,26,.6);margin-bottom:8px">Line Item 02</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:15px;color:var(--paper);line-height:1.2">Up to 14 Million Dead from USAID Cuts</div>
-          <div style="margin-top:16px"><a href="https://newsroom.ucla.edu/stories/USAID-cuts-global-impact-14-million-deaths" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:10px;letter-spacing:.1em;color:rgba(200,39,26,.6);text-decoration:none">UCLA NEWSROOM — SOURCE →</a></div>
-        </div>
-        <div style="padding:28px 32px">
-          <p style="font-size:14px;color:rgba(242,239,232,.5);line-height:1.65;font-family:'DM Sans',sans-serif">DOGE dismantled USAID. Researchers at UCLA estimate the cuts could result in up to 14 million preventable deaths — mostly children, mostly from treatable diseases. This is not a budget line. This is a body count.</p>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:200px 1fr;gap:0;border:1px solid rgba(242,239,232,.07);border-top:none;background:rgba(242,239,232,.02)">
-        <div style="background:rgba(200,39,26,.19);padding:28px 24px;border-right:1px solid rgba(242,239,232,.07)">
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.16em;color:rgba(200,39,26,.6);margin-bottom:8px">Line Item 03</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:15px;color:var(--paper);line-height:1.2">SpaceX Federal Contracts</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.08em;color:rgba(200,39,26,.5);margin-top:16px">$15B+ IN FEDERAL CONTRACTS</div>
-        </div>
-        <div style="padding:28px 32px">
-          <p style="font-size:14px;color:rgba(242,239,232,.5);line-height:1.65;font-family:'DM Sans',sans-serif">SpaceX contracts surged past $15 billion as Musk joined the administration. NASA, the Pentagon, and federal agencies that once had competing vendors found SpaceX had no competition left — because the competition's funding dried up.</p>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:200px 1fr;gap:0;border:1px solid rgba(242,239,232,.07);border-top:none;background:rgba(242,239,232,.02)">
-        <div style="background:rgba(200,39,26,.22);padding:28px 24px;border-right:1px solid rgba(242,239,232,.07)">
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.16em;color:rgba(200,39,26,.6);margin-bottom:8px">Line Item 04</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:15px;color:var(--paper);line-height:1.2">Premier Seating: China &amp; Saudi Arabia</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.08em;color:rgba(200,39,26,.5);margin-top:16px">UNPRECEDENTED PRIVATE ACCESS</div>
-        </div>
-        <div style="padding:28px 32px">
-          <p style="font-size:14px;color:rgba(242,239,232,.5);line-height:1.65;font-family:'DM Sans',sans-serif">Front row on every major foreign trip. Saudi Arabia. China. Not as a diplomat, not as an elected official — as a private businessman with a rocket company, a car company, and an AI company that all operate in those markets. The access was the point.</p>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:200px 1fr;gap:0;border:1px solid rgba(200,39,26,.2);border-top:none;background:rgba(200,39,26,.06)">
-        <div style="background:rgba(200,39,26,.28);padding:28px 24px;border-right:1px solid rgba(200,39,26,.2)">
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.16em;color:rgba(200,39,26,.7);margin-bottom:8px">Line Item 05</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:15px;color:var(--paper);line-height:1.2">The SpaceX IPO Runway</div>
-          <div style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.08em;color:rgba(200,39,26,.6);margin-top:16px">LARGEST IPO IN HISTORY — INCOMING</div>
-        </div>
-        <div style="padding:28px 32px">
-          <p style="font-size:14px;color:rgba(242,239,232,.6);line-height:1.65;font-family:'DM Sans',sans-serif">SpaceX is expected to be the largest IPO in human history. A government that cannot regulate him, a military that cannot say no to him, and a foreign policy built around his satellites creates the perfect pre-IPO environment. $291 million was the investment. The return hasn't fully landed yet.</p>
-        </div>
-      </div>
-    </div>
-    <p style="margin-top:28px;font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(16px,1.8vw,20px);color:rgba(242,239,232,.35);max-width:680px;line-height:1.6">He spent $291 million and got the government. Every billionaire with $300 million and a grievance list is doing the math right now.</p>
-  </div>
-</section>
-
-<!-- SECOND BUYER -->
-<section class="section reveal">
-  <div class="section-inner">
-    <p class="section-eyebrow red">Stages 5 &amp; 6 — Command &amp; Control — 2025–2026</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(32px,4.5vw,64px);line-height:.92;margin-bottom:6px">He Proved It Could Be Done.<br><span style="color:var(--red)">Now They're All Doing It.</span></h2>
-    <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.06em;color:rgba(242,239,232,.3);margin-bottom:20px">AI, crypto, and carbon. Three industries. One shared need: a government that cannot regulate them.</p>
-    <div class="three-col">
-      <div class="col-block">
-        <div class="col-num">$115M</div>
-        <div class="col-head">Andreessen Horowitz</div>
-        <p class="col-body">Largest disclosed donor in 2026 — ahead of Musk. Targeting AI legislation in both parties.</p>
-      </div>
-      <div class="col-block">
-        <div class="col-num">$133M</div>
-        <div class="col-head">Crypto industry, 2026 cycle</div>
-        <p class="col-body">Fairshake PAC alone. The industry bent the Senate before most voters knew there was a vote.</p>
-      </div>
-      <div class="col-block dim">
-        <div class="col-num">$430M+</div>
-        <div class="col-head">50 billionaire families, total</div>
-        <p class="col-body">AI. Crypto. Carbon. Three industries. One shared need: a government that cannot regulate them.</p>
-      </div>
-    </div>
-    <p style="margin-top:24px;font-size:13px;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif;max-width:640px;line-height:1.6">Different attackers. Same playbook. And most voters have no idea it's happening. But here's what Orbán forgot.</p>
-  </div>
-</section>
-
-<!-- HUNGARY -->
-<section class="section reveal" style="background:rgba(200,39,26,.07);border-top:1px solid rgba(200,39,26,.2);border-bottom:1px solid rgba(200,39,26,.2)">
-  <div class="section-inner">
-    <p class="section-eyebrow red">The Counter — Hungary, April 2026</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(36px,5.5vw,80px);line-height:.9;margin-bottom:6px">The Machine Has One Weakness.</h2>
-    <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.06em;color:rgba(242,239,232,.3);margin-bottom:24px">It cannot manufacture a neighbor, in person, with a story that is true.</p>
-    <div class="hungary-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:48px;align-items:start">
-      <div>
-        <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2vw,22px);color:rgba(242,239,232,.8);line-height:1.6;margin-bottom:20px">Orbán controlled 80% of traditional media for 16 years. Russian AI ran coordinated personas. The machine was total.</p>
-        <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2vw,22px);color:var(--paper);line-height:1.6">Magyar won in a landslide. YouTube. A ground game. People knocking on doors in villages Orbán thought were permanently his.</p>
-      </div>
-      <div style="border-left:4px solid var(--red);padding-left:32px">
-        <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(20px,2.5vw,30px);color:var(--paper);line-height:1.45;margin-bottom:16px">The machine could not manufacture a neighbor, in person, with a story that was true.</p>
-        <p style="font-size:14px;color:rgba(242,239,232,.5);line-height:1.65;font-family:'DM Sans',sans-serif">AI can generate a video of your neighbor. It cannot be your neighbor.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="controlling-idea reveal">
-  <div class="section-inner">
-    <p style="font-size:10px;font-weight:500;letter-spacing:.28em;text-transform:uppercase;color:var(--red);margin-bottom:20px;font-family:'DM Sans',sans-serif">The Controlling Idea — Stage 7: Actions on Objective</p>
-    <blockquote>
-      Democracy can only survive in America, given its current vulnerabilities, if humans use our real-life connections to inform, activate, and multiply our best intentions.
-      <cite>This is the controlling idea of the film. It is also the strategy.</cite>
-    </blockquote>
-  </div>
-</div>
-<div class="countdown-strip reveal">
-  <div>
-    <p style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.18em;color:rgba(242,239,232,.3);margin-bottom:6px">DOCUMENTARY MUST REACH PEOPLE BEFORE MIDTERMS</p>
-    <div class="countdown-units">
-      <div class="countdown-unit"><div class="countdown-num" id="cd-days">--</div><div class="countdown-label">Days</div></div>
-      <div class="countdown-sep">:</div>
-      <div class="countdown-unit"><div class="countdown-num" id="cd-hours">--</div><div class="countdown-label">Hours</div></div>
-      <div class="countdown-sep">:</div>
-      <div class="countdown-unit"><div class="countdown-num" id="cd-mins">--</div><div class="countdown-label">Mins</div></div>
-      <div class="countdown-sep">:</div>
-      <div class="countdown-unit"><div class="countdown-num" id="cd-secs">--</div><div class="countdown-label">Secs</div></div>
-    </div>
-  </div>
-  <p class="countdown-ctx">He is not invincible. He is just very, very rich and very, very amoral — and now he knows his money helps more than his name.</p>
-  <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-    <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.1em;background:var(--red);color:var(--paper);padding:13px 24px;text-decoration:none;white-space:nowrap;border:none;cursor:pointer;transition:background .2s" onmouseover="this.style.background='var(--red-dark)'" onmouseout="this.style.background='var(--red)'">Join</a>
-    <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" class="btn-secondary">Find out more →</a>
-  </div>
-</div>
-<section class="film-section reveal">
-  <div class="film-inner">
-    <p style="font-size:10px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin-bottom:16px;font-family:'DM Sans',sans-serif">LOLGOP Studios presents</p>
-    <div class="film-title">The<br>Trillionaire<br><em>Kill Chain</em></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:60px;align-items:start;margin-top:28px;margin-bottom:0">
-      <div>
-        <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(16px,1.8vw,21px);color:rgba(242,239,232,.55);line-height:1.65">Each month, a new episode of the podcast builds the case — the money, the lies, the people who knew. By September, the record is complete. Then it becomes a film. <strong style="color:var(--paper);font-style:normal">Out before people vote.</strong></p>
-        <p style="margin-top:16px;font-size:13px;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif;letter-spacing:.04em">60–75 min · In the tradition of: <em>Serial · The Big Short · All the President's Men</em></p>
-      </div>
-      <div>
-        <p style="font-size:13px;color:rgba(242,239,232,.45);line-height:1.7;font-family:'DM Sans',sans-serif">Better known as LOLGOP, Jason Sattler has spent 15 years covering how the right broke democracy for <em>USA Today</em>, Alternet, and everywhere else. This documentary is what it's all been building to. The story that must be told before November, by every means necessary.</p>
-      </div>
-    </div>
-    <div class="episodes">
-      <div class="episode"><div class="episode-num">01</div><div class="episode-title">Reconnaissance: What Made It Possible</div></div>
-      <div class="episode"><div class="episode-num">02</div><div class="episode-title">Weaponization: The $44B Platform</div></div>
-      <div class="episode"><div class="episode-num">03</div><div class="episode-title">Delivery: The $291M Operation</div></div>
-      <div class="episode"><div class="episode-num">04</div><div class="episode-title">Exploitation: Why Facts Failed</div></div>
-      <div class="episode"><div class="episode-num">05</div><div class="episode-title">Command &amp; Control: Too Big to Sanction</div></div>
-    </div>
-  </div>
-</section>
-<section class="ask-section reveal">
-  <div class="ask-inner">
-    <p class="ask-eyebrow">Join</p>
-    <h2 class="ask-head">They've infested<br>our democracy.<br><em>We're the immune system.</em></h2>
-    <p class="ask-sub">Republicans spent fifty years hollowing democracy's defenses. He was the first to go all the way. The FEC has no quorum. Andreessen Horowitz is already the largest donor in 2026. The immune system works one way: enough people who understand what's happening, moving together, early enough to matter.</p>
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(16px,1.8vw,21px);color:rgba(14,14,14,.55);line-height:1.6;max-width:640px;margin-bottom:32px">200 Producers at $10/month closes the budget. The film gets made. The people in your life who don't follow this the way you do get a story they can actually use before they vote.</p>
-    <div class="ask-what" style="margin-bottom:36px">
-      <div>
-        <div class="ask-col-head">What you get</div>
-        <div class="ask-item">Your name in the credits</div>
-        <div class="ask-item">Producer updates — the story as it's being reported</div>
-        <div class="ask-item">Early access to every episode</div>
-              </div>
-      <div>
-        <div class="ask-col-head">What you enable</div>
-        <div class="ask-item">Fund the first interview</div>
-        <div class="ask-item">Cover archival footage licensing</div>
-        <div class="ask-item">Pay for the edit that reaches millions</div>
-        <div class="ask-item">Get this into the hands of the 20% who will move the other 80%</div>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px">
-      <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:.1em;background:var(--red);color:var(--paper);padding:18px 44px;text-decoration:none;transition:background .2s;white-space:nowrap" onmouseover="this.style.background='var(--red-dark)'" onmouseout="this.style.background='var(--red)'">Join — $10/mo</a>
-      <a href="https://podcasts.apple.com/us/podcast/the-trillionaire-kill-chain/id1896794909?ls=1" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.1em;background:transparent;color:rgba(14,14,14,.5);padding:18px 24px;text-decoration:none;border:1px solid rgba(14,14,14,.2);display:inline-flex;align-items:center;gap:8px;transition:all .2s;white-space:nowrap" onmouseover="this.style.borderColor='rgba(14,14,14,.45)';this.style.color='var(--ink)'" onmouseout="this.style.borderColor='rgba(14,14,14,.2)';this.style.color='rgba(14,14,14,.5)'"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm.75 17.5v1.25a.75.75 0 0 1-1.5 0V17.5a5.25 5.25 0 1 1 1.5 0zm-.75-2a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5z"/></svg>Listen Free</a>
-      <a href="https://feeds.libsyn.com/620120/rss" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.1em;color:rgba(14,14,14,.35);text-decoration:none;border-bottom:1px solid rgba(14,14,14,.15);padding-bottom:1px;white-space:nowrap">RSS →</a>
-    </div>
-    <p style="font-size:11px;color:rgba(14,14,14,.3);font-family:'DM Sans',sans-serif">$10/mo · Cancel anytime · Name in credits optional · stopthetrillionaires.com</p>
-  </div>
-</section>
-<footer>
-  <div class="footer-top">
-    <div class="footer-logo">Trillionaire <span>Kill Chain</span></div>
-    <div class="footer-nav">
-      <a href="trillionaire-status.html">Is He a Trillionaire?</a>
-      <a onclick="showWhy()">Why Not</a>
-      <a onclick="showAction()">Actions</a>
-      <a onclick="showCounts()">Full Indictment</a>
-      <a onclick="showGood()">We Can Have Good Things</a>
-    </div>
-  </div>
-  <div class="footer-credit">A project of LOLGOP Studios · Jason Sattler</div>
+<footer class="colophon">
+  NEWS FOR 38 YEAR OLDS · PROTOTYPE — BUILT AS A DEMO · NOT AN ACTIVE NEWS SERVICE
 </footer>
-</div>
-<div id="counts-page" style="display:none;min-height:100vh;padding:120px 40px 80px;background:var(--ink)">
-  <div style="max-width:900px;margin:0 auto">
-    <div style="display:inline-block;border:3px solid var(--red);padding:10px 22px 8px;transform:rotate(-1.2deg);position:relative;margin-bottom:48px">
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:clamp(22px,3.5vw,42px);letter-spacing:.06em;color:rgba(200,39,26,.22);position:absolute;top:9px;left:24px;pointer-events:none;user-select:none">CORRUPTION BEYOND YOUR SICKEST IMAGINATION.</span>
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:clamp(22px,3.5vw,42px);letter-spacing:.06em;color:var(--paper);position:relative">CORRUPTION BEYOND YOUR SICKEST IMAGINATION.</span>
+
+<div class="modal-overlay" id="tipOverlay" style="position:fixed;inset:0;background:rgba(20,23,31,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:20px;">
+  <div style="background:var(--paper);color:var(--text);width:100%;max-width:380px;padding:26px;border-radius:4px;position:relative;">
+    <button onclick="closeTipModal()" style="position:absolute;top:14px;right:16px;font-family:var(--mono);font-size:13px;background:none;border:none;color:var(--text-muted);cursor:pointer;">CLOSE ✕</button>
+    <p style="font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--wire-red);margin:0 0 6px;">Tip what you can</p>
+    <h3 style="font-family:var(--display);font-size:20px;margin:0 0 16px;">Sending a tip to <span id="tipRecipient" style="color:var(--support-teal-dark);">—</span></h3>
+    <div style="font-family:var(--display);font-size:40px;font-weight:700;text-align:center;margin:6px 0 14px;">$<span id="amountValue">5</span></div>
+    <div id="quickAmounts" style="display:flex;gap:8px;margin-bottom:16px;">
+      <button class="qa" data-amt="2" style="flex:1;font-family:var(--mono);font-size:13px;padding:8px 0;border:1.5px solid var(--paper-hairline);background:transparent;border-radius:3px;cursor:pointer;">$2</button>
+      <button class="qa" data-amt="5" style="flex:1;font-family:var(--mono);font-size:13px;padding:8px 0;border:1.5px solid var(--support-teal);background:var(--support-teal);color:#F3EFE4;border-radius:3px;cursor:pointer;">$5</button>
+      <button class="qa" data-amt="10" style="flex:1;font-family:var(--mono);font-size:13px;padding:8px 0;border:1.5px solid var(--paper-hairline);background:transparent;border-radius:3px;cursor:pointer;">$10</button>
+      <button class="qa" data-amt="20" style="flex:1;font-family:var(--mono);font-size:13px;padding:8px 0;border:1.5px solid var(--paper-hairline);background:transparent;border-radius:3px;cursor:pointer;">$20</button>
     </div>
-    <div style="border-bottom:1px solid rgba(200,39,26,.3);padding-bottom:20px;margin-bottom:0;display:flex;align-items:baseline;gap:16px">
-      <span class="feed-label">The Full Indictment</span>
-      <span style="font-size:16px;color:rgba(242,239,232,.45);font-family:'DM Serif Display',serif;font-style:italic">an incomplete inventory</span>
-    </div>
-    <div class="feed-grid" style="border-top:4px solid var(--red)">
-      <div class="feed-item"><div class="feed-cat">Personal wealth</div><div class="feed-head">Elon Musk's net worth grew by an estimated $150B+ after backing Trump</div><div class="feed-body">Government contracts to SpaceX and Tesla-adjacent policy wins accelerated simultaneously with his political spending.<br><br><a href="https://www.forbes.com/sites/mattdurot/2025/01/20/elon-musk-net-worth-trump-inauguration/" target="_blank" style="font-size:11px;color:var(--red)">Forbes, Jan 2025 →</a></div><div class="feed-num">+$150B+</div><div class="feed-num-label">estimated wealth gain</div></div>
-      <div class="feed-item"><div class="feed-cat">USAID / potential death toll</div><div class="feed-head">DOGE gutted USAID. Researchers estimate millions of preventable deaths.</div><div class="feed-body">HIV treatment programs, famine response, maternal health funding — cut or frozen. The Lancet projected 14 million deaths over two decades.<br><br><a href="https://www.thelancet.com/journals/lancet/article/PIIS0140-6736(25)00437-9/fulltext" target="_blank" style="font-size:11px;color:var(--red)">The Lancet, 2025 →</a></div></div>
-      <div class="feed-item"><div class="feed-cat">Investigations called off</div><div class="feed-head">DOJ dropped its Tesla autopilot investigation shortly after Musk's Trump endorsement</div><div class="feed-body">Federal safety investigations quietly wound down. No charges. No fines.<br><br><a href="https://www.nytimes.com/2025/04/03/business/tesla-justice-department-autopilot-self-driving.html" target="_blank" style="font-size:11px;color:var(--red)">New York Times, Apr 2025 →</a></div></div>
-      <div class="feed-item"><div class="feed-cat">Election purchase</div><div class="feed-head">$291M in a single cycle — the largest individual political spend in American history</div><div class="feed-body">America PAC. Four fake brands. 2.7M voters targeted. 247M ads.<br><br><a href="https://www.opensecrets.org/news/2025/01/elon-musk-largest-donor-in-american-political-history/" target="_blank" style="font-size:11px;color:var(--red)">OpenSecrets, Jan 2025 →</a></div><div class="feed-num">$291M</div><div class="feed-num-label">2024 election spending</div></div>
-      <div class="feed-item"><div class="feed-cat">Shell company infrastructure</div><div class="feed-head">90 shell companies in Texas alone traced to America PAC operations</div><div class="feed-body">The Georgia election board sent him a letter. The opacity was the point — money moving through structures designed to prevent anyone from following it.</div></div>
-      <div class="feed-item"><div class="feed-cat">Government access</div><div class="feed-head">DOGE gained access to Treasury payment systems, SSA, and federal personnel databases</div><div class="feed-body">A private citizen with no security clearance and billions in government contracts obtained access to systems holding data on hundreds of millions of Americans.<br><br><a href="https://www.washingtonpost.com/business/2025/02/18/doge-social-security-data-access/" target="_blank" style="font-size:11px;color:var(--red)">Washington Post, Feb 2025 →</a></div></div>
-      <div class="feed-item"><div class="feed-cat">SpaceX contracts</div><div class="feed-head">SpaceX federal contracts surged past $15B as Musk joined the administration</div><div class="feed-body">NASA, DoD, and other agencies accelerated awards while Musk held the role of unofficial co-president.<br><br><a href="https://theintercept.com/2025/02/spacex-federal-contracts-musk-doge/" target="_blank" style="font-size:11px;color:var(--red)">The Intercept →</a></div><div class="feed-num">$15B+</div><div class="feed-num-label">federal contracts, SpaceX</div></div>
-      <div class="feed-item"><div class="feed-cat">Twitter / X manipulation</div><div class="feed-head">After buying Twitter for $44B, Musk used it as a campaign megaphone and suppressed opposition reach</div><div class="feed-body">Algorithmic amplification of his own posts. Suspension of journalists. Reinstatement of banned far-right accounts.</div></div>
-      <div class="feed-item"><div class="feed-cat">California jury — March 2026</div><div class="feed-head">A jury found him liable for misleading Tesla investors</div><div class="feed-body">Up to $2.6 billion in damages. The man who owns the megaphone went silent when accountability found him in a room he couldn't control. Courts don't take requests.</div></div>
-      <div class="feed-item"><div class="feed-cat">2026 midterms</div><div class="feed-head">$71M already in 2026. 50 billionaire families have pumped $430M+ total.</div><div class="feed-body">The 2024 spend wasn't a one-time event. It was proof of concept. Billionaires are on track to break their $1B midterm spending record.<br><br><a href="https://americansfortaxfairness.org/billionaire-kingmakers/" target="_blank" style="font-size:11px;color:var(--red)">Americans for Tax Fairness, March 2026 →</a></div><div class="feed-num">$430M+</div><div class="feed-num-label">billionaire midterm spend, 2026</div></div>
-      <div class="feed-item" style="border-top:2px solid rgba(200,39,26,.35)"><div class="feed-cat">The incentive structure</div><div class="feed-head">He bought an election, starved millions, became a trillionaire. Now every billionaire on earth knows how to hack our democracy.</div><div class="feed-body">Spend $291M. Get $150B back. Keep your investigations closed. Gut the agencies that regulate you. This isn't corruption as aberration — it's corruption as business model, and the returns are so spectacular that the only question is who does it next.</div><div class="feed-num" style="color:var(--red)">1,400:1</div><div class="feed-num-label">estimated ROI on $291M spend</div></div>
-    </div>
-    <div style="padding:48px 0 0;border-top:1px solid rgba(242,239,232,.07);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
-      <div>
-        <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:18px;color:rgba(242,239,232,.5);margin-bottom:16px;max-width:560px">The documentary organizes all of it into a story millions of people will watch before they vote.</p>
-        <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:.1em;background:var(--red);color:var(--paper);padding:14px 32px;text-decoration:none;display:inline-block" onmouseover="this.style.background='var(--red-dark)'" onmouseout="this.style.background='var(--red)'">Join</a>
-      </div>
-      <button type="button" onclick="showMain()" style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.12em;color:rgba(242,239,232,.3);background:transparent;border:1px solid rgba(242,239,232,.15);padding:12px 28px;cursor:pointer;transition:all .2s;text-transform:uppercase;align-self:flex-end" onmouseover="this.style.color='var(--paper)';this.style.borderColor='rgba(242,239,232,.4)'" onmouseout="this.style.color='rgba(242,239,232,.3)';this.style.borderColor='rgba(242,239,232,.15)'">← Back to Main</button>
-    </div>
+    <input type="range" id="tipSlider" min="1" max="50" value="5" style="width:100%;margin-bottom:16px;">
+    <button onclick="sendTip()" style="width:100%;padding:12px 0;font-weight:700;font-size:14.5px;background:var(--support-teal);color:#F3EFE4;border:none;border-radius:3px;cursor:pointer;">Send tip</button>
+    <p id="tipConfirm" style="text-align:center;font-family:var(--mono);font-size:12.5px;color:var(--support-teal-dark);margin-top:12px;"></p>
   </div>
-</div>
-<div id="action-page" style="display:none;min-height:100vh;padding:120px 40px 80px;background:var(--ink)">
-  <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(52px,8vw,110px);line-height:.9;max-width:800px;margin-bottom:16px">What You Can<br><em style="color:var(--red);font-style:normal">Do Now</em></h1>
-  <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:20px;color:rgba(242,239,232,.5);max-width:560px;margin-bottom:56px;line-height:1.5">They've got the money. We've got what money can't buy.</p>
-  <p style="font-size:10px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:rgba(242,239,232,.3);margin-bottom:16px">Actions — take at least one today</p>
-  <div style="display:flex;flex-direction:column;gap:2px;margin-bottom:60px;max-width:860px">
-    <a href="https://indivisible.org/" target="_blank" style="display:grid;grid-template-columns:48px 1fr auto;gap:16px;align-items:center;padding:20px 24px;background:rgba(242,239,232,.03);border:1px solid rgba(242,239,232,.07);text-decoration:none;color:var(--paper);transition:background .2s" onmouseover="this.style.background='rgba(242,239,232,.06)'" onmouseout="this.style.background='rgba(242,239,232,.03)'">
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--red);line-height:1">01</span>
-      <span><span style="font-family:'DM Serif Display',serif;font-size:17px;font-style:italic;color:var(--paper);display:block;margin-bottom:3px">Organize locally — find your Indivisible chapter</span><span style="font-size:12px;color:rgba(242,239,232,.35)">The named-villain strategy that worked in Wisconsin started with local chapters. Find yours.</span></span>
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:.1em;color:var(--red);white-space:nowrap">indivisible.org →</span>
-    </a>
-    <a href="https://5calls.org/" target="_blank" style="display:grid;grid-template-columns:48px 1fr auto;gap:16px;align-items:center;padding:20px 24px;background:rgba(242,239,232,.03);border:1px solid rgba(242,239,232,.07);border-top:none;text-decoration:none;color:var(--paper);transition:background .2s" onmouseover="this.style.background='rgba(242,239,232,.06)'" onmouseout="this.style.background='rgba(242,239,232,.03)'">
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--red);line-height:1">02</span>
-      <span><span style="font-family:'DM Serif Display',serif;font-size:17px;font-style:italic;color:var(--paper);display:block;margin-bottom:3px">Call your reps — 5 minutes, 5 calls</span><span style="font-size:12px;color:rgba(242,239,232,.35)">Calls still move legislators. 5calls.org makes it easy.</span></span>
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:.1em;color:var(--red);white-space:nowrap">5calls.org →</span>
-    </a>
-    <a href="https://susanrogan.substack.com/" target="_blank" style="display:grid;grid-template-columns:48px 1fr auto;gap:16px;align-items:center;padding:20px 24px;background:rgba(242,239,232,.03);border:1px solid rgba(242,239,232,.07);border-top:none;text-decoration:none;color:var(--paper);transition:background .2s" onmouseover="this.style.background='rgba(242,239,232,.06)'" onmouseout="this.style.background='rgba(242,239,232,.03)'">
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:28px;color:var(--red);line-height:1">03</span>
-      <span><span style="font-family:'DM Serif Display',serif;font-size:17px;font-style:italic;color:var(--paper);display:block;margin-bottom:3px">Daily actions — Susan Rogan's dispatch</span><span style="font-size:12px;color:rgba(242,239,232,.35)">Concrete things to do, every day. No overwhelm.</span></span>
-      <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:.1em;color:var(--red);white-space:nowrap">susanrogan.substack.com →</span>
-    </a>
-  </div>
-  <div style="padding:48px 0 0;border-top:1px solid rgba(242,239,232,.08)">
-    <button type="button" onclick="showMain()" style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.12em;color:rgba(242,239,232,.3);background:transparent;border:1px solid rgba(242,239,232,.15);padding:12px 28px;cursor:pointer;transition:all .2s;text-transform:uppercase" onmouseover="this.style.color='var(--paper)';this.style.borderColor='rgba(242,239,232,.4)'" onmouseout="this.style.color='rgba(242,239,232,.3)';this.style.borderColor='rgba(242,239,232,.15)'">← Back</button>
-  </div>
-</div>
-<div id="why-page" style="display:none;padding-top:80px;min-height:100vh">
-  <section style="padding:80px 40px 60px;max-width:860px;margin:0 auto">
-    <p style="font-size:11px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:28px">The Case Against Trillionaires</p>
-    <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(48px,7vw,96px);line-height:.88;letter-spacing:.01em;margin-bottom:36px">Why No<br><em style="font-style:normal;color:var(--red)">Trillionaires</em></h1>
-    <div style="border-left:4px solid var(--red);padding-left:28px;margin-bottom:44px">
-      <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(20px,2.5vw,28px);color:rgba(242,239,232,.85);line-height:1.4">The kind of person who wants to be a trillionaire is exactly who should never be one.</p>
-    </div>
-    <div style="font-size:18px;line-height:1.8;color:rgba(242,239,232,.65);font-family:'DM Serif Display',serif">
-      <p style="margin-bottom:24px">A trillion dollars cannot be earned. It can only be taken. If you paid yourself $5,000 an hour, worked 24 hours a day, every single day, it would still take over 22,000 years to accumulate a trillion dollars. What's actually happening is extraction — from workers, from suppliers, from public subsidies, from regulatory capture.</p>
-      <p style="margin-bottom:24px">The Oxfam analysis showed Tesla's growth in market valuation — the thing that made Musk so obscenely wealthy — was fueled in part by workers who reported wage theft, unsafe conditions, and retaliation for organizing. The stock price went up. Their paychecks didn't.</p>
-      <p style="margin-bottom:24px">A trillionaire isn't just wealthy. A trillionaire is a threat to the concept of shared governance. When one person controls enough capital to single-handedly reshape political outcomes — that's not wealth anymore. That's sovereignty.</p>
-      <p style="font-size:13px;color:rgba(242,239,232,.3);border-top:1px solid rgba(242,239,232,.08);padding-top:18px;font-family:'DM Sans',sans-serif">Source: <a href="https://www.oxfamamerica.org/press/as-musks-wealth-nears-1-trillion-new-oxfam-analysis-reveals-teslas-impact-on-us-inequality/" target="_blank" style="color:rgba(242,239,232,.4);text-decoration:underline">Oxfam America</a></p>
-    </div>
-    <div style="padding-top:40px;border-top:1px solid rgba(242,239,232,.08);margin-top:40px">
-      <button type="button" onclick="showMain()" style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.12em;color:rgba(242,239,232,.3);background:transparent;border:1px solid rgba(242,239,232,.15);padding:12px 28px;cursor:pointer;transition:all .2s" onmouseover="this.style.color='var(--paper)';this.style.borderColor='rgba(242,239,232,.4)'" onmouseout="this.style.color='rgba(242,239,232,.3)';this.style.borderColor='rgba(242,239,232,.15)'">← Back to Main</button>
-    </div>
-  </section>
-</div>
-<div id="good-page" style="display:none;padding-top:80px;min-height:100vh">
-  <section style="padding:80px 40px 60px;max-width:860px;margin:0 auto">
-    <p style="font-size:11px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);margin-bottom:28px">The American Alternative</p>
-    <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(48px,7vw,96px);line-height:.88;letter-spacing:.01em;margin-bottom:36px">We Can Have<br><em style="font-style:normal;color:var(--red)">Good Things</em></h1>
-    <div style="border-left:4px solid var(--red);padding-left:28px;margin-bottom:44px">
-      <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(20px,2.5vw,28px);color:rgba(242,239,232,.85);line-height:1.4">What if America's wealth inequality looked more like Denmark's?</p>
-    </div>
-    <div style="font-size:18px;line-height:1.8;color:rgba(242,239,232,.65);font-family:'DM Serif Display',serif">
-      <p style="margin-bottom:24px">Americans are told again and again that we can't afford things. The money is there. It's just in fewer hands than it's ever been in American history.</p>
-      <p style="margin-bottom:24px">Universal healthcare. Free or nearly free university. Paid parental leave. Child poverty under 4%. All of these exist in countries at comparable or lower wealth levels than the United States. None of this requires us to become Scandinavian. It requires us to stop letting a handful of billionaires use hundreds of millions of dollars to prevent us from having what we've already paid for.</p>
-      <div style="border-top:1px solid rgba(242,239,232,.1);border-bottom:1px solid rgba(242,239,232,.1);padding:28px 0;margin:36px 0">
-        <p style="font-family:'Bebas Neue',sans-serif;font-size:clamp(18px,2.5vw,28px);letter-spacing:.06em;color:var(--gold);line-height:1.3">"Can't afford it" is a political choice disguised as arithmetic. Denmark chose differently. We can too.</p>
-      </div>
-    </div>
-    <div style="padding-top:32px;border-top:1px solid rgba(242,239,232,.08)">
-      <button type="button" onclick="showMain()" style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.12em;color:rgba(242,239,232,.3);background:transparent;border:1px solid rgba(242,239,232,.15);padding:12px 28px;cursor:pointer;transition:all .2s" onmouseover="this.style.color='var(--paper)';this.style.borderColor='rgba(242,239,232,.4)'" onmouseout="this.style.color='rgba(242,239,232,.3)';this.style.borderColor='rgba(242,239,232,.15)'">← Back to Main</button>
-    </div>
-  </section>
-</div>
-<div id="news-page" style="display:none;padding-top:80px;min-height:100vh;background:var(--ink)">
-  <section style="padding:64px 40px 100px;max-width:860px;margin:0 auto">
-    <div style="margin-bottom:48px">
-      <p style="font-size:10px;font-weight:500;letter-spacing:.22em;text-transform:uppercase;color:var(--red);margin-bottom:14px;font-family:'DM Sans',sans-serif">From the Campaign</p>
-      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(44px,6vw,80px);line-height:.9;letter-spacing:.01em;margin-bottom:0">News</h2>
-    </div>
-    <article style="border-top:4px solid var(--red);padding-top:40px;margin-bottom:80px">
-      <p style="font-size:10px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:rgba(242,239,232,.3);margin-bottom:14px;font-family:'DM Sans',sans-serif">June 2026 · News</p>
-      <h3 style="font-family:'DM Serif Display',serif;font-size:clamp(26px,3.5vw,44px);line-height:1.15;color:var(--paper);margin-bottom:10px">The Reward for Being the Worst Dork Alive Can't Be a Trillion Dollars</h3>
-      <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:18px;color:rgba(242,239,232,.5);margin-bottom:36px;line-height:1.4">Yesterday, Elon Musk became the world's first trillionaire. The same week, he was inciting a race pogrom in Northern Ireland.</p>
-      <div style="font-size:16px;line-height:1.85;color:rgba(242,239,232,.72);font-family:'DM Sans',sans-serif;font-weight:300">
-        <p style="margin-bottom:20px">The SpaceX IPO raised $75 billion — the largest in history. His stock gained 19% on day one. He crossed a threshold no human being has ever crossed.</p>
-        <p style="margin-bottom:20px">The same week, families in Belfast were fleeing burning homes. Musk had amplified calls for anti-immigrant demonstrations to his 240 million followers. Masked mobs set neighborhoods on fire. The Belfast Islamic Center canceled evening prayers. Researchers counted more than 3,900 calls for lynchings in the replies to his posts.</p>
-        <p style="margin-bottom:20px">He responded to the criticism: "Murderous migrants beheading innocent people in their home town is what's making people angry, not 'social media'!"</p>
-        <p style="margin-bottom:20px">More than 760,000 people have died from preventable causes since USAID was dismantled. The Lancet projects 9 million more by 2030.</p>
-        <div style="background:rgba(200,39,26,.08);border-left:4px solid var(--red);padding:24px 28px;margin:32px 0">
-          <p style="font-family:'Bebas Neue',sans-serif;font-size:clamp(18px,2.5vw,26px);letter-spacing:.06em;color:var(--paper);line-height:1.3;margin:0">The reward for all of it was a trillion dollars. This is what he bought the government for.</p>
-        </div>
-      </div>
-    </article>
-    <div style="padding-top:40px;border-top:1px solid rgba(242,239,232,.08);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px">
-      <button type="button" onclick="showMain()" style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.12em;color:rgba(242,239,232,.3);background:transparent;border:1px solid rgba(242,239,232,.15);padding:12px 28px;cursor:pointer;transition:all .2s" onmouseover="this.style.color='var(--paper)';this.style.borderColor='rgba(242,239,232,.4)'" onmouseout="this.style.color='rgba(242,239,232,.3)';this.style.borderColor='rgba(242,239,232,.15)'">← Back to Main</button>
-      <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" class="btn-primary" style="font-size:16px;padding:16px 36px">Join</a>
-    </div>
-  </section>
-</div>
-<div id="episode1-page" style="display:none;padding-top:62px;min-height:100vh;background:var(--ink)">
-
-  <!-- SERIES INTRO -->
-  <div style="background:#0a0a08;border-bottom:1px solid rgba(200,39,26,.15);padding:52px 40px 48px">
-    <div style="max-width:900px;margin:0 auto">
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:10px;letter-spacing:.28em;text-transform:uppercase;color:rgba(200,39,26,.5);margin-bottom:20px">A podcast series from LOLGOP Studios</p>
-      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(48px,7vw,88px);line-height:.88;color:var(--paper);margin-bottom:20px;letter-spacing:.01em">The Trillionaire<br>Kill Chain</h2>
-      <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2.2vw,24px);color:rgba(200,39,26,.85);line-height:1.35;margin-bottom:24px">Every billionaire is a policy failure.<br>Every trillionaire is part of a kill chain.</p>
-      <p style="font-size:15px;color:rgba(242,239,232,.45);line-height:1.7;max-width:640px;font-family:'DM Sans',sans-serif">One man proved democracy is for sale. He bought Twitter and brought Trump back from the dead. Then spent $291 million becoming the campaign itself. Then billed the government $15 billion. Every billionaire watching took notes. Most of the country still has no idea how any of it happened. This series maps every stage of the attack — seven episodes, seven chapters — before the 2026 midterms.</p>
-    </div>
-  </div>
-
-  <!-- EP1 HEADER -->
-  <section style="padding:56px 40px 0;max-width:900px;margin:0 auto">
-    <p style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.2em;color:var(--red);margin-bottom:14px">Episode 01 &nbsp;·&nbsp; Now Playing</p>
-    <h1 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(52px,8vw,96px);line-height:.88;color:var(--paper);margin-bottom:16px">How to Buy<br><span style="color:var(--red)">the Presidency</span></h1>
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(16px,2vw,21px);color:rgba(242,239,232,.5);line-height:1.45;max-width:620px;margin-bottom:32px">If you watched one man buy the presidency and thought: how is any of this legal? — this episode is the answer.</p>
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:44px">
-      <a href="https://podcasts.apple.com/us/podcast/the-trillionaire-kill-chain/id1896794909?ls=1" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.1em;background:var(--paper);color:var(--ink);padding:12px 20px;text-decoration:none;display:inline-flex;align-items:center;gap:7px" onmouseover="this.style.background='#e8e5de'" onmouseout="this.style.background='var(--paper)'"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm.75 17.5v1.25a.75.75 0 0 1-1.5 0V17.5a5.25 5.25 0 1 1 1.5 0zm-.75-2a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5z"/></svg>Apple Podcasts</a>
-      <a href="https://feeds.libsyn.com/620120/rss" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.1em;background:transparent;color:rgba(242,239,232,.6);padding:12px 20px;text-decoration:none;display:inline-flex;align-items:center;gap:7px;border:1px solid rgba(242,239,232,.18);transition:all .2s" onmouseover="this.style.borderColor='rgba(242,239,232,.45)';this.style.color='var(--paper)'" onmouseout="this.style.borderColor='rgba(242,239,232,.18)';this.style.color='rgba(242,239,232,.6)'"><svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19.01 7.38 20 6.18 20C4.98 20 4 19.01 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z"/></svg>RSS Feed</a>
-      <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.1em;background:var(--red);color:var(--paper);padding:12px 20px;text-decoration:none" onmouseover="this.style.background='var(--red-dark)'" onmouseout="this.style.background='var(--red)'">Join</a>
-    </div>
-    <div style="position:relative;width:100%;aspect-ratio:16/9;background:#000;overflow:hidden;border-left:4px solid var(--red);margin-bottom:40px">
-      <iframe src="https://www.youtube.com/embed/jx1I5zl6_u4" title="The Trillionaire Kill Chain Episode 1" frameborder="0" allow="accelerometer;clipboard-write;encrypted-media;gyroscope;picture-in-picture" allowfullscreen loading="lazy" style="position:absolute;width:100%;height:100%;top:0;left:0;border:none"></iframe>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1px;background:rgba(242,239,232,.06);margin-bottom:56px">
-      <div style="background:var(--ink);padding:16px 20px">
-        <p style="font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:rgba(200,39,26,.5);font-family:'DM Sans',sans-serif;margin-bottom:7px">Featuring</p>
-        <p style="font-size:13px;color:rgba(242,239,232,.55);line-height:1.55;font-family:'DM Sans',sans-serif">Erin Chlopak — Sr. Director of Campaign Finance, Campaign Legal Center<br>Brendan Fischer — Director of Strategic Investigations, Campaign Legal Center</p>
-      </div>
-      <div style="background:var(--ink);padding:16px 20px">
-        <p style="font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:rgba(200,39,26,.5);font-family:'DM Sans',sans-serif;margin-bottom:7px">Key Sources</p>
-        <p style="font-size:13px;color:rgba(242,239,232,.55);line-height:1.55;font-family:'DM Sans',sans-serif">Senate PSI Minority Staff Memo &middot; FEC Advisory Opinion 2024-01 &middot; SEC LR-26548 &middot; Georgia SEB case SEB2024-151 &middot; Washington Post, Nov. 2024</p>
-      </div>
-    </div>
-  </section>
-
-  <!-- TRANSCRIPT -->
-  <section style="padding:0 40px 0;max-width:900px;margin:0 auto">
-    <div style="border-top:3px solid var(--red);padding-top:36px;margin-bottom:40px">
-      <p style="font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:rgba(242,239,232,.25);font-family:'DM Sans',sans-serif;margin-bottom:6px">Full Script — v12</p>
-      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(24px,3.5vw,40px);color:var(--paper);line-height:.95">Transcript</h2>
-    </div>
-
-    <div style="font-size:16px;line-height:1.85;color:rgba(242,239,232,.68);font-family:'DM Sans',sans-serif;font-weight:300;max-width:720px">
-
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.12em;color:rgba(242,239,232,.25);margin-bottom:20px">Osawatomie, Kansas &nbsp;&mdash;&nbsp; August 31, 1910</p>
-
-      <p style="margin-bottom:20px">Thirty thousand people gathered in a windswept field that had once been soaked in blood.</p>
-      <p style="margin-bottom:20px">Theodore Roosevelt stood at the dedication of the John Brown Memorial Park. And the former president, who was always a tornado in knickerbockers, was furious.</p>
-      <p style="margin-bottom:20px">In just two years, he had watched his handpicked successor, William Howard Taft, hand the government back to the exact men Roosevelt spent six years trying to pry it away from — the railroad trusts, the oil monopolies, the gods on earth who had bought more Senators than they knew what to do with.</p>
-      <p style="margin-bottom:20px">30,000 Americans milled about in the pulsing heat as vendors sold sandwiches and soda water, waiting for Roosevelt, in his high, shrill voice, to say what no president had ever said so plainly.</p>
-
-      <blockquote style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(16px,1.8vw,19px);color:var(--paper);line-height:1.55;border-left:3px solid var(--red);padding-left:22px;margin:28px 0">"Our government, national and state, must be freed from the sinister influence or control of special interests. Exactly as the special interests of cotton and slavery threatened our political integrity before the Civil War, so now the great special business interests too often control and corrupt the men and methods of government for their own profit."<cite style="display:block;font-style:normal;font-family:'DM Sans',sans-serif;font-size:11px;color:rgba(242,239,232,.25);letter-spacing:.05em;margin-top:10px">Roosevelt, Osawatomie, August 31, 1910</cite></blockquote>
-
-      <p style="margin-bottom:20px">He wasn't done.</p>
-
-      <blockquote style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(16px,1.8vw,19px);color:var(--paper);line-height:1.55;border-left:3px solid var(--red);padding-left:22px;margin:28px 0">"There must remain no neutral ground to serve as a refuge for lawbreakers, and especially for lawbreakers of great wealth, who can hire the vulpine legal cunning which will teach them how to avoid conviction."<cite style="display:block;font-style:normal;font-family:'DM Sans',sans-serif;font-size:11px;color:rgba(242,239,232,.25);letter-spacing:.05em;margin-top:10px">Roosevelt, Osawatomie, August 31, 1910</cite></blockquote>
-
-      <p style="margin-bottom:20px">Conservatives called it socialism. Anarchism. Communism. Taft told his brother the speech had frightened every lawyer in the country.</p>
-      <p style="margin-bottom:20px">Roosevelt was not a radical. He was an imperialist who fetishized conquest, a racist who believed in Anglo-Saxon superiority with the serene confidence of a man who trusted his mirror over almost anything. Mark Twain said he was better suited to be a butcher than a president.</p>
-      <p style="margin-bottom:40px">But Roosevelt understood something Twain wouldn't credit him for: that unchecked wealth and unchecked power, left alone long enough, turn a republic into something that looks like a republic from the outside and functions like an oligarchy from within. You cannot have one man, one vote if one man has enough money to buy the votes.</p>
-
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.12em;color:rgba(242,239,232,.25);margin-bottom:20px">The Kill Chain</p>
-
-      <p style="margin-bottom:20px">This is The Trillionaire Kill Chain. I'm Jason Sattler.</p>
-      <p style="margin-bottom:20px">How the hell is any of this legal?</p>
-      <p style="margin-bottom:20px">I've been covering the right and its assault on democracy for fifteen years. I knew Citizens United. I knew dark money. I thought I knew what Elon Musk did in 2024, and how he did it.</p>
-      <p style="margin-bottom:20px">I had no idea.</p>
-      <p style="margin-bottom:20px">Because the $291 million was the cheap part. What Musk actually bought — what every billionaire watching him learned they could buy — wasn't an election. It was a position inside the government that regulated him. By December 2024, six weeks after the vote, his net worth had climbed past $486 billion — up more than 50 percent since Election Day. The investment paid off before he'd even set foot in the building.</p>
-      <p style="margin-bottom:20px">Here's the only frame I think makes sense of what has happened to our country. In cybersecurity, there's a model called the kill chain.</p>
-      <p style="margin-bottom:20px">Lockheed Martin adapted it from military targeting doctrine to map how sophisticated attacks on computer networks actually work. The core insight: an attack isn't a single event. It's a sequence — seven stages, each one building on the last, each one harder to stop than the one before it. Reconnaissance. Weaponization. Delivery. Exploitation. Installation. Command and Control. Actions on Objective.</p>
-      <p style="margin-bottom:20px">The reason the framework matters is what it tells you about defense. You can stop a kill chain. But only if you recognize which stage you're in.</p>
-      <p style="margin-bottom:20px">We cannot look at Elon Musk as a political actor. He is a threat actor. Seven stages. Seven episodes. Seven chapters of the documentary.</p>
-      <p style="margin-bottom:20px">To understand where the crack began, I spoke with two experts at the Campaign Legal Center — a nonpartisan nonprofit I first heard of when Trevor Potter, their president, served as the Colbert Report's on-air lawyer as Stephen started a Super PAC and a 501(c)(4) to document in real time how Citizens United was changing our elections.</p>
-      <p style="margin-bottom:40px">But first: what you get when you buy yourself an election.</p>
-
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.12em;color:rgba(242,239,232,.25);margin-bottom:20px">The Thesis</p>
-
-      <p style="margin-bottom:20px">On the day Donald Trump took office, Elon Musk and his companies faced at least 65 open or potential federal investigations across 11 agencies. The Senate calculated his total financial exposure at $2.37 billion — and noted that was conservative.</p>
-      <p style="margin-bottom:20px">By day 100: the FAA chief who had grounded SpaceX's rockets was gone. DOJ had dropped a discrimination case against SpaceX that had been building for years. The agency overseeing Tesla's auto lending had been effectively dismantled — Musk walked into its headquarters, accessed its systems, and posted a tombstone emoji. The Neuralink investigator was fired.</p>
-      <p style="margin-bottom:20px">The SEC spent three years building a fraud case against him personally — his late disclosure of his Twitter stake cost other investors $150 million. He settled it for $1.5 million. A former SEC enforcement official did the math: given Musk's net worth, that fine was the equivalent of fining an average American 44 cents.</p>
-
-      <div style="background:rgba(200,39,26,.07);border-left:3px solid var(--red);padding:22px 26px;margin:28px 0;font-family:'Bebas Neue',sans-serif;font-size:clamp(17px,2.2vw,24px);letter-spacing:.03em;color:var(--paper);line-height:1.35">$291 million in. $2.37 billion in liability quietly disappearing out. Forty-four cents on the dollar for what he owed. That's not a political donation. That's an investment.</div>
-
-      <p style="margin-bottom:20px">How was any of this legal? Not the investigations being dropped — that's a story about power, and power is at least honest about what it is. The question is how one man was allowed to spend $291 million to put himself inside the government that was supposed to be watching him.</p>
-      <p style="margin-bottom:40px">The answer goes back not to 2024. Not to 2010. All the way back to 1976. Fifty years of small decisions, narrow rulings, and a regulatory agency that chose, again and again, not to do its job.</p>
-
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.12em;color:rgba(242,239,232,.25);margin-bottom:20px">Act One &nbsp;&mdash;&nbsp; 1976</p>
-
-      <p style="margin-bottom:20px">To understand how we got here, you need a Supreme Court case almost nobody outside of campaign finance law can name. Buckley v. Valeo. 1976. The year after Watergate. The year Congress was trying to clean up American politics.</p>
-      <p style="margin-bottom:20px">The ruling was simple: spending money to influence an election is speech, and the First Amendment protects speech. Limits on spending are limits on freedom. The crack in the wall was there from the beginning. But it was narrow.</p>
-      <p style="margin-bottom:20px">For thirty years, the crack stayed narrow. Then came January 21, 2010.</p>
-      <p style="margin-bottom:20px">Citizens United took the sledgehammer to the wall. Corporations are people. People can spend unlimited money on elections. Two conditions: the spending had to be independent of the campaigns, and it all had to be transparent. Two promises. Independence. Transparency. Neither one held.</p>
-      <p style="margin-bottom:20px">What flooded the landscape wasn't Fortune 500 companies buying ads with their names on them. It was nonprofits set up specifically to influence elections, specifically to hide who was paying for it. Dark money. The Brennan Center put 2024 dark money at $1.9 billion. Brendan Fischer at the Campaign Legal Center puts the actual total much higher — a large proportion of election-intended spending is never reported to the FEC at all.</p>
-      <p style="margin-bottom:40px">The Court had promised sunlight. What it delivered was shadow. And the reconnaissance was nearly complete — an attacker mapping a perimeter full of gaps, each one bigger than the last.</p>
-
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.12em;color:rgba(242,239,232,.25);margin-bottom:20px">Act Two &nbsp;&mdash;&nbsp; The Watchdog That Chose Not to Bite</p>
-
-      <p style="margin-bottom:20px">The Federal Election Commission was created by Congress in 1974, after Watergate. Six commissioners. No more than three from either party. What Congress didn't anticipate was a referee that would simply refuse to call fouls.</p>
-      <p style="margin-bottom:20px">Twenty-five years after Citizens United, the FEC had not issued a single regulation clarifying how the new world of unlimited spending was supposed to work. Not one.</p>
-      <p style="margin-bottom:20px">But in 2024, they did act. An advisory opinion. The question: could supposedly independent groups coordinate directly with campaigns on canvassing — knocking doors, reading scripts, handing out literature that explicitly advocates for those candidates? The whole premise of Citizens United rested on independence. A group of three Republican commissioners and one Democratic commissioner said: coordinate away.</p>
-      <p style="margin-bottom:20px">There's a practice the Campaign Legal Center calls red boxing. Candidate campaigns post explicit instructions on their own websites — the ads they want, the medium, the specific voter demographics. Technically public. Legally deniable. Operationally a playbook for supposedly independent groups.</p>
-      <p style="margin-bottom:40px">Before this opinion, Musk couldn't have done what he did. Every tool his operation used — super PACs, dark money channeling, coordinated canvassing, paying petition signers through a PAC — none of them existed in their 2024 form before the wall came down.</p>
-
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.12em;color:rgba(242,239,232,.25);margin-bottom:20px">Act Three &nbsp;&mdash;&nbsp; What He Bought</p>
-
-      <p style="margin-bottom:20px">The Senate's $2.37 billion figure came from a careful accounting. SpaceX fined $633,000 by the FAA for safety violations. The FAA also investigating a Starship launch that sent debris over the Caribbean. Musk called it "lawfare" and demanded the FAA chief's resignation. The day of Trump's inauguration, the FAA chief resigned — four years early.</p>
-      <p style="margin-bottom:20px">DOJ had spent years building a discrimination case against SpaceX — alleging it systematically refused to hire refugees and asylees. February 21, 2025, one month post-inauguration: dismissed with prejudice. Gone.</p>
-      <p style="margin-bottom:20px">The CFPB had oversight of Tesla's auto lending and Musk's X Money payment platform. Musk personally accessed CFPB headquarters. Hours later: "CFPB RIP," with a tombstone emoji. The Neuralink investigator: fired. The SEC fraud case settled for $1.5 million.</p>
-      <p style="margin-bottom:20px">There's one more item that didn't appear in the Senate memo. To pay petition signers through America PAC, Musk's operation ran payments through an LLC called United States of America Inc. — a shell company, named to look like the government itself. In cybersecurity, this is called a false flag.</p>
-      <p style="margin-bottom:20px">America PAC's violations didn't stop there. In February 2026, Georgia's State Elections Board unanimously reprimanded the PAC for mailing pre-filled absentee ballot applications designed to look like official government documents in five counties. America PAC sent no representative. Offered no statement. The man who built his brand screaming about voter fraud ran the most documented election law violation of the 2024 cycle. The penalty was a letter.</p>
-
-      <div style="background:rgba(200,39,26,.07);border-left:3px solid var(--red);padding:22px 26px;margin:28px 0">
-        <p style="font-family:'Bebas Neue',sans-serif;font-size:clamp(14px,1.8vw,18px);letter-spacing:.03em;color:var(--paper);line-height:1.45;margin-bottom:8px">Man faces $2.37 billion in federal exposure. Man spends $291 million to elect the person who controls those agencies. Man is given a formal government role. Agencies begin dropping investigations. Man's net worth increases by more than $400 billion.</p>
-        <p style="font-size:13px;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif">The Senate called it a conflict of interest. You can call it whatever you want.</p>
-      </div>
-
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.12em;color:rgba(242,239,232,.25);margin:40px 0 20px">Act Four &nbsp;&mdash;&nbsp; The Cost, on the Ground</p>
-
-      <p style="margin-bottom:20px">The $2.37 billion is an abstraction. Here is something that isn't.</p>
-      <p style="margin-bottom:20px">Imagine you're in Dearborn, Michigan. October 2024. You pick up your mail.</p>
-      <p style="margin-bottom:20px">You're Muslim. You've been watching Gaza for a year. You don't know what to do with your vote. And there in your hand is an ad — looks like it's from the Harris campaign, her logo, her colors — praising her for standing with Israel. For marrying a Jewish man.</p>
-      <p style="margin-bottom:20px">You put it down.</p>
-      <p style="margin-bottom:20px">Your neighbor picks up his mail the same week. He's Jewish. His ad — same colors, looks like the same campaign — tells him Harris wants to stop arms shipments to Israel.</p>
-      <p style="margin-bottom:20px">He puts it down.</p>
-      <p style="margin-bottom:20px">Neither knew what the other received. Neither knew both ads came from the same $45 million project — four fake brands, funded by anonymous donors, run by advisers to Elon Musk. Internal documents called this "false positives." Security professionals call it spear phishing. The payload was despair.</p>
-      <p style="margin-bottom:20px">Dearborn is the largest Arab American-majority city in the United States. Biden won it with 74 percent in 2020. In 2024, Harris got 36 percent — Trump won the city outright, and Jill Stein took 18. A community that had voted Democratic 2-to-1 for two decades finished the night split three ways.</p>
-      <p style="margin-bottom:20px">Part of that shift was real. The Biden administration had provided military support to Israel throughout a war killing families in Gaza that Dearborn residents knew personally. The community's grief was genuine and the Democratic Party had largely ignored it.</p>
-      <p style="margin-bottom:40px">But some of it was engineered. The mailbox didn't change. Everything around it did.</p>
-
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.12em;color:rgba(242,239,232,.25);margin-bottom:20px">Coda &nbsp;&mdash;&nbsp; The Next One Is Already Happening</p>
-
-      <p style="margin-bottom:20px">The FEC has been without a quorum since April 2025. It cannot hold meetings. Cannot issue new decisions. Cannot enforce the law.</p>
-      <p style="margin-bottom:20px">A network of super PACs backed by the co-founder of OpenAI and the founders of A16Z and Palantir is already spending in primaries in both parties. Not just to elect allies. To signal every sitting officeholder about what happens if they legislate against the industry's interests. Pop-up super PACs are timing their disclosures so donors won't be revealed until after votes are cast.</p>
-      <p style="margin-bottom:20px">Musk, meanwhile, is worth roughly $811 billion. A SpaceX IPO, expected in late 2026, could push his net worth past a trillion dollars. He cut $10 million each to the Congressional Leadership Fund and the Senate Leadership Fund after a single dinner conversation. The government cannot sanction what the government depends on. He is not done.</p>
-
-      <blockquote style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2vw,21px);color:var(--paper);line-height:1.5;border-left:3px solid var(--red);padding-left:22px;margin:28px 0">"The silence is strategic, and it is dangerous."</blockquote>
-
-      <p style="margin-bottom:20px">What happened in 2024 was not an accident. It was the end point of fifty years of decisions — by courts, by regulators, by commissioners who chose a narrow reading of the law — that left the perimeter open for anyone patient enough to map it.</p>
-      <p style="margin-bottom:20px">One man mapped it. Did the math. And walked through.</p>
-      <p style="margin-bottom:40px">The next buyer already did the math. He's already spending.</p>
-
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.12em;color:rgba(242,239,232,.25);margin-bottom:20px">Coda &nbsp;&mdash;&nbsp; The Story Keeps Unfolding</p>
-
-      <p style="margin-bottom:20px">Two days after we recorded this episode, CLC and CREW went into D.C. District Court asking a federal judge to declare Advisory Opinion 2024-01 unlawful — the ruling that handed one man the keys to a presidential campaign while calling it independent. Before the advisory opinion, Citizens United broke our campaign finance system and made it like old Twitter — chaotic, loud, and theoretically open to everyone. After it, the same system became X: the reach goes to whoever can buy it.</p>
-      <p style="margin-bottom:20px">The advisory opinion wasn't even about Musk. It was a request from a Democratic state PAC in Texas whose stated purpose was electing Democrats to state and local office. They asked whether they could coordinate canvassing with their candidates. Three Republican commissioners and one Democratic commissioner said yes. And Musk was standing right there with $291 million when they did.</p>
-      <p style="margin-bottom:20px">The best a court win can do is make the next attacker nervous. The FEC has been without a quorum since April 2025 — cannot meet, cannot enforce. The constitutional argument underneath the campaign finance argument: the cop cannot be commanded by the person it's supposed to arrest.</p>
-      <p style="margin-bottom:20px">Today the New York Times reported that the biggest donor in the 2026 midterms is not Elon Musk. It's Andreessen Horowitz — $115 million and counting. Musk is third at $85 million, and he hasn't started yet. The day after Election Day 2024, Andreessen said on a podcast: "My conclusion is this has to be a permanent role that we play."</p>
-      <p style="margin-bottom:12px">Different attacker. Same playbook. Bigger money. Earlier start.</p>
-      <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(18px,2.2vw,24px);color:var(--paper);line-height:1.5;margin-bottom:48px">Twitter cost $44 billion. Not for the company. For the thermostat — the thing that decides what an entire country argues about at breakfast. Next time: how did $44 billion buy America's attention span?</p>
-
-      <p style="font-size:11px;color:rgba(242,239,232,.2);font-family:'DM Sans',sans-serif;letter-spacing:.03em;line-height:1.75;border-top:1px solid rgba(242,239,232,.06);padding-top:20px">Senate PSI Minority Staff Memorandum, April 27, 2025 &middot; SEC Litigation Release LR-26548 &middot; Georgia SEB case SEB2024-151 &middot; FEC Advisory Opinion 2024-01 &middot; Scherer &amp; Dawsey, Washington Post, November 15, 2024 &middot; Judd Legum, Oligarch Watch, May 8, 2026 &middot; Theodore Schleifer, New York Times, May 13, 2026 &middot; Erin Chlopak and Brendan Fischer, Campaign Legal Center</p>
-    </div>
-  </section>
-
-  <!-- ELON CHECK -->
-  <section style="padding:72px 40px 0;max-width:900px;margin:0 auto">
-    <div style="border-top:3px solid var(--red);padding-top:44px;margin-bottom:32px">
-      <p style="font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--red);font-family:'DM Sans',sans-serif;margin-bottom:10px">What to do with what you just heard</p>
-      <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,5.5vw,72px);line-height:.88;color:var(--paper);margin-bottom:16px">The Elon Check</h2>
-      <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(15px,1.7vw,19px);color:rgba(242,239,232,.45);line-height:1.55;max-width:640px">Not for posting a correction. For the conversation with the person you actually know.</p>
-    </div>
-    <div style="display:flex;flex-direction:column;gap:1px;background:rgba(242,239,232,.05);max-width:720px;margin-bottom:36px">
-      <div style="display:grid;grid-template-columns:52px 1fr;background:var(--ink)">
-        <div style="background:var(--red);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:30px;color:var(--paper)">E</div>
-        <div style="padding:18px 22px">
-          <p style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif;margin-bottom:5px">Examine the source</p>
-          <p style="font-size:14px;color:rgba(242,239,232,.6);line-height:1.6;font-family:'DM Sans',sans-serif">Not the headline — the origin. Who paid for this? In 2024, Musk's operation ran four fake brands simultaneously: Future Coalition PAC, Duty to America PAC, Americans for Consumer Protection, Progress 2028. The name that sounds most official is often the one that least is.</p>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:52px 1fr;background:var(--ink)">
-        <div style="background:var(--red);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:30px;color:var(--paper)">L</div>
-        <div style="padding:18px 22px">
-          <p style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif;margin-bottom:5px">Look for the story underneath</p>
-          <p style="font-size:14px;color:rgba(242,239,232,.6);line-height:1.6;font-family:'DM Sans',sans-serif">Disinformation doesn't travel as false facts. It travels as stories — with a villain, a victim, a satisfying ending. Before you ask whether something is true, ask what story it's trying to tell and whose anger it's trying to feed.</p>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:52px 1fr;background:var(--ink)">
-        <div style="background:var(--red);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:30px;color:var(--paper)">O</div>
-        <div style="padding:18px 22px">
-          <p style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif;margin-bottom:5px">Observe who's sharing it</p>
-          <p style="font-size:14px;color:rgba(242,239,232,.6);line-height:1.6;font-family:'DM Sans',sans-serif">Is this from someone you know, or an account that appeared eight months ago with fifty thousand followers? The path the content traveled is part of the content.</p>
-        </div>
-      </div>
-      <div style="display:grid;grid-template-columns:52px 1fr;background:var(--ink)">
-        <div style="background:var(--red);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:30px;color:var(--paper)">N</div>
-        <div style="padding:18px 22px">
-          <p style="font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif;margin-bottom:5px">Narrate the real story</p>
-          <p style="font-size:14px;color:rgba(242,239,232,.6);line-height:1.6;font-family:'DM Sans',sans-serif">Not to win an argument. Not to post a correction. To give the person next to you — the one who trusts you — a better story than the one they just got handed. Facts don't beat stories. Better stories beat stories.</p>
-        </div>
-      </div>
-    </div>
-    <div style="border-left:3px solid rgba(200,39,26,.4);padding-left:24px;max-width:680px;margin-bottom:24px">
-      <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(15px,1.6vw,17px);color:rgba(242,239,232,.65);line-height:1.65;margin-bottom:14px">Maria is 58, lives in suburban Detroit, and has been sharing a Facebook post claiming a new Michigan law will let the government seize guns from anyone who voted third-party in 2024. The source is a page called "Patriots for Constitutional Rights — Michigan." Created September 2024. No address. No named leadership. 4,000 shares.</p>
-      <p style="font-size:14px;color:rgba(242,239,232,.45);line-height:1.65;font-family:'DM Sans',sans-serif;margin-bottom:14px">You call her. You say: "Hey, I saw that post. I'm not trying to make you feel bad — but I looked at that page and it was created two months before the election, there's nobody's name on it, and I can't find any record of this law. I think someone is trying to scare people into not trusting the government right now, and whoever's doing it doesn't want you to know who they are."</p>
-      <p style="font-size:14px;color:rgba(242,239,232,.45);line-height:1.65;font-family:'DM Sans',sans-serif">That conversation took four minutes. Maria didn't share the post again. She sent the real story to three people in her book club. <strong style="color:rgba(242,239,232,.7)">That's the choir.</strong></p>
-    </div>
-    <p style="font-size:13px;color:rgba(242,239,232,.3);line-height:1.7;font-family:'DM Sans',sans-serif;max-width:640px;margin-bottom:0">The kill chain Musk ran against American democracy depended on one thing above all: that we would process what was happening to us alone, through screens, in the dark. The Elon Check is the analog to that. It's slow. It's human. It doesn't scale the way a suppression operation scales. That's exactly why it works.</p>
-  </section>
-
-  <!-- EP1 FOOTER -->
-  <section style="padding:48px 40px 80px;max-width:900px;margin:0 auto">
-    <div style="border-top:1px solid rgba(242,239,232,.07);padding-top:32px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px">
-      <button type="button" onclick="showMain()" style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.12em;color:rgba(242,239,232,.28);background:transparent;border:1px solid rgba(242,239,232,.12);padding:11px 24px;cursor:pointer" onmouseover="this.style.color='var(--paper)';this.style.borderColor='rgba(242,239,232,.35)'" onmouseout="this.style.color='rgba(242,239,232,.28)';this.style.borderColor='rgba(242,239,232,.12)'">&larr; Back</button>
-      <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.1em;background:var(--red);color:var(--paper);padding:13px 30px;text-decoration:none" onmouseover="this.style.background='var(--red-dark)'" onmouseout="this.style.background='var(--red)'">Join</a>
-    </div>
-  </section>
-
 </div>
 
 <script>
-// Reveal on scroll
-const observer = new IntersectionObserver(entries => {
-  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
-}, { threshold: .08, rootMargin: '0px 0px -36px 0px' });
-document.querySelectorAll('.reveal').forEach(r => observer.observe(r));
-// Pages
-const pages = ['main-site','action-page','why-page','good-page','counts-page','news-page','episode1-page','pitch-page'];
-const hashMap = { '#action':'action-page', '#why':'why-page', '#good':'good-page', '#counts':'counts-page', '#news':'news-page', '#episode1':'episode1-page', '#pitch':'pitch-page' };
-const btnMap  = { '#why':'why', '#action':'action', '#news':'news', '#episode1':'ep1', '#pitch':'pitch' };
-function showPage(id, activeBtn) {
-  pages.forEach(p => { const el = document.getElementById(p); if (el) el.style.display = p === id ? 'block' : 'none'; });
-  setActiveNavBtn(activeBtn);
-  closeDrawer();
-  requestAnimationFrame(() => window.scrollTo(0,0));
+const API = ""; // same-origin
+let DISPATCHES = [];
+
+function formatDisplayDate(iso){
+  if (!iso) return "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) return iso; // already display text (legacy row), show as-is
+  const d = new Date(iso + "T00:00:00");
+  return isNaN(d) ? iso : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
-function showEpisode1(){ try{history.pushState(null,'','#episode1')}catch(e){} showPage('episode1-page','ep1'); }
-function showPitch()    { try{history.pushState(null,'','#pitch')}catch(e){}    showPage('pitch-page','pitch'); }
-function showAction() { try{history.pushState(null,'','#action')}catch(e){} showPage('action-page','action'); }
-function showMain()   { try{history.pushState(null,'',window.location.pathname)}catch(e){} showPage('main-site',null); }
-function showWhy()    { try{history.pushState(null,'','#why')}catch(e){}    showPage('why-page','why'); }
-function showGood()   { try{history.pushState(null,'','#good')}catch(e){}   showPage('good-page',null); }
-function showCounts() { try{history.pushState(null,'','#counts')}catch(e){} showPage('counts-page',null); }
-function showNews()   { try{history.pushState(null,'','#news')}catch(e){}   showPage('news-page','news'); }
-(function() { const h = window.location.hash; if (hashMap[h]) showPage(hashMap[h], btnMap[h]||null); })();
-window.addEventListener('popstate', function() {
-  const h = window.location.hash;
-  hashMap[h] ? showPage(hashMap[h], btnMap[h]||null) : showPage('main-site',null);
-});
-function setActiveNavBtn(which) {
-  document.querySelectorAll('.nav-page-btn').forEach(btn => btn.classList.remove('active'));
-  if (which === 'why') document.getElementById('nav-why-btn')?.classList.add('active');
-  if (which === 'action') document.getElementById('nav-action-btn')?.classList.add('active');
-  if (which === 'news') document.getElementById('nav-news-btn')?.classList.add('active');
-  if (which === 'ep1') document.getElementById('nav-ep1-btn')?.classList.add('active');
-  if (which === 'pitch') document.getElementById('nav-pitch-btn')?.classList.add('active');
+
+async function loadDispatches(){
+  const res = await fetch(`${API}/api/dispatches`);
+  DISPATCHES = await res.json();
+  renderWire();
 }
-// Hamburger
-function openDrawer()  { document.getElementById('nav-drawer').classList.add('open'); document.getElementById('nav-hamburger').classList.add('open'); }
-function closeDrawer() { document.getElementById('nav-drawer').classList.remove('open'); document.getElementById('nav-hamburger').classList.remove('open'); }
-const ham = document.getElementById('nav-hamburger');
-if (ham) ham.addEventListener('click', () => document.getElementById('nav-drawer').classList.contains('open') ? closeDrawer() : openDrawer());
-// Countdown to Nov 4, 2026
-function updateCountdown() {
-  const diff = new Date('2026-11-04T00:00:00') - new Date();
-  if (diff <= 0) return;
-  const vals = [Math.floor(diff/864e5), Math.floor((diff%864e5)/36e5), Math.floor((diff%36e5)/6e4), Math.floor((diff%6e4)/1e3)];
-  ['cd-days','cd-hours','cd-mins','cd-secs'].forEach((id,i) => { const el = document.getElementById(id); if (el) el.textContent = vals[i].toString().padStart(2,'0'); });
+
+async function loadSources(){
+  const el = document.getElementById('sourcesSection');
+  if (!el) return;
+  const res = await fetch(`${API}/api/sources`);
+  const sources = await res.json();
+  if (!sources.length){ el.innerHTML = ''; return; }
+  el.innerHTML = `
+    <h4>Sources</h4>
+    <div class="sources-list">
+      ${sources.map(s => `
+        <div class="source-item">
+          <span class="source-name">${s.outlet}</span>
+          <span class="source-links">
+            ${s.subscribe_url ? `<a href="${s.subscribe_url}" target="_blank" rel="noopener">Subscribe</a>` : ''}
+            ${s.tip_url ? `<a href="${s.tip_url}" target="_blank" rel="noopener">Tip</a>` : ''}
+          </span>
+        </div>
+      `).join('')}
+    </div>
+  `;
 }
-updateCountdown();
-setInterval(updateCountdown, 1000);
+
+async function loadTopHeadlines(){
+  const res = await fetch(`${API}/api/headlines`);
+  const headlines = await res.json();
+  const el = document.getElementById('topHeadlines');
+  el.innerHTML = headlines.map((h, i) => `
+    ${h.image_url ? `<img class="thl-img" src="${h.image_url}" alt="">` : ''}
+    ${h.link
+      ? `<a class="${i % 2 === 0 ? 'thl-red' : 'thl-black'}" href="${h.link}" target="_blank" rel="noopener">${h.text}</a>`
+      : `<a class="${i % 2 === 0 ? 'thl-red' : 'thl-black'}" style="cursor:default;">${h.text}</a>`
+    }
+  `).join('');
+
+  renderHeadlineHistory(headlines);
+}
+
+function renderHeadlineHistory(headlines){
+  const el = document.getElementById('headlineHistory');
+  if (!headlines.length) { el.innerHTML = ''; return; }
+  const sorted = [...headlines].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  el.innerHTML = `
+    <h3>Headline History</h3>
+    <ul>
+      ${sorted.map(h => `
+        <li>
+          <span class="hh-date">${formatDisplayDate(h.created_at.slice(0,10))}</span>
+          ${h.link ? `<a href="${h.link}" target="_blank" rel="noopener">${h.text}</a>` : `<span>${h.text}</span>`}
+        </li>
+      `).join('')}
+    </ul>
+  `;
+}
+
+// ---- Wire (Drudge-style) view ----
+const SECTION_MAP = {
+  "Data Centers": ["Data Centers"],
+  "People Power": ["Labor", "Immigration", "Courts & Rights", "People Power"],
+  "Indie Media": ["Politics", "Media", "Foreign Policy", "Indie Media"],
+};
+function sectionFor(beat){
+  for (const [section, beats] of Object.entries(SECTION_MAP)) {
+    if (beats.includes(beat)) return section;
+  }
+  return "Indie Media";
+}
+
+function renderWire(){
+  const wire = document.getElementById('wireView');
+  const rest = DISPATCHES.filter(d => !d.pinned);
+  if (rest.length === 0){ wire.innerHTML = `<p class="wire-empty">No dispatches yet — add one in the CMS.</p>`; return; }
+
+  const alsoBig = rest.slice(0, 15); // up to 15 secondary headlines
+
+  const sectionOrder = ["Indie Media", "Data Centers", "People Power"];
+  const bySection = { "Indie Media": [], "Data Centers": [], "People Power": [] };
+  rest.forEach(d => bySection[sectionFor(d.beat)].push(d));
+
+  wire.innerHTML = `
+    <div class="wire-alsobig">
+      ${alsoBig.map(d => `
+        <div class="wire-item">
+          <a href="/go/${d.id}" target="_blank" rel="noopener">${d.headline}</a>
+          <span class="wire-meta">${d.outlet} — ${formatDisplayDate(d.date)}${d.tip_url ? ` · <a href="${d.tip_url}" target="_blank" rel="noopener" style="color:var(--wire-blue);">Tip ${d.outlet}</a>` : ''}</span>
+        </div>
+      `).join('')}
+    </div>
+
+    <div class="wire-sources" id="sourcesSection"></div>
+
+    <div class="wire-columns">
+      ${sectionOrder.map(sec => `
+        <div class="wire-col">
+          <h4>${sec}</h4>
+          ${bySection[sec].length ? bySection[sec].map(d => `
+            <div class="wire-item">
+              <a href="/go/${d.id}" target="_blank" rel="noopener">${d.headline}</a>
+              <span class="wire-meta">${d.outlet} — ${formatDisplayDate(d.date)}${d.tip_url ? ` · <a href="${d.tip_url}" target="_blank" rel="noopener" style="color:var(--wire-blue);">Tip ${d.outlet}</a>` : ''}</span>
+            </div>
+          `).join('') : `<div class="wire-empty">No dispatches yet — add one in the CMS.</div>`}
+        </div>
+      `).join('')}
+    </div>
+  `;
+  loadSources();
+}
+
+// dateline counters (calculated live so they never go stale)
+const MIDTERM_DATE = new Date('2026-11-03T00:00:00');
+const IRAN_WAR_START = new Date('2026-02-28T00:00:00'); // date the current round of US-Iran fighting began
+function daysBetween(a, b){ return Math.round((b - a) / 86400000); }
+const today = new Date();
+const daysToMidterms = daysBetween(today, MIDTERM_DATE);
+const warDay = daysBetween(IRAN_WAR_START, today) + 1;
+document.getElementById('dateline').textContent =
+  `${daysToMidterms} DAYS TO THE MIDTERMS · DAY ${warDay} OF THE IRAN WAR`;
+
+// tip modal
+const tipOverlay = document.getElementById('tipOverlay');
+const tipSlider = document.getElementById('tipSlider');
+const amountValue = document.getElementById('amountValue');
+const tipRecipient = document.getElementById('tipRecipient');
+const tipConfirm = document.getElementById('tipConfirm');
+let currentTipDispatchId = null;
+
+function openTipModal(name, dispatchId){
+  tipRecipient.textContent = name;
+  currentTipDispatchId = dispatchId;
+  tipConfirm.textContent = '';
+  setAmount(5);
+  tipOverlay.style.display = 'flex';
+}
+function closeTipModal(){ tipOverlay.style.display = 'none'; }
+tipOverlay.addEventListener('click', e => { if(e.target===tipOverlay) closeTipModal(); });
+function setAmount(val){
+  tipSlider.value = val;
+  amountValue.textContent = val;
+  document.querySelectorAll('.qa').forEach(b=>{
+    const active = Number(b.dataset.amt)===Number(val);
+    b.style.background = active ? 'var(--support-teal)' : 'transparent';
+    b.style.color = active ? '#F3EFE4' : 'var(--text)';
+  });
+}
+tipSlider.addEventListener('input', () => setAmount(tipSlider.value));
+document.querySelectorAll('.qa').forEach(b => b.addEventListener('click', () => setAmount(b.dataset.amt)));
+function sendTip(){
+  const amt = tipSlider.value;
+  tipConfirm.textContent = `✓ THANKS — $${amt} ON ITS WAY TO ${tipRecipient.textContent.toUpperCase()}`;
+  fetch(`${API}/api/track-tip`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({dispatch_id: currentTipDispatchId, amount: Number(amt)})});
+}
+
+loadDispatches();
+loadTopHeadlines();
+fetch(`${API}/api/track-view`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({view_type:'wire'})});
 </script>
 
-<div id="pitch-page" style="display:none;min-height:100vh;background:var(--ink)">
-
-<!-- DECK NAV -->
-<div style="position:sticky;top:52px;z-index:50;background:rgba(14,14,14,.97);backdrop-filter:blur(12px);border-bottom:1px solid rgba(242,239,232,.07);padding:10px 40px;display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap">
-  <span style="font-family:'Bebas Neue',sans-serif;font-size:12px;letter-spacing:.18em;color:rgba(242,239,232,.25)">PITCH DECK — THE TRILLIONAIRE KILL CHAIN</span>
-  <div style="display:flex;gap:8px;align-items:center">
-    <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:.1em;background:var(--red);color:var(--paper);padding:9px 20px;text-decoration:none;transition:background .2s" onmouseover="this.style.background='var(--red-dark)'" onmouseout="this.style.background='var(--red)'">Join</a>
-    <button type="button" onclick="showMain()" style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.1em;color:rgba(242,239,232,.3);background:transparent;border:1px solid rgba(242,239,232,.12);padding:9px 18px;cursor:pointer;transition:all .2s" onmouseover="this.style.color='var(--paper)';this.style.borderColor='rgba(242,239,232,.35)'" onmouseout="this.style.color='rgba(242,239,232,.3)';this.style.borderColor='rgba(242,239,232,.12)'">← Back</button>
-  </div>
-</div>
-
-<!-- SLIDE 1: THE PROBLEM -->
-<section style="min-height:80vh;display:flex;flex-direction:column;justify-content:center;padding:80px 40px;border-bottom:1px solid rgba(242,239,232,.07);position:relative;overflow:hidden">
-  <div style="position:absolute;top:50%;right:-40px;transform:translateY(-50%);font-family:'Bebas Neue',sans-serif;font-size:clamp(200px,30vw,420px);color:rgba(200,39,26,.04);line-height:1;pointer-events:none;user-select:none">01</div>
-  <div style="max-width:860px;position:relative">
-    <p style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:.28em;text-transform:uppercase;color:rgba(200,39,26,.5);margin-bottom:20px">The Problem</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(48px,7vw,96px);line-height:.88;color:var(--paper);margin-bottom:28px">The $291 Million<br><span style="color:var(--red)">Playbook</span></h2>
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(20px,2.5vw,30px);color:rgba(242,239,232,.8);line-height:1.45;max-width:720px;margin-bottom:20px">One man spent $291 million to elect the person controlling his investigators. The investigations vanished. His net worth shot up $400 billion. Now every billionaire wants sloppy seconds.</p>
-    <p style="font-size:15px;color:rgba(242,239,232,.4);line-height:1.75;max-width:640px;font-family:'DM Sans',sans-serif">This is not a story about one bad actor. It's a seven-stage attack on American democracy that is already being replicated — by different people, in different races, with the same playbook.</p>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:2px;margin-top:40px;max-width:720px">
-      <div style="background:rgba(242,239,232,.03);border:1px solid rgba(242,239,232,.07);padding:20px 18px">
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,48px);color:var(--red);line-height:1;margin-bottom:6px">$291M</div>
-        <div style="font-size:12px;color:rgba(242,239,232,.4);font-family:'DM Sans',sans-serif;line-height:1.4">Largest individual political spend in American history</div>
-      </div>
-      <div style="background:rgba(242,239,232,.03);border:1px solid rgba(242,239,232,.07);border-left:none;padding:20px 18px">
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,48px);color:var(--red);line-height:1;margin-bottom:6px">$400B+</div>
-        <div style="font-size:12px;color:rgba(242,239,232,.4);font-family:'DM Sans',sans-serif;line-height:1.4">Wealth gained in six weeks once his investigators disappeared</div>
-      </div>
-      <div style="background:rgba(242,239,232,.03);border:1px solid rgba(242,239,232,.07);border-left:none;padding:20px 18px">
-        <div style="font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,4vw,48px);color:var(--red);line-height:1;margin-bottom:6px">7</div>
-        <div style="font-size:12px;color:rgba(242,239,232,.4);font-family:'DM Sans',sans-serif;line-height:1.4">Stages in the attack — each one already running in 2026</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- SLIDE 2: IT'S ALREADY REPEATING -->
-<section style="padding:80px 40px;border-bottom:1px solid rgba(242,239,232,.07);background:rgba(200,39,26,.04);position:relative;overflow:hidden">
-  <div style="position:absolute;top:50%;right:-40px;transform:translateY(-50%);font-family:'Bebas Neue',sans-serif;font-size:clamp(200px,30vw,420px);color:rgba(200,39,26,.04);line-height:1;pointer-events:none;user-select:none">02</div>
-  <div style="max-width:860px;position:relative">
-    <p style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:.28em;text-transform:uppercase;color:rgba(200,39,26,.5);margin-bottom:20px">The Urgency</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,6vw,80px);line-height:.9;color:var(--paper);margin-bottom:24px">He Went for the Crown Jewels.<br><span style="color:var(--red)">Now They're All Lining Up.</span></h2>
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2vw,22px);color:rgba(242,239,232,.7);line-height:1.55;max-width:700px;margin-bottom:32px">Andreessen Horowitz is already the largest donor in the 2026 cycle — bigger than Musk was at this point last cycle. Crypto PACs have poured $133M into Senate races. The FEC has no quorum and cannot enforce the law. The playbook is being photocopied in real time.</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:2px;max-width:720px">
-      <div style="background:var(--ink);border:1px solid rgba(200,39,26,.2);padding:20px 18px">
-        <div style="font-size:9px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:rgba(200,39,26,.55);font-family:'DM Sans',sans-serif;margin-bottom:8px">Virginia, April 2026</div>
-        <div style="font-size:13px;color:rgba(242,239,232,.55);font-family:'DM Sans',sans-serif;line-height:1.5">Same mailers. Same suppression ops. Different state. Different billionaire.</div>
-      </div>
-      <div style="background:var(--ink);border:1px solid rgba(200,39,26,.2);border-left:none;padding:20px 18px">
-        <div style="font-size:9px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:rgba(200,39,26,.55);font-family:'DM Sans',sans-serif;margin-bottom:8px">Senate, 2026</div>
-        <div style="font-size:13px;color:rgba(242,239,232,.55);font-family:'DM Sans',sans-serif;line-height:1.5">Crypto industry passed a bill most voters never knew existed. $133M. Both parties. Every primary.</div>
-      </div>
-      <div style="background:var(--ink);border:1px solid rgba(200,39,26,.2);border-left:none;padding:20px 18px">
-        <div style="font-size:9px;font-weight:500;letter-spacing:.2em;text-transform:uppercase;color:rgba(200,39,26,.55);font-family:'DM Sans',sans-serif;margin-bottom:8px">50 Families, 2026</div>
-        <div style="font-size:13px;color:rgba(242,239,232,.55);font-family:'DM Sans',sans-serif;line-height:1.5">$430M+ total. AI. Crypto. Carbon. Three industries with one shared need: a government that can't regulate them.</div>
-      </div>
-    </div>
-    <p style="margin-top:24px;font-family:'DM Serif Display',serif;font-style:italic;font-size:16px;color:rgba(242,239,232,.4);max-width:640px;line-height:1.55">Projected to break the $1 billion midterm record before November. Different attackers. Same playbook. And most voters have no idea it's happening.</p>
-  </div>
-</section>
-
-<!-- SLIDE 3: THE SOLUTION -->
-<section style="padding:80px 40px;border-bottom:1px solid rgba(242,239,232,.07);position:relative;overflow:hidden">
-  <div style="position:absolute;top:50%;right:-40px;transform:translateY(-50%);font-family:'Bebas Neue',sans-serif;font-size:clamp(200px,30vw,420px);color:rgba(200,39,26,.04);line-height:1;pointer-events:none;user-select:none">03</div>
-  <div style="max-width:860px;position:relative">
-    <p style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:.28em;text-transform:uppercase;color:rgba(200,39,26,.5);margin-bottom:20px">The Proof</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,6vw,80px);line-height:.9;color:var(--paper);margin-bottom:24px">Only a Better Story<br><span style="color:var(--red)">Wins.</span></h2>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:start;margin-bottom:32px">
-      <div>
-        <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2vw,22px);color:rgba(242,239,232,.8);line-height:1.55;margin-bottom:18px">Orbán controlled 80% of Hungarian media for 16 years. Russian AI ran coordinated personas on TikTok. Private Facebook networks with 100,000 members flooded the algorithm.</p>
-        <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2vw,22px);color:var(--paper);line-height:1.55">Magyar won in a landslide. YouTube. A ground game. People knocking on doors in villages Orbán thought were permanently his.</p>
-      </div>
-      <div style="border-left:4px solid var(--red);padding-left:28px">
-        <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(19px,2.3vw,26px);color:var(--paper);line-height:1.45;margin-bottom:16px">The machine could not manufacture a neighbor, in person, with a story that was true.</p>
-        <p style="font-size:14px;color:rgba(242,239,232,.5);line-height:1.65;font-family:'DM Sans',sans-serif">AI can generate a video of your neighbor. It cannot be your neighbor. The information that travels through trusted human relationships is the one kind artificial influence cannot manufacture.</p>
-      </div>
-    </div>
-    <div style="background:rgba(242,239,232,.04);border:1px solid rgba(242,239,232,.07);border-left:4px solid var(--red);padding:24px 28px;max-width:720px">
-      <p style="font-family:'Bebas Neue',sans-serif;font-size:11px;letter-spacing:.2em;color:rgba(200,39,26,.6);margin-bottom:10px">The Controlling Idea</p>
-      <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(18px,2.2vw,24px);color:var(--paper);line-height:1.45">Democracy can only survive in America, given its current vulnerabilities, if humans use our real-life connections to inform, activate, and multiply our best intentions.</p>
-      <p style="font-size:12px;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif;margin-top:10px">This is the controlling idea of the film. It is also the strategy.</p>
-    </div>
-  </div>
-</section>
-
-<!-- SLIDE 4: THE PROJECT -->
-<section style="padding:80px 40px;border-bottom:1px solid rgba(242,239,232,.07);background:rgba(242,239,232,.02);position:relative;overflow:hidden">
-  <div style="position:absolute;top:50%;right:-40px;transform:translateY(-50%);font-family:'Bebas Neue',sans-serif;font-size:clamp(200px,30vw,420px);color:rgba(200,39,26,.04);line-height:1;pointer-events:none;user-select:none">04</div>
-  <div style="max-width:860px;position:relative">
-    <p style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:.28em;text-transform:uppercase;color:rgba(200,39,26,.5);margin-bottom:20px">The Project</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,6vw,80px);line-height:.9;color:var(--paper);margin-bottom:8px">The Trillionaire<br><span style="color:var(--red)">Kill Chain</span></h2>
-    <p style="font-size:11px;font-weight:500;letter-spacing:.14em;color:rgba(242,239,232,.25);font-family:'DM Sans',sans-serif;text-transform:uppercase;margin-bottom:28px">A limited podcast series building toward a documentary film</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-bottom:36px">
-      <div>
-        <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(16px,1.8vw,20px);color:rgba(242,239,232,.65);line-height:1.65;margin-bottom:16px">Each episode of the podcast builds the case — the money, the lies, the people who knew. By September, the record is complete. Then it becomes a film. <strong style="color:var(--paper);font-style:normal">Out before people vote.</strong></p>
-        <p style="font-size:13px;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif;letter-spacing:.04em;margin-bottom:20px">60–75 min documentary · In the tradition of: <em>Serial · The Big Short · All the President's Men</em></p>
-        <p style="font-size:13px;color:rgba(242,239,232,.4);line-height:1.65;font-family:'DM Sans',sans-serif">Better known as LOLGOP, Jason Sattler has spent 15 years covering how the right broke democracy for <em>USA Today</em>, Alternet, and everywhere else. This is what it's all been building to.</p>
-      </div>
-      <div>
-        <p style="font-size:10px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:rgba(242,239,232,.25);font-family:'DM Sans',sans-serif;margin-bottom:14px">The Seven Episodes</p>
-        <div style="display:flex;flex-direction:column;gap:2px">
-          <div style="display:grid;grid-template-columns:36px 1fr;background:rgba(242,239,232,.04);border:1px solid rgba(242,239,232,.07)">
-            <div style="background:var(--red);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--paper)">01</div>
-            <div style="padding:10px 14px;font-size:12px;color:rgba(242,239,232,.5);font-family:'DM Sans',sans-serif">Reconnaissance: What Made It Possible</div>
-          </div>
-          <div style="display:grid;grid-template-columns:36px 1fr;background:rgba(242,239,232,.04);border:1px solid rgba(242,239,232,.07);border-top:none">
-            <div style="background:rgba(200,39,26,.4);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--paper)">02</div>
-            <div style="padding:10px 14px;font-size:12px;color:rgba(242,239,232,.5);font-family:'DM Sans',sans-serif">Weaponization: The $44B Platform</div>
-          </div>
-          <div style="display:grid;grid-template-columns:36px 1fr;background:rgba(242,239,232,.04);border:1px solid rgba(242,239,232,.07);border-top:none">
-            <div style="background:rgba(200,39,26,.4);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--paper)">03</div>
-            <div style="padding:10px 14px;font-size:12px;color:rgba(242,239,232,.5);font-family:'DM Sans',sans-serif">Delivery: The $291M Operation</div>
-          </div>
-          <div style="display:grid;grid-template-columns:36px 1fr;background:rgba(242,239,232,.04);border:1px solid rgba(242,239,232,.07);border-top:none">
-            <div style="background:rgba(200,39,26,.4);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--paper)">04</div>
-            <div style="padding:10px 14px;font-size:12px;color:rgba(242,239,232,.5);font-family:'DM Sans',sans-serif">Exploitation: Why Facts Failed</div>
-          </div>
-          <div style="display:grid;grid-template-columns:36px 1fr;background:rgba(242,239,232,.04);border:1px solid rgba(242,239,232,.07);border-top:none">
-            <div style="background:rgba(200,39,26,.4);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:16px;color:var(--paper)">05</div>
-            <div style="padding:10px 14px;font-size:12px;color:rgba(242,239,232,.5);font-family:'DM Sans',sans-serif">Command &amp; Control: Too Big to Sanction</div>
-          </div>
-          <div style="display:grid;grid-template-columns:36px 1fr;background:rgba(242,239,232,.04);border:1px solid rgba(242,239,232,.07);border-top:none">
-            <div style="background:rgba(200,39,26,.25);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:16px;color:rgba(242,239,232,.5)">06</div>
-            <div style="padding:10px 14px;font-size:12px;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif">The Counter: How Humans Win</div>
-          </div>
-          <div style="display:grid;grid-template-columns:36px 1fr;background:rgba(242,239,232,.04);border:1px solid rgba(242,239,232,.07);border-top:none">
-            <div style="background:rgba(200,39,26,.25);display:flex;align-items:center;justify-content:center;font-family:'Bebas Neue',sans-serif;font-size:16px;color:rgba(242,239,232,.5)">07</div>
-            <div style="padding:10px 14px;font-size:12px;color:rgba(242,239,232,.3);font-family:'DM Sans',sans-serif">The Film — September 2026</div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- SLIDE 5: THE AUDIENCE -->
-<section style="padding:80px 40px;border-bottom:1px solid rgba(242,239,232,.07);position:relative;overflow:hidden">
-  <div style="position:absolute;top:50%;right:-40px;transform:translateY(-50%);font-family:'Bebas Neue',sans-serif;font-size:clamp(200px,30vw,420px);color:rgba(200,39,26,.04);line-height:1;pointer-events:none;user-select:none">05</div>
-  <div style="max-width:860px;position:relative">
-    <p style="font-family:'DM Sans',sans-serif;font-size:10px;font-weight:500;letter-spacing:.28em;text-transform:uppercase;color:rgba(200,39,26,.5);margin-bottom:20px">The Audience</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(40px,6vw,80px);line-height:.9;color:var(--paper);margin-bottom:24px">Made for the<br><span style="color:var(--red)">20% Who Move the 80%</span></h2>
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(17px,2vw,22px);color:rgba(242,239,232,.7);line-height:1.55;max-width:700px;margin-bottom:32px">People who stayed up on election night. People who saw something go wrong and wanted to understand exactly how. People who know this story has to reach their neighbors before October — and who have those neighbors to reach.</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:2px;max-width:720px">
-      <div style="background:rgba(242,239,232,.03);border:1px solid rgba(242,239,232,.07);padding:24px 22px">
-        <p style="font-size:10px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:rgba(242,239,232,.25);font-family:'DM Sans',sans-serif;margin-bottom:12px">Primary audience</p>
-        <p style="font-size:14px;color:rgba(242,239,232,.6);font-family:'DM Sans',sans-serif;line-height:1.65">Engaged voters who follow politics closely — the podcast audience who already understands the stakes and will share this with the people around them who don't.</p>
-      </div>
-      <div style="background:rgba(242,239,232,.03);border:1px solid rgba(242,239,232,.07);border-left:none;padding:24px 22px">
-        <p style="font-size:10px;font-weight:500;letter-spacing:.18em;text-transform:uppercase;color:rgba(242,239,232,.25);font-family:'DM Sans',sans-serif;margin-bottom:12px">The film's audience</p>
-        <p style="font-size:14px;color:rgba(242,239,232,.6);font-family:'DM Sans',sans-serif;line-height:1.65">Their neighbors. The book club. The family dinner. People who don't follow politics the way you do but will watch a 70-minute film if someone they trust hands it to them before they vote.</p>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- SLIDE 6: THE ASK -->
-<section style="padding:80px 40px;background:var(--paper);color:var(--ink);border-left:8px solid var(--red);position:relative;overflow:hidden">
-  <div style="position:absolute;top:-20px;right:-10px;font-family:'Bebas Neue',sans-serif;font-size:380px;color:rgba(14,14,14,.04);line-height:1;pointer-events:none;user-select:none">$10</div>
-  <div style="max-width:860px;position:relative">
-    <p style="font-size:10px;font-weight:500;letter-spacing:.28em;text-transform:uppercase;color:var(--red);margin-bottom:20px;font-family:'DM Sans',sans-serif">The Ask</p>
-    <h2 style="font-family:'Bebas Neue',sans-serif;font-size:clamp(44px,6.5vw,88px);line-height:.9;color:var(--ink);margin-bottom:24px">Join the<br><em style="font-style:normal;color:var(--red)">Department of Defense.</em><br>$10/Month.</h2>
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(15px,1.7vw,18px);color:rgba(14,14,14,.4);line-height:1.5;max-width:640px;margin-bottom:20px">The name's open. Somebody should actually defend the country.</p>
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(18px,2vw,24px);color:rgba(14,14,14,.6);line-height:1.55;max-width:640px;margin-bottom:12px">He spent $291 million running targeted psychological operations in Dearborn, in your county, in your family's group chat. We're building the film that explains exactly how it worked — and deploying it directly to the 20% of voters who can still be moved before October.</p>
-    <p style="font-family:'DM Serif Display',serif;font-style:italic;font-size:clamp(16px,1.8vw,20px);color:rgba(14,14,14,.45);line-height:1.6;max-width:640px;margin-bottom:36px">200 Producers at $10/month closes the budget. Producers get exclusive intel updates — the story as it's being reported, before anyone else — and the tools to use it at their own dinner table.</p>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;margin-bottom:40px">
-      <div>
-        <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--red);margin-bottom:14px;font-family:'DM Sans',sans-serif;font-weight:500">What you get</div>
-        <div style="font-size:13px;color:rgba(14,14,14,.55);padding:10px 0;border-bottom:1px solid rgba(14,14,14,.07);display:flex;gap:10px;align-items:flex-start;line-height:1.4"><span style="color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:16px;flex-shrink:0">→</span>Your name in the credits</div>
-        <div style="font-size:13px;color:rgba(14,14,14,.55);padding:10px 0;border-bottom:1px solid rgba(14,14,14,.07);display:flex;gap:10px;align-items:flex-start;line-height:1.4"><span style="color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:16px;flex-shrink:0">→</span>Exclusive intel updates — the story as it's being reported, before anyone else</div>
-        <div style="font-size:13px;color:rgba(14,14,14,.55);padding:10px 0;border-bottom:1px solid rgba(14,14,14,.07);display:flex;gap:10px;align-items:flex-start;line-height:1.4"><span style="color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:16px;flex-shrink:0">→</span>Early access to every episode</div>
-              </div>
-      <div>
-        <div style="font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--red);margin-bottom:14px;font-family:'DM Sans',sans-serif;font-weight:500">What you enable</div>
-        <div style="font-size:13px;color:rgba(14,14,14,.55);padding:10px 0;border-bottom:1px solid rgba(14,14,14,.07);display:flex;gap:10px;align-items:flex-start;line-height:1.4"><span style="color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:16px;flex-shrink:0">→</span>Fund the first interview</div>
-        <div style="font-size:13px;color:rgba(14,14,14,.55);padding:10px 0;border-bottom:1px solid rgba(14,14,14,.07);display:flex;gap:10px;align-items:flex-start;line-height:1.4"><span style="color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:16px;flex-shrink:0">→</span>Cover archival footage licensing</div>
-        <div style="font-size:13px;color:rgba(14,14,14,.55);padding:10px 0;border-bottom:1px solid rgba(14,14,14,.07);display:flex;gap:10px;align-items:flex-start;line-height:1.4"><span style="color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:16px;flex-shrink:0">→</span>Pay for the edit that reaches millions</div>
-        <div style="font-size:13px;color:rgba(14,14,14,.55);padding:10px 0;display:flex;gap:10px;align-items:flex-start;line-height:1.4"><span style="color:var(--red);font-family:'Bebas Neue',sans-serif;font-size:16px;flex-shrink:0">→</span>Get this into the hands of the 20% who will move the other 80%</div>
-      </div>
-    </div>
-    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:12px">
-      <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:.1em;background:var(--red);color:var(--paper);padding:20px 52px;text-decoration:none;transition:background .2s" onmouseover="this.style.background='var(--red-dark)'" onmouseout="this.style.background='var(--red)'">Join — $10/mo</a>
-      <span style="font-size:12px;color:rgba(14,14,14,.35);font-family:'DM Sans',sans-serif">Cancel anytime · Name in credits optional</span>
-    </div>
-    <p style="font-size:12px;color:rgba(14,14,14,.3);font-family:'DM Sans',sans-serif">patreon.com/lolgopstudios · stopthetrillionaires.com</p>
-  </div>
-</section>
-
-<!-- BACK -->
-<div style="padding:32px 40px;border-top:1px solid rgba(242,239,232,.07);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px">
-  <button type="button" onclick="showMain()" style="font-family:'Bebas Neue',sans-serif;font-size:13px;letter-spacing:.12em;color:rgba(242,239,232,.3);background:transparent;border:1px solid rgba(242,239,232,.12);padding:11px 24px;cursor:pointer;transition:all .2s" onmouseover="this.style.color='var(--paper)';this.style.borderColor='rgba(242,239,232,.35)'" onmouseout="this.style.color='rgba(242,239,232,.3)';this.style.borderColor='rgba(242,239,232,.12)'">← Back to Main</button>
-  <a href="https://www.patreon.com/LOLGOPStudios" target="_blank" style="font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:.1em;background:var(--red);color:var(--paper);padding:13px 30px;text-decoration:none" onmouseover="this.style.background='var(--red-dark)'" onmouseout="this.style.background='var(--red)'">Join</a>
-</div>
-
-</div>
 </body>
 </html>
