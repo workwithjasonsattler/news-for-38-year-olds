@@ -58,12 +58,13 @@
 
   .wire-sources{border-bottom:1px solid #ccc;padding-bottom:16px;margin-bottom:20px;}
   .wire-sources h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 10px;}
-  .sources-list{display:grid;grid-template-columns:minmax(0,1fr) auto auto;column-gap:24px;row-gap:0;}
+  .sources-columns{display:grid;grid-template-columns:1fr 1fr;column-gap:40px;}
+  .source-col{display:grid;grid-template-columns:minmax(0,1fr) auto auto;column-gap:16px;row-gap:0;align-content:start;}
   .source-item{display:contents;}
   .source-item .source-name{font-family:var(--mono);font-size:11.5px;color:#111;padding:6px 0;border-bottom:1px solid #eee;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .source-item .source-link{font-family:var(--mono);font-size:11.5px;color:var(--wire-blue);padding:6px 0;border-bottom:1px solid #eee;white-space:nowrap;text-align:right;min-width:56px;}
+  .source-item .source-link{font-family:var(--mono);font-size:11.5px;color:var(--wire-blue);padding:6px 0;border-bottom:1px solid #eee;white-space:nowrap;text-align:right;min-width:52px;}
   @media (max-width:600px){
-    .sources-list{grid-template-columns:1fr;column-gap:0;}
+    .sources-columns{grid-template-columns:1fr;column-gap:0;}
     .source-item{display:block;padding:6px 0;border-bottom:1px solid #eee;}
     .source-item .source-name{display:block;border-bottom:none;padding:0 0 2px;white-space:normal;}
     .source-item .source-link{display:inline-block;text-align:left;border-bottom:none;padding:0;min-width:0;}
@@ -185,16 +186,23 @@ async function loadSources(){
   const res = await fetch(`${API}/api/sources`);
   const sources = await res.json();
   if (!sources.length){ el.innerHTML = ''; return; }
-  el.innerHTML = `
-    <h4>Sources</h4>
-    <div class="sources-list">
-      ${sources.map(s => `
+  const mid = Math.ceil(sources.length / 2);
+  const cols = [sources.slice(0, mid), sources.slice(mid)];
+  const renderCol = list => `
+    <div class="source-col">
+      ${list.map(s => `
         <div class="source-item">
           <span class="source-name">${s.outlet}</span>
           <span class="source-link">${s.subscribe_url ? `<a href="${s.subscribe_url}" target="_blank" rel="noopener">Subscribe</a>` : ''}</span>
           <span class="source-link">${s.tip_url ? `<a href="${s.tip_url}" target="_blank" rel="noopener">Tip</a>` : ''}</span>
         </div>
       `).join('')}
+    </div>
+  `;
+  el.innerHTML = `
+    <h4>Sources</h4>
+    <div class="sources-columns">
+      ${cols.map(renderCol).join('')}
     </div>
   `;
 }
