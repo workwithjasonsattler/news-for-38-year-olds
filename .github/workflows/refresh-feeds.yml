@@ -1,0 +1,19 @@
+name: Refresh feeds
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"
+  workflow_dispatch: {}
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/import-feeds
+        run: |
+          curl -sS -X POST \
+            -H "x-admin-token: ${{ secrets.ADMIN_PASSWORD }}" \
+            -H "Content-Type: application/json" \
+            https://news-for-38-year-olds.onrender.com/api/import-feeds \
+            --max-time 60 \
+            --fail-with-body
