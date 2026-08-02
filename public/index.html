@@ -3,7 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>News for 38 Year Olds — A Left Alternative to Substack</title>
+<title>NEWS FOR 38 YEAR OLDS: Here, you are 38 years old.</title>
+<meta name="description" content="NEWS FOR 38 YEAR OLDS: Here, you are 38 years old.">
+<meta property="og:title" content="NEWS FOR 38 YEAR OLDS: Here, you are 38 years old.">
+<meta property="og:description" content="No paywall. No algorithm. Independent left journalism, tip your reporter directly.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://news-for-38-year-olds.onrender.com">
+<meta property="og:image" content="https://news-for-38-year-olds.onrender.com/logo.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="NEWS FOR 38 YEAR OLDS: Here, you are 38 years old.">
+<meta name="twitter:description" content="No paywall. No algorithm. Independent left journalism, tip your reporter directly.">
+<meta name="twitter:image" content="https://news-for-38-year-olds.onrender.com/logo.png">
 <style>
   :root{
     --paper:#FFFFFF; --paper-card:#F7F5EF; --text:#111111; --text-muted:#666;
@@ -91,7 +101,8 @@
 
 <header class="masthead">
   <div class="eyebrow-row">
-    <span id="dateline">EDITION — LOADING</span>
+    <span id="datelineLeft">EDITION — LOADING</span>
+    <span id="datelineRight"></span>
   </div>
   <div class="top-headlines" id="topHeadlines"></div>
   <img src="/logo.png" alt="News for 38 Year Olds" class="logo-img">
@@ -266,8 +277,8 @@ function daysBetween(a, b){ return Math.round((b - a) / 86400000); }
 const today = new Date();
 const daysToMidterms = daysBetween(today, MIDTERM_DATE);
 const warDay = daysBetween(IRAN_WAR_START, today) + 1;
-document.getElementById('dateline').textContent =
-  `${daysToMidterms} DAYS TO THE MIDTERMS · DAY ${warDay} OF THE IRAN WAR`;
+document.getElementById('datelineLeft').textContent = `${daysToMidterms} DAYS TO THE MIDTERMS`;
+document.getElementById('datelineRight').textContent = `DAY ${warDay} OF THE IRAN WAR`;
 
 // tip modal
 const tipOverlay = document.getElementById('tipOverlay');
