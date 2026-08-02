@@ -92,6 +92,7 @@
 <header class="masthead">
   <div class="eyebrow-row">
     <span id="dateline">EDITION — LOADING</span>
+    <span style="margin-left:14px;"><a href="javascript:void(0)" onclick="openCustomizeModal()" id="customizeLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;">CUSTOMIZE FEED</a></span>
   </div>
   <div class="top-headlines" id="topHeadlines"></div>
   <img src="/logo.png" alt="News for 38 Year Olds" class="logo-img">
@@ -121,6 +122,28 @@
     <input type="range" id="tipSlider" min="1" max="50" value="5" style="width:100%;margin-bottom:16px;">
     <button onclick="sendTip()" style="width:100%;padding:12px 0;font-weight:700;font-size:14.5px;background:var(--support-teal);color:#F3EFE4;border:none;border-radius:3px;cursor:pointer;">Send tip</button>
     <p id="tipConfirm" style="text-align:center;font-family:var(--mono);font-size:12.5px;color:var(--support-teal-dark);margin-top:12px;"></p>
+  </div>
+</div>
+
+<div class="modal-overlay" id="customizeOverlay" style="position:fixed;inset:0;background:rgba(20,23,31,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:20px;">
+  <div style="background:var(--paper);color:var(--text);width:100%;max-width:440px;max-height:82vh;overflow-y:auto;padding:26px;border-radius:4px;position:relative;">
+    <button onclick="closeCustomizeModal()" style="position:absolute;top:14px;right:16px;font-family:var(--mono);font-size:13px;background:none;border:none;color:var(--text-muted);cursor:pointer;">CLOSE ✕</button>
+    <p style="font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--wire-red);margin:0 0 6px;">Your wire, your call</p>
+    <h3 style="font-family:var(--display);font-size:20px;margin:0 0 16px;">Customize your feed</h3>
+
+    <div id="customizeSignedOut">
+      <p style="font-family:Georgia,serif;font-size:13.5px;color:var(--text-muted);margin:0 0 14px;">Sign in with just your email — no password — to choose which sources show up in your wire.</p>
+      <input type="email" id="customizeEmailInput" placeholder="you@example.com" style="width:100%;padding:10px 12px;font-family:var(--mono);font-size:13.5px;border:1.5px solid var(--paper-hairline);border-radius:3px;margin-bottom:10px;box-sizing:border-box;">
+      <button onclick="requestMagicLink()" style="width:100%;padding:12px 0;font-weight:700;font-size:14.5px;background:var(--support-teal);color:#F3EFE4;border:none;border-radius:3px;cursor:pointer;">Send me a sign-in link</button>
+      <p id="customizeAuthMsg" style="text-align:center;font-family:var(--mono);font-size:12px;color:var(--support-teal-dark);margin-top:12px;"></p>
+    </div>
+
+    <div id="customizeSignedIn" style="display:none;">
+      <p style="font-family:var(--mono);font-size:11.5px;color:var(--text-muted);margin:0 0 14px;">Signed in as <span id="customizeEmail" style="color:var(--text);"></span> · <a href="javascript:void(0)" onclick="signOut()" style="color:var(--wire-blue);">Sign out</a></p>
+      <div id="customizeSourceList" style="margin-bottom:16px;"></div>
+      <button onclick="saveFeedPrefs()" style="width:100%;padding:12px 0;font-weight:700;font-size:14.5px;background:var(--support-teal);color:#F3EFE4;border:none;border-radius:3px;cursor:pointer;">Save</button>
+      <p id="customizeSaveMsg" style="text-align:center;font-family:var(--mono);font-size:12px;color:var(--support-teal-dark);margin-top:12px;"></p>
+    </div>
   </div>
 </div>
 
@@ -302,6 +325,94 @@ function sendTip(){
   tipConfirm.textContent = `✓ THANKS — $${amt} ON ITS WAY TO ${tipRecipient.textContent.toUpperCase()}`;
   fetch(`${API}/api/track-tip`, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({dispatch_id: currentTipDispatchId, amount: Number(amt)})});
 }
+
+// ---------- customize feed (reader accounts) ----------
+let CURRENT_USER = null;
+const customizeOverlay = document.getElementById('customizeOverlay');
+
+async function checkSession(){
+  const res = await fetch(`${API}/api/me`);
+  const data = await res.json();
+  CURRENT_USER = data.user;
+  document.getElementById('customizeLink').textContent = CURRENT_USER
+    ? `CUSTOMIZE FEED (${CURRENT_USER.email})`
+    : 'CUSTOMIZE FEED';
+}
+
+async function openCustomizeModal(){
+  customizeOverlay.style.display = 'flex';
+  document.getElementById('customizeAuthMsg').textContent = '';
+  document.getElementById('customizeSaveMsg').textContent = '';
+  if (CURRENT_USER){
+    document.getElementById('customizeSignedOut').style.display = 'none';
+    document.getElementById('customizeSignedIn').style.display = 'block';
+    document.getElementById('customizeEmail').textContent = CURRENT_USER.email;
+    await renderSourceCheckboxes();
+  } else {
+    document.getElementById('customizeSignedOut').style.display = 'block';
+    document.getElementById('customizeSignedIn').style.display = 'none';
+  }
+}
+function closeCustomizeModal(){ customizeOverlay.style.display = 'none'; }
+customizeOverlay.addEventListener('click', e => { if(e.target===customizeOverlay) closeCustomizeModal(); });
+
+async function requestMagicLink(){
+  const email = document.getElementById('customizeEmailInput').value.trim();
+  const msgEl = document.getElementById('customizeAuthMsg');
+  if (!email){ msgEl.textContent = 'Enter an email first.'; return; }
+  msgEl.textContent = 'Sending...';
+  const res = await fetch(`${API}/api/auth/request-link`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({email})
+  });
+  msgEl.textContent = res.ok
+    ? '✓ Check your email for a sign-in link.'
+    : 'That email didn\'t look right — try again.';
+}
+
+async function signOut(){
+  await fetch(`${API}/api/auth/logout`, {method:'POST'});
+  CURRENT_USER = null;
+  document.getElementById('customizeLink').textContent = 'CUSTOMIZE FEED';
+  closeCustomizeModal();
+  loadDispatches();
+}
+
+async function renderSourceCheckboxes(){
+  const listEl = document.getElementById('customizeSourceList');
+  listEl.innerHTML = 'Loading sources...';
+  const [sourcesRes, prefsRes] = await Promise.all([
+    fetch(`${API}/api/sources`),
+    fetch(`${API}/api/my/feed-prefs`)
+  ]);
+  const sources = await sourcesRes.json();
+  const prefs = await prefsRes.json();
+  const prefMap = Object.fromEntries(prefs.map(p => [p.outlet, !!p.enabled]));
+  listEl.innerHTML = sources.map(s => {
+    const checked = prefMap[s.outlet] !== undefined ? prefMap[s.outlet] : true;
+    return `
+      <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eee;font-family:var(--mono);font-size:12.5px;cursor:pointer;">
+        <input type="checkbox" data-outlet="${s.outlet}" ${checked ? 'checked' : ''}>
+        ${s.outlet}
+      </label>
+    `;
+  }).join('') || 'No sources configured yet.';
+}
+
+async function saveFeedPrefs(){
+  const boxes = document.querySelectorAll('#customizeSourceList input[type=checkbox]');
+  const prefs = Array.from(boxes).map(b => ({ outlet: b.dataset.outlet, enabled: b.checked }));
+  const msgEl = document.getElementById('customizeSaveMsg');
+  msgEl.textContent = 'Saving...';
+  await fetch(`${API}/api/my/feed-prefs`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({prefs})
+  });
+  msgEl.textContent = '✓ Saved — your wire is updated.';
+  loadDispatches();
+}
+
+// If a magic-link redirect just landed us back here (?token consumed server-side),
+// refresh the session state so the masthead reflects sign-in immediately.
+checkSession();
 
 loadDispatches();
 loadTopHeadlines();

@@ -9,6 +9,7 @@ import { XMLParser } from "fast-xml-parser";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { randomBytes } from "node:crypto";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "letmein";
@@ -87,6 +88,38 @@ async function initSchema() {
       beat_keywords TEXT NOT NULL DEFAULT '{}',
       items_per_feed INTEGER NOT NULL DEFAULT 3,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    // ---------- reader accounts (Phase 1: customizable feeds / Phase 2: ratings) ----------
+    `CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL UNIQUE,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS login_tokens (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      email TEXT NOT NULL,
+      token TEXT NOT NULL UNIQUE,
+      expires_at TEXT NOT NULL,
+      used INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS sessions (
+      token TEXT PRIMARY KEY,
+      user_id INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      expires_at TEXT NOT NULL
+    )`,
+    `CREATE TABLE IF NOT EXISTS user_feed_prefs (
+      user_id INTEGER NOT NULL,
+      outlet TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      PRIMARY KEY (user_id, outlet)
+    )`,
+    `CREATE TABLE IF NOT EXISTS user_source_ratings (
+      user_id INTEGER NOT NULL,
+      outlet TEXT NOT NULL,
+      rating INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, outlet)
     )`,
   ];
   for (const sql of statements) await dbRun(sql);
@@ -201,6 +234,152 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// ---------- reader accounts (lightweight, no password — email magic link) ----------
+const SITE_URL = process.env.SITE_URL || `http://localhost:${PORT}`;
+const SESSION_DAYS = 90;
+
+function newToken(bytes = 24) {
+  return randomBytes(bytes).toString("hex");
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie;
+  const out = {};
+  if (!header) return out;
+  for (const part of header.split(";")) {
+    const idx = part.indexOf("=");
+    if (idx === -1) continue;
+    out[part.slice(0, idx).trim()] = decodeURIComponent(part.slice(idx + 1).trim());
+  }
+  return out;
+}
+
+function setSessionCookie(res, token) {
+  const secure = SITE_URL.startsWith("https") ? "; Secure" : "";
+  res.setHeader(
+    "Set-Cookie",
+    `n38_session=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_DAYS * 24 * 60 * 60}${secure}`
+  );
+}
+
+function clearSessionCookie(res) {
+  res.setHeader("Set-Cookie", `n38_session=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+}
+
+// Sends via Resend if RESEND_API_KEY is set; otherwise logs the link so local
+// dev and early testing never require an email provider to be configured.
+async function sendMagicLink(email, link) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    console.log(`[dev] Magic sign-in link for ${email}: ${link}`);
+    return;
+  }
+  const from = process.env.RESEND_FROM || "News for 38 Year Olds <login@news38yearolds.com>";
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: email,
+        subject: "Your sign-in link",
+        html: `<p>Click to sign in to News for 38 Year Olds:</p><p><a href="${link}">${link}</a></p><p>This link expires in 15 minutes. If you didn't request it, ignore this email.</p>`,
+      }),
+    });
+    if (!resp.ok) {
+      console.error("Resend error:", await resp.text());
+      console.log(`[fallback] Magic sign-in link for ${email}: ${link}`);
+    }
+  } catch (err) {
+    console.error("Failed to send magic link email:", err.message);
+    console.log(`[fallback] Magic sign-in link for ${email}: ${link}`);
+  }
+}
+
+async function getCurrentUser(req) {
+  const { n38_session } = parseCookies(req);
+  if (!n38_session) return null;
+  const row = await dbGet(
+    `SELECT u.id, u.email FROM sessions s JOIN users u ON u.id = s.user_id
+     WHERE s.token = ? AND s.expires_at > datetime('now')`,
+    [n38_session]
+  );
+  return row || null;
+}
+
+app.post("/api/auth/request-link", async (req, res) => {
+  const { email } = req.body || {};
+  const normalized = (email || "").trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+    return res.status(400).json({ error: "valid email required" });
+  }
+  const token = newToken();
+  const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+  await dbRun(`INSERT INTO login_tokens (email, token, expires_at) VALUES (?, ?, ?)`, [normalized, token, expiresAt]);
+  await sendMagicLink(normalized, `${SITE_URL}/api/auth/verify?token=${token}`);
+  res.json({ ok: true });
+});
+
+app.get("/api/auth/verify", async (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).send("Missing token.");
+  const row = await dbGet(
+    `SELECT * FROM login_tokens WHERE token = ? AND used = 0 AND expires_at > datetime('now')`,
+    [token]
+  );
+  if (!row) return res.status(400).send("This sign-in link is invalid or has expired. Go back and request a new one.");
+  await dbRun(`UPDATE login_tokens SET used = 1 WHERE id = ?`, [row.id]);
+
+  let user = await dbGet(`SELECT * FROM users WHERE email = ?`, [row.email]);
+  if (!user) {
+    const info = await dbRun(`INSERT INTO users (email) VALUES (?)`, [row.email]);
+    user = { id: info.lastInsertRowid, email: row.email };
+  }
+
+  const sessionToken = newToken();
+  const sessionExpires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  await dbRun(`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`, [sessionToken, user.id, sessionExpires]);
+
+  setSessionCookie(res, sessionToken);
+  res.redirect(302, "/");
+});
+
+app.post("/api/auth/logout", async (req, res) => {
+  const { n38_session } = parseCookies(req);
+  if (n38_session) await dbRun(`DELETE FROM sessions WHERE token = ?`, [n38_session]);
+  clearSessionCookie(res);
+  res.json({ ok: true });
+});
+
+app.get("/api/me", async (req, res) => {
+  const user = await getCurrentUser(req);
+  res.json({ user: user ? { email: user.email } : null });
+});
+
+// ---------- reader feed preferences (Phase 1) ----------
+app.get("/api/my/feed-prefs", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const rows = await dbAll(`SELECT outlet, enabled FROM user_feed_prefs WHERE user_id = ?`, [user.id]);
+  res.json(rows);
+});
+
+app.post("/api/my/feed-prefs", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const { prefs } = req.body || {};
+  if (!Array.isArray(prefs)) return res.status(400).json({ error: "prefs must be an array" });
+  for (const p of prefs) {
+    if (!p.outlet) continue;
+    await dbRun(
+      `INSERT INTO user_feed_prefs (user_id, outlet, enabled) VALUES (?, ?, ?)
+       ON CONFLICT(user_id, outlet) DO UPDATE SET enabled = excluded.enabled`,
+      [user.id, p.outlet, p.enabled ? 1 : 0]
+    );
+  }
+  res.json({ ok: true });
+});
+
 app.post("/api/login", (req, res) => {
   const { password } = req.body || {};
   if (password === ADMIN_PASSWORD) return res.json({ ok: true, token: ADMIN_PASSWORD });
@@ -210,9 +389,23 @@ app.post("/api/login", (req, res) => {
 // ---------- public read endpoints ----------
 app.get("/api/dispatches", async (req, res) => {
   const { beat } = req.query;
-  const rows = beat
+  let rows = beat
     ? await dbAll(`SELECT * FROM dispatches WHERE beat = ? ORDER BY pinned DESC, date DESC, id DESC`, [beat])
     : await dbAll(`SELECT * FROM dispatches ORDER BY pinned DESC, date DESC, id DESC`);
+
+  // Personalize for signed-in readers: if they've saved any feed prefs, only
+  // show dispatches from outlets they've left enabled. No saved prefs yet
+  // (new reader, or not signed in) means everyone sees the full wire — the
+  // curated default never gets narrower without the reader opting in.
+  const user = await getCurrentUser(req);
+  if (user) {
+    const prefRows = await dbAll(`SELECT outlet, enabled FROM user_feed_prefs WHERE user_id = ?`, [user.id]);
+    if (prefRows.length > 0) {
+      const allowed = new Set(prefRows.filter(r => r.enabled).map(r => r.outlet));
+      rows = rows.filter(r => allowed.has(r.outlet));
+    }
+  }
+
   res.json(rows);
 });
 
