@@ -142,6 +142,7 @@ async function initSchema() {
     `ALTER TABLE dispatches ADD COLUMN subscribe_url TEXT`,
     `ALTER TABLE feeds ADD COLUMN subscribe_url TEXT`,
     `ALTER TABLE feeds ADD COLUMN bluesky_handle TEXT`,
+    `ALTER TABLE headlines ADD COLUMN subhead TEXT`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
   }
@@ -558,20 +559,20 @@ app.get("/api/headlines", async (req, res) => {
 });
 
 app.post("/api/headlines", requireAdmin, async (req, res) => {
-  const { text, link, image_url, sort_order } = req.body;
+  const { text, subhead, link, image_url, sort_order } = req.body;
   if (!text) return res.status(400).json({ error: "text is required" });
   const info = await dbRun(
-    `INSERT INTO headlines (text, link, image_url, sort_order) VALUES (?, ?, ?, ?)`,
-    [text, link || "", image_url || "", sort_order || 0]
+    `INSERT INTO headlines (text, subhead, link, image_url, sort_order) VALUES (?, ?, ?, ?, ?)`,
+    [text, subhead || "", link || "", image_url || "", sort_order || 0]
   );
   res.json({ id: info.lastInsertRowid });
 });
 
 app.put("/api/headlines/:id", requireAdmin, async (req, res) => {
-  const { text, link, image_url, sort_order } = req.body;
+  const { text, subhead, link, image_url, sort_order } = req.body;
   await dbRun(
-    `UPDATE headlines SET text=?, link=?, image_url=?, sort_order=? WHERE id=?`,
-    [text, link || "", image_url || "", sort_order || 0, req.params.id]
+    `UPDATE headlines SET text=?, subhead=?, link=?, image_url=?, sort_order=? WHERE id=?`,
+    [text, subhead || "", link || "", image_url || "", sort_order || 0, req.params.id]
   );
   res.json({ ok: true });
 });
