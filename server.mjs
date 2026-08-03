@@ -501,13 +501,22 @@ app.get("/api/bluesky-popular", async (req, res) => {
   }
 });
 
-// ---------- "Actions" box — titles pulled straight from Rogan's List ----------
-const ACTIONS_FEED_URL = "https://susanrogan.substack.com/feed";
-const ACTIONS_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
-let actionsCache = { data: [], fetchedAt: 0 };
+// ---------- Curated "title feed" boxes — Actions, Trending, Top Politics ----------
+// All three just pull item titles+links from a public RSS/Atom feed and cache
+// them for a while. Same shape, three different sources, so one generic
+// fetcher backs all three routes below.
+const SIMPLE_FEEDS = {
+  actions: { url: "https://susanrogan.substack.com/feed" },       // Rogan's List
+  trending: { url: "https://www.memeorandum.com/feed.xml" },      // Memeorandum
+  topPolitics: { url: "https://www.reddit.com/r/politics/.rss" }, // r/politics
+};
+const SIMPLE_FEED_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
+const simpleFeedCache = Object.fromEntries(
+  Object.keys(SIMPLE_FEEDS).map(key => [key, { data: [], fetchedAt: 0 }])
+);
 
-async function fetchActionsFeed() {
-  const r = await fetch(ACTIONS_FEED_URL, { headers: { "User-Agent": "n38-cms/1.0" } });
+async function fetchSimpleFeed(url) {
+  const r = await fetch(url, { headers: { "User-Agent": "n38-cms/1.0 (+https://news-for-38-year-olds.onrender.com)" } });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const xml = await r.text();
   const parsed = xmlParser.parse(xml);
@@ -518,19 +527,24 @@ async function fetchActionsFeed() {
     .map(it => ({ title: stripHtml(it.title), link: it.link }));
 }
 
-app.get("/api/actions-feed", async (req, res) => {
-  try {
-    const now = Date.now();
-    if (now - actionsCache.fetchedAt > ACTIONS_CACHE_TTL_MS) {
-      const data = await fetchActionsFeed();
-      actionsCache = { data, fetchedAt: now };
+async function getSimpleFeed(key) {
+  const now = Date.now();
+  const cache = simpleFeedCache[key];
+  if (now - cache.fetchedAt > SIMPLE_FEED_CACHE_TTL_MS) {
+    try {
+      const data = await fetchSimpleFeed(SIMPLE_FEEDS[key].url);
+      simpleFeedCache[key] = { data, fetchedAt: now };
+    } catch (err) {
+      console.error(`${key} feed error:`, err.message);
+      // leave the stale cache in place and try again on the next request
     }
-    res.json(actionsCache.data);
-  } catch (err) {
-    console.error("Actions feed error:", err);
-    res.json(actionsCache.data); // fail soft — never break the page over this
   }
-});
+  return simpleFeedCache[key].data;
+}
+
+app.get("/api/actions-feed", async (req, res) => res.json(await getSimpleFeed("actions")));
+app.get("/api/trending-feed", async (req, res) => res.json(await getSimpleFeed("trending")));
+app.get("/api/top-politics-feed", async (req, res) => res.json(await getSimpleFeed("topPolitics")));
 
 app.get("/go/:id", async (req, res) => {
   const row = await dbGet(`SELECT link FROM dispatches WHERE id = ?`, [req.params.id]);
