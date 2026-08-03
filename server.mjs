@@ -508,7 +508,7 @@ app.get("/api/bluesky-popular", async (req, res) => {
 const SIMPLE_FEEDS = {
   actions: { url: "https://susanrogan.substack.com/feed" },       // Rogan's List
   trending: { url: "https://www.memeorandum.com/feed.xml" },      // Memeorandum
-  topPolitics: { url: "https://www.reddit.com/r/politics/.rss" }, // r/politics
+  topPolitics: { url: "https://news.google.com/rss/headlines/section/topic/POLITICS?hl=en-US&gl=US&ceid=US:en" }, // Reddit .rss blocks non-browser traffic — swapped to Google News politics topic feed
 };
 const SIMPLE_FEED_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
 const simpleFeedCache = Object.fromEntries(
