@@ -92,7 +92,7 @@
     <p style="font-size:13px;color:#666;">Add an outlet's RSS/Atom feed here — no file editing needed. Feeds refresh automatically in the background; "Run import now" pulls immediately if you don't want to wait.</p>
 
     <table id="feedTable" style="margin-bottom:16px;">
-      <thead><tr><th>Outlet</th><th>Feed URL</th><th>Default section</th><th></th></tr></thead>
+      <thead><tr><th>Outlet</th><th>Feed URL</th><th>Default section</th><th>Bluesky</th><th></th></tr></thead>
       <tbody id="feedRows"></tbody>
     </table>
 
@@ -102,6 +102,7 @@
     <label>Feed URL</label><input id="ff_url" placeholder="https://example.com/feed">
     <label>Tip URL (optional — applies to every story pulled from this feed)</label><input id="ff_tip_url" placeholder="https://...">
     <label>Subscribe URL (optional — applies to every story pulled from this feed)</label><input id="ff_subscribe_url" placeholder="https://...">
+    <label>Bluesky handle (optional — powers the "Most Popular on Bluesky" box, e.g. marisakabas.bsky.social)</label><input id="ff_bluesky" placeholder="handle.bsky.social">
     <label>Default section</label>
     <select id="ff_section">
       <option value="Indie Media">Indie Media</option>
@@ -117,10 +118,10 @@
 
     <h3 style="font-family:var(--mono);font-size:12px;margin-top:28px;border-top:1px solid rgba(0,0,0,.1);padding-top:20px;">BULK ADD FEEDS</h3>
     <p style="font-size:13px;color:#666;">Paste one feed per line, fields separated by <code>|</code>:<br>
-    <code>Outlet | Feed URL | Section | Default Author | Tip URL | Subscribe URL</code><br>
-    Only <strong>Outlet</strong> and <strong>Feed URL</strong> are required — leave the rest blank if you don't have them, e.g. <code>Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media</code>. Section must be exactly <code>Indie Media</code>, <code>Data Centers</code>, or <code>People Power</code> (defaults to Indie Media if left blank or misspelled).</p>
+    <code>Outlet | Feed URL | Section | Default Author | Tip URL | Subscribe URL | Bluesky Handle</code><br>
+    Only <strong>Outlet</strong> and <strong>Feed URL</strong> are required — leave the rest blank if you don't have them, e.g. <code>Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media</code>. Section must be exactly <code>Indie Media</code>, <code>Data Centers</code>, or <code>People Power</code> (defaults to Indie Media if left blank or misspelled). Bluesky Handle can be a bare handle (<code>marisakabas.bsky.social</code>) or a full profile URL.</p>
     <textarea id="bulk_feeds" rows="6" style="min-height:120px;" placeholder="Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media
-Blood in the Machine | https://www.bloodinthemachine.com/feed | People Power | Brian Merchant | | https://www.bloodinthemachine.com/subscribe"></textarea>
+Blood in the Machine | https://www.bloodinthemachine.com/feed | People Power | Brian Merchant | | https://www.bloodinthemachine.com/subscribe | bloodinthemachine.bsky.social"></textarea>
     <button class="btn-primary" onclick="submitBulkFeeds()">Add all</button>
     <p id="bulkFeedMsg" style="font-family:var(--mono);font-size:12px;"></p>
   </div>
@@ -325,12 +326,13 @@ async function loadFeeds(){
       <td>${f.outlet}</td>
       <td><a class="link-cell" href="${f.feed_url}" target="_blank">${f.feed_url}</a></td>
       <td>${f.fallback_beat}</td>
+      <td>${f.bluesky_handle ? `<span style="color:#1185FE;">@${f.bluesky_handle}</span>` : '<span style="color:#999;">—</span>'}</td>
       <td>
         <button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="editFeed(${f.id})">Edit</button>
         <button class="btn-danger" onclick="deleteFeed(${f.id})">Delete</button>
       </td>
     </tr>
-  `).join('') || '<tr><td colspan="4" style="color:#666;">No feeds yet — add one below.</td></tr>';
+  `).join('') || '<tr><td colspan="5" style="color:#666;">No feeds yet — add one below.</td></tr>';
 }
 
 function editFeed(id){
@@ -342,6 +344,7 @@ function editFeed(id){
   document.getElementById('ff_url').value = f.feed_url;
   document.getElementById('ff_tip_url').value = f.tip_url || '';
   document.getElementById('ff_subscribe_url').value = f.subscribe_url || '';
+  document.getElementById('ff_bluesky').value = f.bluesky_handle || '';
   document.getElementById('ff_section').value = f.fallback_beat;
   document.getElementById('feedFormTitle').textContent = `EDITING FEED #${id}`;
   document.getElementById('feedSubmitBtn').textContent = 'Update feed';
@@ -355,6 +358,7 @@ async function submitFeed(){
     feed_url: document.getElementById('ff_url').value,
     tip_url: document.getElementById('ff_tip_url').value,
     subscribe_url: document.getElementById('ff_subscribe_url').value,
+    bluesky_handle: document.getElementById('ff_bluesky').value,
     fallback_beat: document.getElementById('ff_section').value,
   };
   const url = editingFeedId ? `/api/feeds/${editingFeedId}` : '/api/feeds';
@@ -371,7 +375,7 @@ async function submitFeed(){
 }
 
 function clearFeedForm(){
-  ['ff_outlet','ff_author','ff_url','ff_tip_url','ff_subscribe_url'].forEach(id => document.getElementById(id).value = '');
+  ['ff_outlet','ff_author','ff_url','ff_tip_url','ff_subscribe_url','ff_bluesky'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('ff_section').value = 'Indie Media';
   editingFeedId = null;
   document.getElementById('feedFormTitle').textContent = 'ADD A FEED';
@@ -390,7 +394,7 @@ async function submitBulkFeeds(){
   }
   const feeds = lines.map(line => {
     const parts = line.split('|').map(p => p.trim());
-    const [outlet, feed_url, section, default_author, tip_url, subscribe_url] = parts;
+    const [outlet, feed_url, section, default_author, tip_url, subscribe_url, bluesky_handle] = parts;
     return {
       outlet,
       feed_url,
@@ -398,6 +402,7 @@ async function submitBulkFeeds(){
       default_author: default_author || '',
       tip_url: tip_url || '',
       subscribe_url: subscribe_url || '',
+      bluesky_handle: bluesky_handle || '',
     };
   });
   msg.style.color = '#333'; msg.textContent = 'Adding…';

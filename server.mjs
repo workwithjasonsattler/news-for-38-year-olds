@@ -22,6 +22,18 @@ const client = createClient({
 });
 console.log(`Database: ${DB_URL.startsWith("file:") ? "local file (dev mode)" : "remote Turso"}`);
 
+// ---------- Bluesky handle helper ----------
+// Accepts a plain handle ("marisakabas.bsky.social"), an @-prefixed handle,
+// or a full profile URL ("https://bsky.app/profile/marisakabas.bsky.social")
+// and normalizes to the bare handle the AT Protocol API expects.
+function normalizeHandle(input) {
+  if (!input) return "";
+  let h = String(input).trim();
+  const urlMatch = h.match(/bsky\.app\/profile\/([^/?#\s]+)/i);
+  if (urlMatch) h = urlMatch[1];
+  return h.replace(/^@/, "").trim();
+}
+
 // ---------- thin helpers so the rest of the file reads like sync SQLite ----------
 async function dbAll(sql, args = []) {
   const res = await client.execute({ sql, args });
@@ -129,6 +141,7 @@ async function initSchema() {
     `ALTER TABLE dispatches ADD COLUMN tip_url TEXT`,
     `ALTER TABLE dispatches ADD COLUMN subscribe_url TEXT`,
     `ALTER TABLE feeds ADD COLUMN subscribe_url TEXT`,
+    `ALTER TABLE feeds ADD COLUMN bluesky_handle TEXT`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
   }
@@ -416,6 +429,77 @@ app.get("/api/sources", async (req, res) => {
   res.json(rows);
 });
 
+// ---------- "Most Popular on Bluesky" ----------
+// Pulls each outlet's Bluesky posts from the last 24h via the public,
+// no-auth AT Protocol AppView API, keeps ones that link out to an
+// article, and ranks by engagement. Cached in memory so a burst of
+// page views doesn't hammer Bluesky's public API on every request.
+const BLUESKY_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
+let blueskyCache = { data: [], fetchedAt: 0 };
+
+async function fetchBlueskyPopular() {
+  const feeds = await dbAll(
+    `SELECT outlet, bluesky_handle FROM feeds WHERE bluesky_handle IS NOT NULL AND bluesky_handle != ''`
+  );
+  const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+
+  const perOutlet = await Promise.allSettled(
+    feeds.map(async (f) => {
+      const url = `https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(f.bluesky_handle)}&limit=30&filter=posts_no_replies`;
+      const resp = await fetch(url, { headers: { "User-Agent": "n38-cms/1.0" } });
+      if (!resp.ok) throw new Error(`Bluesky API ${resp.status} for ${f.bluesky_handle}`);
+      const json = await resp.json();
+      const items = [];
+      for (const entry of json.feed || []) {
+        const post = entry.post;
+        if (!post || post.author?.handle !== f.bluesky_handle) continue; // skip reposts of others
+        const createdAt = new Date(post.record?.createdAt || post.indexedAt).getTime();
+        if (!createdAt || createdAt < cutoff) continue;
+        const link = post.embed?.external?.uri || post.record?.embed?.external?.uri;
+        if (!link) continue; // only posts sharing an external link
+        const likeCount = post.likeCount || 0;
+        const repostCount = post.repostCount || 0;
+        const replyCount = post.replyCount || 0;
+        items.push({
+          outlet: f.outlet,
+          text: (post.record?.text || "").slice(0, 160),
+          link,
+          blueskyUrl: `https://bsky.app/profile/${f.bluesky_handle}/post/${String(post.uri).split("/").pop()}`,
+          likeCount, repostCount, replyCount,
+          score: likeCount + repostCount * 2 + replyCount,
+          createdAt,
+        });
+      }
+      return items;
+    })
+  );
+
+  const all = perOutlet.filter(r => r.status === "fulfilled").flatMap(r => r.value);
+  perOutlet.filter(r => r.status === "rejected").forEach(r => console.error("Bluesky fetch failed:", r.reason?.message || r.reason));
+
+  // de-dupe by link (multiple mentions of the same article), keep the highest-scoring post
+  const byLink = new Map();
+  for (const item of all) {
+    const existing = byLink.get(item.link);
+    if (!existing || item.score > existing.score) byLink.set(item.link, item);
+  }
+  return [...byLink.values()].sort((a, b) => b.score - a.score).slice(0, 6);
+}
+
+app.get("/api/bluesky-popular", async (req, res) => {
+  try {
+    const now = Date.now();
+    if (now - blueskyCache.fetchedAt > BLUESKY_CACHE_TTL_MS) {
+      const data = await fetchBlueskyPopular();
+      blueskyCache = { data, fetchedAt: now };
+    }
+    res.json(blueskyCache.data);
+  } catch (err) {
+    console.error("Bluesky popular error:", err);
+    res.json(blueskyCache.data); // fail soft — never break the page over this
+  }
+});
+
 app.get("/go/:id", async (req, res) => {
   const row = await dbGet(`SELECT link FROM dispatches WHERE id = ?`, [req.params.id]);
   if (!row) return res.status(404).send("Not found");
@@ -585,13 +669,13 @@ app.get("/api/feeds", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/feeds", requireAdmin, async (req, res) => {
-  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed } = req.body;
+  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle } = req.body;
   if (!outlet || !feed_url) return res.status(400).json({ error: "outlet and feed_url are required" });
   try {
     const info = await dbRun(
-      `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed)
-       VALUES (?, ?, ?, ?, ?, ?, '{}', ?)`,
-      [outlet, default_author || "", feed_url, tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3]
+      `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle)
+       VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?)`,
+      [outlet, default_author || "", feed_url, tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, normalizeHandle(bluesky_handle)]
     );
     res.json({ id: info.lastInsertRowid });
   } catch (err) {
@@ -613,9 +697,9 @@ app.post("/api/feeds/bulk", requireAdmin, async (req, res) => {
     }
     try {
       await dbRun(
-        `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed)
-         VALUES (?, ?, ?, ?, ?, ?, '{}', ?)`,
-        [f.outlet, f.default_author || "", f.feed_url, f.tip_url || "", f.subscribe_url || "", f.fallback_beat || "Indie Media", f.items_per_feed || 3]
+        `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle)
+         VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?)`,
+        [f.outlet, f.default_author || "", f.feed_url, f.tip_url || "", f.subscribe_url || "", f.fallback_beat || "Indie Media", f.items_per_feed || 3, normalizeHandle(f.bluesky_handle)]
       );
       added++;
     } catch (err) {
@@ -626,13 +710,13 @@ app.post("/api/feeds/bulk", requireAdmin, async (req, res) => {
 });
 
 app.put("/api/feeds/:id", requireAdmin, async (req, res) => {
-  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed } = req.body;
+  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle } = req.body;
   if (!outlet || !feed_url) return res.status(400).json({ error: "outlet and feed_url are required" });
   try {
     await dbRun(
-      `UPDATE feeds SET outlet=?, default_author=?, feed_url=?, tip_url=?, subscribe_url=?, fallback_beat=?, items_per_feed=?
+      `UPDATE feeds SET outlet=?, default_author=?, feed_url=?, tip_url=?, subscribe_url=?, fallback_beat=?, items_per_feed=?, bluesky_handle=?
        WHERE id=?`,
-      [outlet, default_author || "", feed_url, tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, req.params.id]
+      [outlet, default_author || "", feed_url, tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, normalizeHandle(bluesky_handle), req.params.id]
     );
     res.json({ ok: true });
   } catch (err) {

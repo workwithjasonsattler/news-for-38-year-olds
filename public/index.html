@@ -71,6 +71,8 @@
     .source-item .source-link + .source-link{margin-left:12px;}
   }
 
+  .wire-right-col{display:flex;flex-direction:column;gap:14px;}
+
   .wire-resources-box{border:1px solid var(--hairline);background:var(--paper-card);padding:12px 14px;border-radius:2px;}
   .wire-resources-box h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;}
   .wire-resources-box ul{list-style:none;margin:0;padding:0;}
@@ -78,6 +80,7 @@
   .wire-resources-box li:last-child{border-bottom:none;}
   .wire-resources-box a{color:var(--wire-blue);font-weight:700;}
   .wire-resources-box a:hover{text-decoration:underline;}
+  .wire-resources-box .bsky-meta{display:block;font-family:var(--mono, monospace);font-size:10px;color:#888;margin-top:1px;}
 
   .wire-columns{display:grid;grid-template-columns:repeat(3,1fr);gap:0 32px;}
   .wire-col{border-top:2px solid #111;padding-top:6px;}
@@ -207,6 +210,27 @@ async function loadSources(){
   `;
 }
 
+async function loadBlueskyPopular(){
+  const box = document.getElementById('blueskyPopularBox');
+  const list = document.getElementById('blueskyPopularList');
+  if (!box || !list) return;
+  try {
+    const res = await fetch(`${API}/api/bluesky-popular`);
+    const items = await res.json();
+    if (!items || !items.length){ box.style.display = 'none'; return; }
+    const trim = (t, n) => (t && t.length > n) ? t.slice(0, n).trim() + '…' : t;
+    list.innerHTML = items.map(item => `
+      <li>
+        <a href="${item.link}" target="_blank" rel="noopener">${trim(item.text, 90) || item.outlet}</a>
+        <span class="bsky-meta">${item.outlet} · ${item.likeCount} likes · ${item.repostCount} reposts · <a href="${item.blueskyUrl}" target="_blank" rel="noopener">view on Bluesky</a></span>
+      </li>
+    `).join('');
+    box.style.display = '';
+  } catch (err) {
+    box.style.display = 'none'; // fail quietly — this module is a nice-to-have, never block the wire
+  }
+}
+
 async function loadTopHeadlines(){
   const res = await fetch(`${API}/api/headlines`);
   const headlines = await res.json();
@@ -274,14 +298,21 @@ function renderWire(){
         `).join('')}
       </div>
 
-      <aside class="wire-resources-box">
-        <h4>Resources</h4>
-        <ul>
-          <li><a href="https://susanrogan.substack.com/" target="_blank" rel="noopener">Rogan's List</a></li>
-          <li><a href="https://www.librarian.net/NoToAI/" target="_blank" rel="noopener">How to disable or avoid intrusive AI</a></li>
-          <li><a href="https://airesistlist.org/" target="_blank" rel="noopener">The AI Resist List</a></li>
-        </ul>
-      </aside>
+      <div class="wire-right-col">
+        <aside class="wire-resources-box" id="blueskyPopularBox" style="display:none;">
+          <h4>Most Popular on Bluesky</h4>
+          <ul id="blueskyPopularList"></ul>
+        </aside>
+
+        <aside class="wire-resources-box">
+          <h4>Resources</h4>
+          <ul>
+            <li><a href="https://susanrogan.substack.com/" target="_blank" rel="noopener">Rogan's List</a></li>
+            <li><a href="https://www.librarian.net/NoToAI/" target="_blank" rel="noopener">How to disable or avoid intrusive AI</a></li>
+            <li><a href="https://airesistlist.org/" target="_blank" rel="noopener">The AI Resist List</a></li>
+          </ul>
+        </aside>
+      </div>
     </div>
 
     <div class="wire-sources" id="sourcesSection"></div>
@@ -301,6 +332,7 @@ function renderWire(){
     </div>
   `;
   loadSources();
+  loadBlueskyPopular();
 }
 
 // dateline counters (calculated live so they never go stale)
