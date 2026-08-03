@@ -228,10 +228,19 @@ async function loadBlueskyPopular(){
     const res = await fetch(`${API}/api/bluesky-popular`);
     const items = await res.json();
     if (!items || !items.length){ box.style.display = 'none'; return; }
-    const trim = (t, n) => (t && t.length > n) ? t.slice(0, n).trim() + '…' : t;
+    // Bluesky's raw post text often has the shared link pasted right into it —
+    // strip that out since we already link to it via the headline + "view on Bluesky".
+    const stripUrls = t => (t || '').replace(/https?:\/\/\S+/g, '').replace(/\s{2,}/g, ' ').trim();
+    // Truncate at the last whole word instead of slicing mid-word.
+    const trim = (t, n) => {
+      if (!t || t.length <= n) return t;
+      const cut = t.slice(0, n);
+      const lastSpace = cut.lastIndexOf(' ');
+      return (lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trim() + '…';
+    };
     list.innerHTML = items.map(item => `
       <li>
-        <a href="${item.link}" target="_blank" rel="noopener">${trim(item.text, 90) || item.outlet}</a>
+        <a href="${item.link}" target="_blank" rel="noopener">${trim(stripUrls(item.text), 110) || item.outlet}</a>
         <span class="bsky-meta">${item.outlet} · ${item.likeCount} likes · ${item.repostCount} reposts · <a href="${item.blueskyUrl}" target="_blank" rel="noopener">view on Bluesky</a></span>
       </li>
     `).join('');

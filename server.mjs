@@ -463,7 +463,7 @@ async function fetchBlueskyPopular() {
         const replyCount = post.replyCount || 0;
         items.push({
           outlet: f.outlet,
-          text: (post.record?.text || "").slice(0, 160),
+          text: (post.record?.text || "").slice(0, 260),
           link,
           blueskyUrl: `https://bsky.app/profile/${f.bluesky_handle}/post/${String(post.uri).split("/").pop()}`,
           likeCount, repostCount, replyCount,
