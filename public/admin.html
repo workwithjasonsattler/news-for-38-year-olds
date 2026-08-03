@@ -99,7 +99,7 @@
     <h3 style="font-family:var(--mono);font-size:12px;" id="feedFormTitle">ADD A FEED</h3>
     <label>Outlet name</label><input id="ff_outlet">
     <label>Default author (used if the feed doesn't list one)</label><input id="ff_author">
-    <label>Feed URL</label><input id="ff_url" placeholder="https://example.com/feed">
+    <label>Feed URL (leave blank if this reporter only has a Bluesky handle, no RSS feed)</label><input id="ff_url" placeholder="https://example.com/feed">
     <label>Tip URL (optional — applies to every story pulled from this feed)</label><input id="ff_tip_url" placeholder="https://...">
     <label>Subscribe URL (optional — applies to every story pulled from this feed)</label><input id="ff_subscribe_url" placeholder="https://...">
     <label>Bluesky handle (optional — powers the "Most Popular on Bluesky" box, e.g. marisakabas.bsky.social)</label><input id="ff_bluesky" placeholder="handle.bsky.social">
@@ -119,7 +119,7 @@
     <h3 style="font-family:var(--mono);font-size:12px;margin-top:28px;border-top:1px solid rgba(0,0,0,.1);padding-top:20px;">BULK ADD FEEDS</h3>
     <p style="font-size:13px;color:#666;">Paste one feed per line, fields separated by <code>|</code>:<br>
     <code>Outlet | Feed URL | Section | Default Author | Tip URL | Subscribe URL | Bluesky Handle</code><br>
-    Only <strong>Outlet</strong> and <strong>Feed URL</strong> are required — leave the rest blank if you don't have them, e.g. <code>Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media</code>. Section must be exactly <code>Indie Media</code>, <code>Data Centers</code>, or <code>People Power</code> (defaults to Indie Media if left blank or misspelled). Bluesky Handle can be a bare handle (<code>marisakabas.bsky.social</code>) or a full profile URL.</p>
+    <strong>Outlet</strong> is always required, and you need either a <strong>Feed URL</strong> or a <strong>Bluesky Handle</strong> (or both) — leave the rest blank if you don't have them, e.g. <code>Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media</code>. To add a reporter who only has a Bluesky handle and no RSS feed, just leave the Feed URL field blank. Section must be exactly <code>Indie Media</code>, <code>Data Centers</code>, or <code>People Power</code> (defaults to Indie Media if left blank or misspelled). Bluesky Handle can be a bare handle (<code>marisakabas.bsky.social</code>) or a full profile URL.</p>
     <textarea id="bulk_feeds" rows="6" style="min-height:120px;" placeholder="Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media
 Blood in the Machine | https://www.bloodinthemachine.com/feed | People Power | Brian Merchant | | https://www.bloodinthemachine.com/subscribe | bloodinthemachine.bsky.social"></textarea>
     <button class="btn-primary" onclick="submitBulkFeeds()">Add all</button>
@@ -353,6 +353,7 @@ function editFeed(id){
 }
 
 async function submitFeed(){
+  const msg = document.getElementById('feedFormMsg');
   const body = {
     outlet: document.getElementById('ff_outlet').value,
     default_author: document.getElementById('ff_author').value,
@@ -362,11 +363,16 @@ async function submitFeed(){
     bluesky_handle: document.getElementById('ff_bluesky').value,
     fallback_beat: document.getElementById('ff_section').value,
   };
+  if (!body.outlet.trim()){
+    msg.style.color = '#B33A3A'; msg.textContent = 'Outlet name is required.'; return;
+  }
+  if (!body.feed_url.trim() && !body.bluesky_handle.trim()){
+    msg.style.color = '#B33A3A'; msg.textContent = 'Add either a Feed URL or a Bluesky handle.'; return;
+  }
   const url = editingFeedId ? `/api/feeds/${editingFeedId}` : '/api/feeds';
   const method = editingFeedId ? 'PUT' : 'POST';
   const res = await fetch(url, {method, headers: authHeaders(), body: JSON.stringify(body)});
   const data = await res.json();
-  const msg = document.getElementById('feedFormMsg');
   if (res.ok){
     msg.style.color = 'green'; msg.textContent = editingFeedId ? 'Feed updated.' : 'Feed added.';
     clearFeedForm(); await loadFeeds();
