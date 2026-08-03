@@ -73,6 +73,15 @@
 
   .wire-right-col{display:flex;flex-direction:column;gap:14px;}
 
+  .wire-bluesky-box{display:block;border:1px solid var(--hairline);background:var(--paper-card);padding:12px 14px;border-radius:2px;margin-bottom:20px;}
+  .wire-bluesky-box h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;}
+  .wire-bluesky-list{list-style:none;margin:0;padding:0;column-count:2;column-gap:28px;}
+  .wire-bluesky-list li{padding:4px 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:13px;border-bottom:1px solid #eee;break-inside:avoid;margin-bottom:6px;}
+  .wire-bluesky-list a{color:var(--wire-blue);font-weight:700;}
+  .wire-bluesky-list a:hover{text-decoration:underline;}
+  .wire-bluesky-list .bsky-meta{display:block;font-family:var(--mono, monospace);font-size:10px;color:#888;margin-top:2px;}
+  @media (max-width:820px){ .wire-bluesky-list{column-count:1;} }
+
   .wire-resources-box{border:1px solid var(--hairline);background:var(--paper-card);padding:12px 14px;border-radius:2px;}
   .wire-resources-box h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;}
   .wire-resources-box ul{list-style:none;margin:0;padding:0;}
@@ -80,7 +89,6 @@
   .wire-resources-box li:last-child{border-bottom:none;}
   .wire-resources-box a{color:var(--wire-blue);font-weight:700;}
   .wire-resources-box a:hover{text-decoration:underline;}
-  .wire-resources-box .bsky-meta{display:block;font-family:var(--mono, monospace);font-size:10px;color:#888;margin-top:1px;}
 
   .wire-columns{display:grid;grid-template-columns:repeat(3,1fr);gap:0 32px;}
   .wire-col{border-top:2px solid #111;padding-top:6px;}
@@ -288,6 +296,11 @@ function renderWire(){
   rest.forEach(d => bySection[sectionFor(d.beat)].push(d));
 
   wire.innerHTML = `
+    <aside class="wire-bluesky-box" id="blueskyPopularBox" style="display:none;">
+      <h4>Most Popular on Bluesky</h4>
+      <ul id="blueskyPopularList" class="wire-bluesky-list"></ul>
+    </aside>
+
     <div class="wire-top-grid">
       <div class="wire-alsobig">
         ${alsoBig.map(d => `
@@ -299,11 +312,6 @@ function renderWire(){
       </div>
 
       <div class="wire-right-col">
-        <aside class="wire-resources-box" id="blueskyPopularBox" style="display:none;">
-          <h4>Most Popular on Bluesky</h4>
-          <ul id="blueskyPopularList"></ul>
-        </aside>
-
         <aside class="wire-resources-box">
           <h4>Resources</h4>
           <ul>

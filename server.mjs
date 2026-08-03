@@ -483,7 +483,7 @@ async function fetchBlueskyPopular() {
     const existing = byLink.get(item.link);
     if (!existing || item.score > existing.score) byLink.set(item.link, item);
   }
-  return [...byLink.values()].sort((a, b) => b.score - a.score).slice(0, 6);
+  return [...byLink.values()].sort((a, b) => b.score - a.score).slice(0, 10);
 }
 
 app.get("/api/bluesky-popular", async (req, res) => {
@@ -609,7 +609,16 @@ app.get("/api/stats", requireAdmin, async (req, res) => {
 });
 
 // ---------- feed import helpers ----------
-const xmlParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_", textNodeName: "#text" });
+const xmlParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: "@_",
+  textNodeName: "#text",
+  // Some feeds (long-form show notes, entity-heavy WordPress exports, etc.)
+  // legitimately contain more than the library's default 1000 entity
+  // expansions. Raised generously — still bounded, so this isn't reopening
+  // the entity-bomb DoS the limit exists to prevent.
+  processEntities: { maxTotalExpansions: 20000 },
+});
 
 function textOf(field) {
   if (field == null) return "";
