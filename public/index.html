@@ -304,7 +304,7 @@ function renderWire(){
   const rest = DISPATCHES.filter(d => !d.pinned);
   if (rest.length === 0){ wire.innerHTML = `<p class="wire-empty">No dispatches yet — add one in the CMS.</p>`; return; }
 
-  const alsoBig = rest.slice(0, 15); // up to 15 secondary headlines
+  const alsoBig = rest.slice(0, 10); // matches the Bluesky box's item count so the two columns run about the same length
 
   const sectionOrder = ["Indie Media", "Data Centers", "People Power"];
   const bySection = { "Indie Media": [], "Data Centers": [], "People Power": [] };
