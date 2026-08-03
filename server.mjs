@@ -501,6 +501,37 @@ app.get("/api/bluesky-popular", async (req, res) => {
   }
 });
 
+// ---------- "Actions" box — titles pulled straight from Rogan's List ----------
+const ACTIONS_FEED_URL = "https://susanrogan.substack.com/feed";
+const ACTIONS_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
+let actionsCache = { data: [], fetchedAt: 0 };
+
+async function fetchActionsFeed() {
+  const r = await fetch(ACTIONS_FEED_URL, { headers: { "User-Agent": "n38-cms/1.0" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const xml = await r.text();
+  const parsed = xmlParser.parse(xml);
+  const items = extractItems(parsed);
+  return items
+    .filter(it => it.title && it.link)
+    .slice(0, 8)
+    .map(it => ({ title: stripHtml(it.title), link: it.link }));
+}
+
+app.get("/api/actions-feed", async (req, res) => {
+  try {
+    const now = Date.now();
+    if (now - actionsCache.fetchedAt > ACTIONS_CACHE_TTL_MS) {
+      const data = await fetchActionsFeed();
+      actionsCache = { data, fetchedAt: now };
+    }
+    res.json(actionsCache.data);
+  } catch (err) {
+    console.error("Actions feed error:", err);
+    res.json(actionsCache.data); // fail soft — never break the page over this
+  }
+});
+
 app.get("/go/:id", async (req, res) => {
   const row = await dbGet(`SELECT link FROM dispatches WHERE id = ?`, [req.params.id]);
   if (!row) return res.status(404).send("Not found");
