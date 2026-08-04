@@ -457,7 +457,7 @@ app.get("/api/dispatches", async (req, res) => {
 
 app.get("/api/sources", async (req, res) => {
   const rows = await dbAll(
-    `SELECT outlet, default_author, subscribe_url, tip_url FROM feeds ORDER BY outlet ASC`
+    `SELECT outlet, default_author, subscribe_url, tip_url, feed_url FROM feeds ORDER BY outlet ASC`
   );
   res.json(rows);
 });
@@ -533,13 +533,12 @@ app.get("/api/bluesky-popular", async (req, res) => {
   }
 });
 
-// ---------- Curated "title feed" boxes — Actions, Trending, Top Politics, Climate ----------
-// All four just pull item titles+links from a public RSS/Atom feed and cache
+// ---------- Curated "title feed" boxes — Actions, Top Politics, Climate ----------
+// All three just pull item titles+links from a public RSS/Atom feed and cache
 // them for a while. Same shape, different sources, so one generic fetcher
 // backs all the routes below. `max` lets a box run longer/shorter than the rest.
 const SIMPLE_FEEDS = {
   actions: { url: "https://susanrogan.substack.com/feed", max: 12 },       // Rogan's List — longer box per Jason's request
-  trending: { url: "https://www.memeorandum.com/feed.xml", max: 8 },      // Memeorandum
   topPolitics: { url: "https://news.google.com/rss/headlines/section/topic/POLITICS?hl=en-US&gl=US&ceid=US:en", max: 8 }, // Reddit .rss blocks non-browser traffic — swapped to Google News politics topic feed
   climate: { url: "https://www.theguardian.com/environment/climate-crisis/rss", max: 8 }, // Guardian Climate Crisis feed
 };
@@ -576,7 +575,6 @@ async function getSimpleFeed(key) {
 }
 
 app.get("/api/actions-feed", async (req, res) => res.json(await getSimpleFeed("actions")));
-app.get("/api/trending-feed", async (req, res) => res.json(await getSimpleFeed("trending")));
 app.get("/api/top-politics-feed", async (req, res) => res.json(await getSimpleFeed("topPolitics")));
 app.get("/api/climate-feed", async (req, res) => res.json(await getSimpleFeed("climate")));
 
