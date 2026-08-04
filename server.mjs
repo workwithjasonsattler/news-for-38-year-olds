@@ -99,6 +99,7 @@ async function initSchema() {
       fallback_beat TEXT NOT NULL DEFAULT 'Indie Media',
       beat_keywords TEXT NOT NULL DEFAULT '{}',
       items_per_feed INTEGER NOT NULL DEFAULT 3,
+      feed_type TEXT NOT NULL DEFAULT 'outlet',
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`,
     // ---------- reader accounts (Phase 1: customizable feeds / Phase 2: ratings) ----------
@@ -142,6 +143,7 @@ async function initSchema() {
     `ALTER TABLE dispatches ADD COLUMN subscribe_url TEXT`,
     `ALTER TABLE feeds ADD COLUMN subscribe_url TEXT`,
     `ALTER TABLE feeds ADD COLUMN bluesky_handle TEXT`,
+    `ALTER TABLE feeds ADD COLUMN feed_type TEXT NOT NULL DEFAULT 'outlet'`,
     `ALTER TABLE headlines ADD COLUMN subhead TEXT`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
@@ -170,11 +172,12 @@ async function migrateFeedUrlNullable() {
     fallback_beat TEXT NOT NULL DEFAULT 'Indie Media',
     beat_keywords TEXT NOT NULL DEFAULT '{}',
     items_per_feed INTEGER NOT NULL DEFAULT 3,
+    feed_type TEXT NOT NULL DEFAULT 'outlet',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   )`);
   await dbRun(`
-    INSERT INTO feeds (id, outlet, default_author, feed_url, tip_url, subscribe_url, bluesky_handle, fallback_beat, beat_keywords, items_per_feed, created_at)
-    SELECT id, outlet, default_author, feed_url, tip_url, subscribe_url, bluesky_handle, fallback_beat, beat_keywords, items_per_feed, created_at FROM feeds_old
+    INSERT INTO feeds (id, outlet, default_author, feed_url, tip_url, subscribe_url, bluesky_handle, fallback_beat, beat_keywords, items_per_feed, feed_type, created_at)
+    SELECT id, outlet, default_author, feed_url, tip_url, subscribe_url, bluesky_handle, fallback_beat, beat_keywords, items_per_feed, feed_type, created_at FROM feeds_old
   `);
   await dbRun(`DROP TABLE feeds_old`);
   console.log("feeds table migration complete.");
@@ -457,7 +460,7 @@ app.get("/api/dispatches", async (req, res) => {
 
 app.get("/api/sources", async (req, res) => {
   const rows = await dbAll(
-    `SELECT outlet, default_author, subscribe_url, tip_url, feed_url, bluesky_handle FROM feeds ORDER BY outlet ASC`
+    `SELECT outlet, default_author, subscribe_url, tip_url, feed_url, bluesky_handle, feed_type FROM feeds ORDER BY outlet ASC`
   );
   res.json(rows);
 });
@@ -533,13 +536,13 @@ app.get("/api/bluesky-popular", async (req, res) => {
   }
 });
 
-// ---------- Curated "title feed" boxes — Actions, Top Politics, Climate ----------
+// ---------- Curated "title feed" boxes — Actions, Frontpage, Climate ----------
 // All three just pull item titles+links from a public RSS/Atom feed and cache
 // them for a while. Same shape, different sources, so one generic fetcher
 // backs all the routes below. `max` lets a box run longer/shorter than the rest.
 const SIMPLE_FEEDS = {
   actions: { url: "https://susanrogan.substack.com/feed", max: 12 },       // Rogan's List — longer box per Jason's request
-  topPolitics: { url: "https://news.google.com/rss/headlines/section/topic/POLITICS?hl=en-US&gl=US&ceid=US:en", max: 8 }, // Reddit .rss blocks non-browser traffic — swapped to Google News politics topic feed
+  frontpage: { url: "https://www.scrippsnews.com/world.rss", max: 8 },     // Scripps News World — swapped off Google News to keep the site billionaire-free
   climate: { url: "https://www.theguardian.com/environment/climate-crisis/rss", max: 8 }, // Guardian Climate Crisis feed
 };
 const SIMPLE_FEED_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
@@ -575,7 +578,7 @@ async function getSimpleFeed(key) {
 }
 
 app.get("/api/actions-feed", async (req, res) => res.json(await getSimpleFeed("actions")));
-app.get("/api/top-politics-feed", async (req, res) => res.json(await getSimpleFeed("topPolitics")));
+app.get("/api/frontpage-feed", async (req, res) => res.json(await getSimpleFeed("frontpage")));
 app.get("/api/climate-feed", async (req, res) => res.json(await getSimpleFeed("climate")));
 
 app.get("/go/:id", async (req, res) => {
@@ -756,14 +759,17 @@ app.get("/api/feeds", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/feeds", requireAdmin, async (req, res) => {
-  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle } = req.body;
+  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type } = req.body;
   const handle = normalizeHandle(bluesky_handle);
-  if (!outlet || (!feed_url && !handle)) return res.status(400).json({ error: "outlet is required, and either feed_url or bluesky_handle" });
+  const type = feed_type === "journalist" ? "journalist" : "outlet";
+  if (!outlet) return res.status(400).json({ error: "outlet is required" });
+  if (type === "journalist" && !handle) return res.status(400).json({ error: "journalist feeds need a Bluesky handle" });
+  if (type === "outlet" && !feed_url && !handle) return res.status(400).json({ error: "outlet is required, and either feed_url or bluesky_handle" });
   try {
     const info = await dbRun(
-      `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle)
-       VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?)`,
-      [outlet, default_author || "", feed_url || null, tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle]
+      `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type)
+       VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)`,
+      [outlet, default_author || "", type === "journalist" ? null : (feed_url || null), tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle, type]
     );
     res.json({ id: info.lastInsertRowid });
   } catch (err) {
@@ -780,15 +786,24 @@ app.post("/api/feeds/bulk", requireAdmin, async (req, res) => {
   const errors = [];
   for (const f of feeds) {
     const handle = normalizeHandle(f.bluesky_handle);
-    if (!f.outlet || (!f.feed_url && !handle)) {
+    const type = f.feed_type === "journalist" ? "journalist" : "outlet";
+    if (!f.outlet) {
+      errors.push(`Skipped a row — outlet name is required: ${JSON.stringify(f)}`);
+      continue;
+    }
+    if (type === "journalist" && !handle) {
+      errors.push(`Skipped ${f.outlet} — journalist rows need a Bluesky handle.`);
+      continue;
+    }
+    if (type === "outlet" && !f.feed_url && !handle) {
       errors.push(`Skipped a row — needs outlet plus either a feed URL or a Bluesky handle: ${JSON.stringify(f)}`);
       continue;
     }
     try {
       await dbRun(
-        `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle)
-         VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?)`,
-        [f.outlet, f.default_author || "", f.feed_url || null, f.tip_url || "", f.subscribe_url || "", f.fallback_beat || "Indie Media", f.items_per_feed || 3, handle]
+        `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type)
+         VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)`,
+        [f.outlet, f.default_author || "", type === "journalist" ? null : (f.feed_url || null), f.tip_url || "", f.subscribe_url || "", f.fallback_beat || "Indie Media", f.items_per_feed || 3, handle, type]
       );
       added++;
     } catch (err) {
@@ -799,14 +814,17 @@ app.post("/api/feeds/bulk", requireAdmin, async (req, res) => {
 });
 
 app.put("/api/feeds/:id", requireAdmin, async (req, res) => {
-  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle } = req.body;
+  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type } = req.body;
   const handle = normalizeHandle(bluesky_handle);
-  if (!outlet || (!feed_url && !handle)) return res.status(400).json({ error: "outlet is required, and either feed_url or bluesky_handle" });
+  const type = feed_type === "journalist" ? "journalist" : "outlet";
+  if (!outlet) return res.status(400).json({ error: "outlet is required" });
+  if (type === "journalist" && !handle) return res.status(400).json({ error: "journalist feeds need a Bluesky handle" });
+  if (type === "outlet" && !feed_url && !handle) return res.status(400).json({ error: "outlet is required, and either feed_url or bluesky_handle" });
   try {
     await dbRun(
-      `UPDATE feeds SET outlet=?, default_author=?, feed_url=?, tip_url=?, subscribe_url=?, fallback_beat=?, items_per_feed=?, bluesky_handle=?
+      `UPDATE feeds SET outlet=?, default_author=?, feed_url=?, tip_url=?, subscribe_url=?, fallback_beat=?, items_per_feed=?, bluesky_handle=?, feed_type=?
        WHERE id=?`,
-      [outlet, default_author || "", feed_url || null, tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle, req.params.id]
+      [outlet, default_author || "", type === "journalist" ? null : (feed_url || null), tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle, type, req.params.id]
     );
     res.json({ ok: true });
   } catch (err) {
@@ -826,7 +844,7 @@ async function importAllFeeds() {
   let added = 0;
   const errors = [];
   for (const feed of feeds) {
-    if (!feed.feed_url) continue; // Bluesky-only outlet, no RSS to import
+    if (!feed.feed_url || feed.feed_type === "journalist") continue; // Bluesky-only journalist, no wire column
     try {
       const r = await fetch(feed.feed_url, { headers: { "User-Agent": "n38-cms/1.0" } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);

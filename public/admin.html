@@ -92,23 +92,30 @@
     <p style="font-size:13px;color:#666;">Add an outlet's RSS/Atom feed here — no file editing needed. Feeds refresh automatically in the background; "Run import now" pulls immediately if you don't want to wait.</p>
 
     <table id="feedTable" style="margin-bottom:16px;">
-      <thead><tr><th>Outlet</th><th>Feed URL</th><th>Default section</th><th>Bluesky</th><th></th></tr></thead>
+      <thead><tr><th>Outlet</th><th>Type</th><th>Feed URL</th><th>Default section</th><th>Bluesky</th><th></th></tr></thead>
       <tbody id="feedRows"></tbody>
     </table>
 
     <h3 style="font-family:var(--mono);font-size:12px;" id="feedFormTitle">ADD A FEED</h3>
+    <label>Feed type</label>
+    <select id="ff_type" onchange="toggleFeedTypeFields()">
+      <option value="outlet">Outlet (publication — gets a wire column from its RSS feed)</option>
+      <option value="journalist">Journalist (Bluesky-only — no RSS, no wire column, listed in Sources only)</option>
+    </select>
     <label>Outlet name</label><input id="ff_outlet">
     <label>Default author (used if the feed doesn't list one)</label><input id="ff_author">
-    <label>Feed URL (leave blank if this reporter only has a Bluesky handle, no RSS feed)</label><input id="ff_url" placeholder="https://example.com/feed">
-    <label>Tip URL (optional — applies to every story pulled from this feed)</label><input id="ff_tip_url" placeholder="https://...">
-    <label>Subscribe URL (optional — applies to every story pulled from this feed)</label><input id="ff_subscribe_url" placeholder="https://...">
-    <label>Bluesky handle (optional — powers the "Most Popular on Bluesky" box, e.g. marisakabas.bsky.social)</label><input id="ff_bluesky" placeholder="handle.bsky.social">
-    <label>Default section</label>
-    <select id="ff_section">
-      <option value="Indie Media">Indie Media</option>
-      <option value="Data Centers">Data Centers</option>
-      <option value="People Power">People Power</option>
-    </select>
+    <div id="ff_outlet_only_fields">
+      <label>Feed URL (leave blank if this reporter only has a Bluesky handle, no RSS feed)</label><input id="ff_url" placeholder="https://example.com/feed">
+      <label>Tip URL (optional — applies to every story pulled from this feed)</label><input id="ff_tip_url" placeholder="https://...">
+      <label>Subscribe URL (optional — applies to every story pulled from this feed)</label><input id="ff_subscribe_url" placeholder="https://...">
+      <label>Default section</label>
+      <select id="ff_section">
+        <option value="Indie Media">Indie Media</option>
+        <option value="Data Centers">Data Centers</option>
+        <option value="People Power">People Power</option>
+      </select>
+    </div>
+    <label>Bluesky handle (e.g. marisakabas.bsky.social — required for Journalist type, optional for Outlets to power the "Most Popular on Bluesky" box)</label><input id="ff_bluesky" placeholder="handle.bsky.social">
     <button class="btn-primary" id="feedSubmitBtn" onclick="submitFeed()">Add feed</button>
     <button class="btn-secondary" onclick="clearFeedForm()">Clear / Cancel edit</button>
     <p id="feedFormMsg" style="font-family:var(--mono);font-size:12px;"></p>
@@ -118,10 +125,11 @@
 
     <h3 style="font-family:var(--mono);font-size:12px;margin-top:28px;border-top:1px solid rgba(0,0,0,.1);padding-top:20px;">BULK ADD FEEDS</h3>
     <p style="font-size:13px;color:#666;">Paste one feed per line, fields separated by <code>|</code>:<br>
-    <code>Outlet | Feed URL | Section | Default Author | Tip URL | Subscribe URL | Bluesky Handle</code><br>
-    <strong>Outlet</strong> is always required, and you need either a <strong>Feed URL</strong> or a <strong>Bluesky Handle</strong> (or both) — leave the rest blank if you don't have them, e.g. <code>Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media</code>. To add a reporter who only has a Bluesky handle and no RSS feed, just leave the Feed URL field blank. Section must be exactly <code>Indie Media</code>, <code>Data Centers</code>, or <code>People Power</code> (defaults to Indie Media if left blank or misspelled). Bluesky Handle can be a bare handle (<code>marisakabas.bsky.social</code>) or a full profile URL.</p>
+    <code>Outlet | Feed URL | Section | Default Author | Tip URL | Subscribe URL | Bluesky Handle | Type</code><br>
+    <strong>Outlet</strong> is always required, and you need either a <strong>Feed URL</strong> or a <strong>Bluesky Handle</strong> (or both) — leave the rest blank if you don't have them, e.g. <code>Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media</code>. To add a reporter who only has a Bluesky handle and no RSS feed, just leave the Feed URL field blank. Section must be exactly <code>Indie Media</code>, <code>Data Centers</code>, or <code>People Power</code> (defaults to Indie Media if left blank or misspelled). Bluesky Handle can be a bare handle (<code>marisakabas.bsky.social</code>) or a full profile URL. Leave <strong>Type</strong> blank for a normal outlet — write <code>journalist</code> to add a Bluesky-only person who never gets a wire column and only shows up in Sources.</p>
     <textarea id="bulk_feeds" rows="6" style="min-height:120px;" placeholder="Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media
-Blood in the Machine | https://www.bloodinthemachine.com/feed | People Power | Brian Merchant | | https://www.bloodinthemachine.com/subscribe | bloodinthemachine.bsky.social"></textarea>
+Blood in the Machine | https://www.bloodinthemachine.com/feed | People Power | Brian Merchant | | https://www.bloodinthemachine.com/subscribe | bloodinthemachine.bsky.social
+Some Reporter | | | | | | somereporter.bsky.social | journalist"></textarea>
     <button class="btn-primary" onclick="submitBulkFeeds()">Add all</button>
     <p id="bulkFeedMsg" style="font-family:var(--mono);font-size:12px;"></p>
   </div>
@@ -319,30 +327,38 @@ async function importFeeds(){
 let allFeeds = [];
 let editingFeedId = null;
 
+function toggleFeedTypeFields(){
+  const isJournalist = document.getElementById('ff_type').value === 'journalist';
+  document.getElementById('ff_outlet_only_fields').style.display = isJournalist ? 'none' : 'block';
+}
+
 async function loadFeeds(){
   const res = await fetch('/api/feeds', {headers: authHeaders()});
   allFeeds = await res.json();
   document.getElementById('feedRows').innerHTML = allFeeds.map(f => `
     <tr>
       <td>${f.outlet}</td>
-      <td><a class="link-cell" href="${f.feed_url}" target="_blank">${f.feed_url}</a></td>
-      <td>${f.fallback_beat}</td>
+      <td>${f.feed_type === 'journalist' ? '<span style="color:#666;">Journalist</span>' : 'Outlet'}</td>
+      <td>${f.feed_url ? `<a class="link-cell" href="${f.feed_url}" target="_blank">${f.feed_url}</a>` : '<span style="color:#999;">—</span>'}</td>
+      <td>${f.feed_type === 'journalist' ? '<span style="color:#999;">—</span>' : f.fallback_beat}</td>
       <td>${f.bluesky_handle ? `<span style="color:#1185FE;">@${f.bluesky_handle}</span>` : '<span style="color:#999;">—</span>'}</td>
       <td>
         <button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="editFeed(${f.id})">Edit</button>
         <button class="btn-danger" onclick="deleteFeed(${f.id})">Delete</button>
       </td>
     </tr>
-  `).join('') || '<tr><td colspan="5" style="color:#666;">No feeds yet — add one below.</td></tr>';
+  `).join('') || '<tr><td colspan="6" style="color:#666;">No feeds yet — add one below.</td></tr>';
 }
 
 function editFeed(id){
   const f = allFeeds.find(x => x.id === id);
   if (!f) return;
   editingFeedId = id;
+  document.getElementById('ff_type').value = f.feed_type === 'journalist' ? 'journalist' : 'outlet';
+  toggleFeedTypeFields();
   document.getElementById('ff_outlet').value = f.outlet;
   document.getElementById('ff_author').value = f.default_author || '';
-  document.getElementById('ff_url').value = f.feed_url;
+  document.getElementById('ff_url').value = f.feed_url || '';
   document.getElementById('ff_tip_url').value = f.tip_url || '';
   document.getElementById('ff_subscribe_url').value = f.subscribe_url || '';
   document.getElementById('ff_bluesky').value = f.bluesky_handle || '';
@@ -354,6 +370,7 @@ function editFeed(id){
 
 async function submitFeed(){
   const msg = document.getElementById('feedFormMsg');
+  const feedType = document.getElementById('ff_type').value;
   const body = {
     outlet: document.getElementById('ff_outlet').value,
     default_author: document.getElementById('ff_author').value,
@@ -362,11 +379,15 @@ async function submitFeed(){
     subscribe_url: document.getElementById('ff_subscribe_url').value,
     bluesky_handle: document.getElementById('ff_bluesky').value,
     fallback_beat: document.getElementById('ff_section').value,
+    feed_type: feedType,
   };
   if (!body.outlet.trim()){
     msg.style.color = '#B33A3A'; msg.textContent = 'Outlet name is required.'; return;
   }
-  if (!body.feed_url.trim() && !body.bluesky_handle.trim()){
+  if (feedType === 'journalist' && !body.bluesky_handle.trim()){
+    msg.style.color = '#B33A3A'; msg.textContent = 'Journalist feeds need a Bluesky handle.'; return;
+  }
+  if (feedType === 'outlet' && !body.feed_url.trim() && !body.bluesky_handle.trim()){
     msg.style.color = '#B33A3A'; msg.textContent = 'Add either a Feed URL or a Bluesky handle.'; return;
   }
   const url = editingFeedId ? `/api/feeds/${editingFeedId}` : '/api/feeds';
@@ -384,6 +405,8 @@ async function submitFeed(){
 function clearFeedForm(){
   ['ff_outlet','ff_author','ff_url','ff_tip_url','ff_subscribe_url','ff_bluesky'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('ff_section').value = 'Indie Media';
+  document.getElementById('ff_type').value = 'outlet';
+  toggleFeedTypeFields();
   editingFeedId = null;
   document.getElementById('feedFormTitle').textContent = 'ADD A FEED';
   document.getElementById('feedSubmitBtn').textContent = 'Add feed';
@@ -401,7 +424,7 @@ async function submitBulkFeeds(){
   }
   const feeds = lines.map(line => {
     const parts = line.split('|').map(p => p.trim());
-    const [outlet, feed_url, section, default_author, tip_url, subscribe_url, bluesky_handle] = parts;
+    const [outlet, feed_url, section, default_author, tip_url, subscribe_url, bluesky_handle, feed_type] = parts;
     return {
       outlet,
       feed_url,
@@ -410,6 +433,7 @@ async function submitBulkFeeds(){
       tip_url: tip_url || '',
       subscribe_url: subscribe_url || '',
       bluesky_handle: bluesky_handle || '',
+      feed_type: (feed_type || '').trim().toLowerCase() === 'journalist' ? 'journalist' : 'outlet',
     };
   });
   msg.style.color = '#333'; msg.textContent = 'Adding…';
