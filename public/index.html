@@ -222,7 +222,8 @@ async function loadSources(){
     <h4>Sources</h4>
     <div class="sources-columns">
       ${sources.map(s => {
-        const siteUrl = s.subscribe_url || siteRootFromUrl(s.feed_url) || s.tip_url;
+        const blueskyUrl = s.bluesky_handle ? `https://bsky.app/profile/${s.bluesky_handle}` : null;
+        const siteUrl = s.subscribe_url || siteRootFromUrl(s.feed_url) || s.tip_url || blueskyUrl;
         const name = siteUrl ? `<a href="${siteUrl}" target="_blank" rel="noopener">${s.outlet}</a>` : s.outlet;
         return `
         <div class="source-item">

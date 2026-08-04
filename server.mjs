@@ -457,7 +457,7 @@ app.get("/api/dispatches", async (req, res) => {
 
 app.get("/api/sources", async (req, res) => {
   const rows = await dbAll(
-    `SELECT outlet, default_author, subscribe_url, tip_url, feed_url FROM feeds ORDER BY outlet ASC`
+    `SELECT outlet, default_author, subscribe_url, tip_url, feed_url, bluesky_handle FROM feeds ORDER BY outlet ASC`
   );
   res.json(rows);
 });
