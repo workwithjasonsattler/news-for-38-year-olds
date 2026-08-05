@@ -600,7 +600,7 @@ app.get("/api/nerve-center/site", async (req, res) => {
 // backs all the routes below. `max` lets a box run longer/shorter than the rest.
 const SIMPLE_FEEDS = {
   actions: { url: "https://susanrogan.substack.com/feed", max: 12 },       // Rogan's List — longer box per Jason's request
-  frontpage: { url: "https://www.scrippsnews.com/world.rss", max: 8 },     // Scripps News World — swapped off Google News to keep the site billionaire-free
+  frontpage: { url: "https://www.theguardian.com/us-news/rss", max: 8 },  // Guardian US — Scott Trust owned since 1936, structurally billionaire-proof
   climate: { url: "https://www.theguardian.com/environment/climate-crisis/rss", max: 8 }, // Guardian Climate Crisis feed
 };
 const SIMPLE_FEED_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
