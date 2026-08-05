@@ -594,6 +594,23 @@ app.get("/api/nerve-center/site", async (req, res) => {
   }
 });
 
+// ---------- TEMPORARY diagnostic: does unauthenticated Bluesky post search work? ----------
+// Not linked from anywhere in the UI. Hit it directly once deployed to find out
+// whether app.bsky.feed.searchPosts actually works without auth on Render's open
+// internet (the sandbox here can't reach bsky.app at all, so this can't be
+// answered locally). Safe to delete once we have an answer either way.
+app.get("/api/_diag/bluesky-search", async (req, res) => {
+  const q = req.query.q || "climate";
+  try {
+    const url = `https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent(q)}&limit=5`;
+    const resp = await fetch(url, { headers: { "User-Agent": "n38-cms/1.0" } });
+    const text = await resp.text();
+    res.status(200).json({ upstreamStatus: resp.status, upstreamOk: resp.ok, bodyPreview: text.slice(0, 1500) });
+  } catch (err) {
+    res.status(200).json({ error: err.message });
+  }
+});
+
 // ---------- Curated "title feed" boxes — Actions, Frontpage, Climate ----------
 // All three just pull item titles+links from a public RSS/Atom feed and cache
 // them for a while. Same shape, different sources, so one generic fetcher
