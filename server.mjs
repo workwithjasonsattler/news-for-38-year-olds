@@ -22,6 +22,17 @@ const client = createClient({
 });
 console.log(`Database: ${DB_URL.startsWith("file:") ? "local file (dev mode)" : "remote Turso"}`);
 
+// Safety net: a transient Turso hiccup on a single in-flight request
+// (a brief 5xx, a dropped connection) shouldn't take the whole server down
+// for every reader. Node crashes the process on an unhandled promise
+// rejection by default — log it and keep serving everyone else instead.
+process.on("unhandledRejection", (err) => {
+  console.error("Unhandled rejection (server staying up):", err);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception (server staying up):", err);
+});
+
 // ---------- Bluesky handle helper ----------
 // Accepts a plain handle ("marisakabas.bsky.social"), an @-prefixed handle,
 // or a full profile URL ("https://bsky.app/profile/marisakabas.bsky.social")
@@ -475,7 +486,7 @@ let blueskyCache = { data: [], fetchedAt: 0 };
 
 async function fetchBlueskyPopular() {
   const feeds = await dbAll(
-    `SELECT outlet, bluesky_handle FROM feeds WHERE bluesky_handle IS NOT NULL AND bluesky_handle != ''`
+    `SELECT outlet, bluesky_handle, fallback_beat FROM feeds WHERE bluesky_handle IS NOT NULL AND bluesky_handle != ''`
   );
   const cutoff = Date.now() - 24 * 60 * 60 * 1000;
 
@@ -498,6 +509,7 @@ async function fetchBlueskyPopular() {
         const replyCount = post.replyCount || 0;
         items.push({
           outlet: f.outlet,
+          section: f.fallback_beat || "Indie Media",
           text: (post.record?.text || "").slice(0, 260),
           link,
           blueskyUrl: `https://bsky.app/profile/${f.bluesky_handle}/post/${String(post.uri).split("/").pop()}`,
@@ -519,7 +531,7 @@ async function fetchBlueskyPopular() {
     const existing = byLink.get(item.link);
     if (!existing || item.score > existing.score) byLink.set(item.link, item);
   }
-  return [...byLink.values()].sort((a, b) => b.score - a.score).slice(0, 10);
+  return [...byLink.values()].sort((a, b) => b.score - a.score); // full ranked list; callers slice as needed
 }
 
 app.get("/api/bluesky-popular", async (req, res) => {
@@ -529,10 +541,56 @@ app.get("/api/bluesky-popular", async (req, res) => {
       const data = await fetchBlueskyPopular();
       blueskyCache = { data, fetchedAt: now };
     }
-    res.json(blueskyCache.data);
+    res.json(blueskyCache.data.slice(0, 10));
   } catch (err) {
     console.error("Bluesky popular error:", err);
-    res.json(blueskyCache.data); // fail soft — never break the page over this
+    res.json(blueskyCache.data.slice(0, 10)); // fail soft — never break the page over this
+  }
+});
+
+// ---------- Nerve Center: full Bluesky trending + site engagement leaderboard ----------
+// Public (no admin gate) — aggregate engagement numbers only, nothing sensitive.
+// Reuses the same Bluesky cache as the homepage box (fetchBlueskyPopular pulls
+// everything; the homepage box just slices the top 10 of the same cached list).
+const VALID_NERVE_SECTIONS = ["Indie Media", "Data Centers", "People Power"];
+
+app.get("/api/nerve-center/bluesky", async (req, res) => {
+  try {
+    const now = Date.now();
+    if (now - blueskyCache.fetchedAt > BLUESKY_CACHE_TTL_MS) {
+      const data = await fetchBlueskyPopular();
+      blueskyCache = { data, fetchedAt: now };
+    }
+    const { section } = req.query;
+    let data = blueskyCache.data;
+    if (section && VALID_NERVE_SECTIONS.includes(section)) data = data.filter(i => i.section === section);
+    res.json(data.slice(0, 40));
+  } catch (err) {
+    console.error("Nerve center Bluesky error:", err);
+    res.json([]);
+  }
+});
+
+app.get("/api/nerve-center/site", async (req, res) => {
+  try {
+    const { section } = req.query;
+    const validSection = section && VALID_NERVE_SECTIONS.includes(section) ? section : null;
+    const rows = await dbAll(
+      `SELECT d.id, d.headline, d.outlet, d.name, d.beat, d.link, d.tip_url, d.subscribe_url, d.date,
+              COUNT(DISTINCT c.id) AS clicks, COUNT(DISTINCT t.id) AS tip_clicks, COALESCE(SUM(t.amount),0) AS tip_amount
+       FROM dispatches d
+       LEFT JOIN clicks c ON c.dispatch_id = d.id
+       LEFT JOIN tip_clicks t ON t.dispatch_id = d.id
+       ${validSection ? "WHERE d.beat = ?" : ""}
+       GROUP BY d.id
+       ORDER BY clicks DESC, tip_clicks DESC
+       LIMIT 40`,
+      validSection ? [validSection] : []
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error("Nerve center site error:", err);
+    res.json([]);
   }
 });
 
@@ -895,11 +953,32 @@ if (AUTO_IMPORT_MINUTES > 0) {
 
 // ---------- startup ----------
 async function start() {
-  await initSchema();
-  await migrateFeedUrlNullable();
-  await migrateFeedsJsonIfNeeded();
-  await migrateDateFormats();
-  await autoSeedIfEmpty();
-  app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
+  // Turso can occasionally return a transient 5xx (a host blip, a brief
+  // reconnect) — retry the whole startup sequence with backoff instead of
+  // crashing outright on the first hiccup. If it's a real, sustained outage
+  // this still eventually exits (so Render's own restart/alerting kicks in),
+  // it just doesn't give up after a single bad request.
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      await initSchema();
+      await migrateFeedUrlNullable();
+      await migrateFeedsJsonIfNeeded();
+      await migrateDateFormats();
+      await autoSeedIfEmpty();
+      app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
+      return;
+    } catch (err) {
+      const isLastAttempt = attempt === MAX_ATTEMPTS;
+      console.error(`Startup attempt ${attempt}/${MAX_ATTEMPTS} failed: ${err.message}`);
+      if (isLastAttempt) {
+        console.error("Giving up after repeated startup failures — the database (Turso) may be down. Check its status/dashboard.");
+        throw err;
+      }
+      const delayMs = Math.min(2000 * 2 ** (attempt - 1), 20000); // 2s, 4s, 8s, 16s, capped at 20s
+      console.log(`Retrying startup in ${delayMs / 1000}s...`);
+      await new Promise(r => setTimeout(r, delayMs));
+    }
+  }
 }
 start();

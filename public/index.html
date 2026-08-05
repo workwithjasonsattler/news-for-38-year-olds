@@ -75,7 +75,7 @@
   .source-item .source-link{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--wire-blue);border-bottom:none;padding:0;min-width:0;text-align:left;}
   .source-item .source-link + .source-link{margin-left:10px;}
 
-  .wire-bluesky-box h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;}
+  .wire-bluesky-box h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;}
   .wire-bluesky-list{list-style:none;margin:0;padding:0;}
   .wire-bluesky-list li{padding:4px 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:13px;border-bottom:1px solid #eee;margin-bottom:6px;}
   .wire-bluesky-list a{color:var(--wire-blue);font-weight:700;}
@@ -524,7 +524,7 @@ function renderWire(){
       </aside>
 
       <aside class="wire-bluesky-box" id="blueskyPopularBox" style="display:none;">
-        <h4>Most Popular on Bluesky</h4>
+        <h4>Most Popular on Bluesky <a href="/nerve-center.html" style="font-family:var(--mono);font-size:10px;font-style:normal;font-weight:400;text-transform:uppercase;color:var(--wire-blue);text-decoration:underline;letter-spacing:.03em;">Nerve Center &rarr;</a></h4>
         <ul id="blueskyPopularList" class="wire-bluesky-list"></ul>
       </aside>
 

@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NERVE CENTER — News for 38 Year Olds</title>
+<meta name="description" content="What's trending across our independent journalists on Bluesky and on the site itself.">
+<style>
+  :root{
+    --paper:#FFFFFF; --paper-card:#F7F5EF; --text:#111111; --text-muted:#666;
+    --wire-red:#B33A3A; --wire-blue:#0000CC; --support-teal:#2F6F62;
+    --hairline:#ddd;
+    --display:Georgia,'Times New Roman',serif;
+    --mono:'IBM Plex Mono','Courier New',monospace;
+  }
+  *{box-sizing:border-box;} html,body{margin:0;padding:0;}
+  body{background:var(--paper);color:var(--text);font-family:var(--display);-webkit-font-smoothing:antialiased;}
+  a{color:inherit;text-decoration:none;}
+
+  header.nc-header{max-width:1000px;margin:0 auto;padding:24px 24px 10px;text-align:center;border-bottom:2px solid #111;}
+  .nc-back{font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;display:inline-block;margin-bottom:10px;}
+  .nc-title{font-family:var(--display);font-weight:800;font-size:34px;letter-spacing:-.01em;margin:0;}
+  .nc-title .amp{color:var(--wire-red);font-style:italic;}
+  .nc-subtitle{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#666;margin:8px 0 16px;}
+
+  .nc-controls{max-width:1000px;margin:16px auto 0;padding:0 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .nc-controls label{font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#555;}
+  .nc-controls select{font-family:var(--mono);font-size:12px;padding:4px 8px;border:1px solid #999;background:#fff;color:#111;}
+
+  main.nc-main{max-width:1000px;margin:24px auto 60px;padding:0 24px;display:grid;grid-template-columns:1fr 1fr;gap:0 40px;align-items:start;}
+  @media (max-width:760px){ main.nc-main{grid-template-columns:1fr;} }
+
+  .nc-panel h2{font-family:var(--display);font-style:italic;font-weight:700;font-size:17px;color:var(--wire-red);border-top:2px solid #111;padding-top:8px;margin:0 0 4px;}
+  .nc-panel .nc-panel-sub{font-family:var(--mono);font-size:10.5px;color:#999;margin:0 0 14px;}
+
+  .nc-item{padding:10px 0;border-bottom:1px solid #eee;}
+  .nc-item .nc-rank{font-family:var(--mono);font-size:11px;color:#bbb;margin-right:6px;}
+  .nc-item .nc-headline{font-weight:700;font-size:14.5px;line-height:1.35;}
+  .nc-item .nc-headline:hover{text-decoration:underline;}
+  .nc-item .nc-meta{display:block;font-family:var(--mono);font-size:10.5px;color:#888;margin-top:4px;}
+  .nc-item .nc-meta .nc-outlet{color:var(--wire-blue);}
+  .nc-item .nc-text{font-size:13px;color:#333;margin:3px 0 0;line-height:1.4;}
+  .nc-empty{font-family:var(--mono);font-size:11.5px;color:#999;padding:10px 0;}
+  .nc-loading{font-family:var(--mono);font-size:11.5px;color:#999;padding:10px 0;}
+
+  footer.nc-footer{max-width:1000px;margin:0 auto;padding:20px 24px 50px;text-align:center;font-family:var(--mono);font-size:10.5px;color:#999;}
+</style>
+</head>
+<body>
+
+<header class="nc-header">
+  <a href="/" class="nc-back">&larr; BACK TO THE WIRE</a>
+  <h1 class="nc-title">NERVE CENTER<span class="amp">.</span></h1>
+  <p class="nc-subtitle">What's moving right now — across Bluesky and across this site</p>
+</header>
+
+<div class="nc-controls">
+  <label for="sectionFilter">Focus on:</label>
+  <select id="sectionFilter" onchange="loadAll()">
+    <option value="">All sections</option>
+    <option value="Indie Media">Indie Media</option>
+    <option value="Data Centers">Data Centers</option>
+    <option value="People Power">People Power</option>
+  </select>
+</div>
+
+<main class="nc-main">
+  <section class="nc-panel">
+    <h2>Trending on Bluesky</h2>
+    <p class="nc-panel-sub">Ranked by likes + reposts×2 + replies, last 24 hours</p>
+    <div id="blueskyPanel"><p class="nc-loading">Loading…</p></div>
+  </section>
+
+  <section class="nc-panel">
+    <h2>Most Read on the Site</h2>
+    <p class="nc-panel-sub">Ranked by reader clicks, all time</p>
+    <div id="sitePanel"><p class="nc-loading">Loading…</p></div>
+  </section>
+</main>
+
+<footer class="nc-footer">NEWS FOR 38 YEAR OLDS — NO PAYWALL. NO ALGORITHM. TIP YOUR REPORTER.</footer>
+
+<script>
+const API = "";
+
+function timeAgo(ts){
+  if (!ts) return '';
+  const mins = Math.floor((Date.now() - ts) / 60000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs/24)}d ago`;
+}
+
+async function loadBluesky(section){
+  const panel = document.getElementById('blueskyPanel');
+  try {
+    const url = `${API}/api/nerve-center/bluesky` + (section ? `?section=${encodeURIComponent(section)}` : '');
+    const res = await fetch(url);
+    const items = await res.json();
+    if (!items.length){ panel.innerHTML = '<p class="nc-empty">Nothing trending on Bluesky right now for this view.</p>'; return; }
+    panel.innerHTML = items.map((it, i) => `
+      <div class="nc-item">
+        <span class="nc-rank">${i+1}.</span><a class="nc-headline" href="${it.link}" target="_blank" rel="noopener">${it.text || it.outlet}</a>
+        <span class="nc-meta"><span class="nc-outlet">${it.outlet}</span> · ${it.section} · ${it.likeCount} likes · ${it.repostCount} reposts · ${it.replyCount} replies · ${timeAgo(it.createdAt)} · <a href="${it.blueskyUrl}" target="_blank" rel="noopener">view post</a></span>
+      </div>
+    `).join('');
+  } catch (err) {
+    panel.innerHTML = '<p class="nc-empty">Couldn\'t load Bluesky trends right now.</p>';
+  }
+}
+
+async function loadSite(section){
+  const panel = document.getElementById('sitePanel');
+  try {
+    const url = `${API}/api/nerve-center/site` + (section ? `?section=${encodeURIComponent(section)}` : '');
+    const res = await fetch(url);
+    const items = await res.json();
+    const withClicks = items.filter(it => it.clicks > 0);
+    if (!withClicks.length){ panel.innerHTML = '<p class="nc-empty">No reader click data yet for this view.</p>'; return; }
+    panel.innerHTML = withClicks.map((it, i) => `
+      <div class="nc-item">
+        <span class="nc-rank">${i+1}.</span><a class="nc-headline" href="${it.link}" target="_blank" rel="noopener">${it.headline}</a>
+        <span class="nc-meta"><span class="nc-outlet">${it.outlet}</span> · ${it.beat} · ${it.clicks} click${it.clicks===1?'':'s'}${it.tip_clicks ? ` · ${it.tip_clicks} tip click${it.tip_clicks===1?'':'s'}` : ''}</span>
+      </div>
+    `).join('');
+  } catch (err) {
+    panel.innerHTML = '<p class="nc-empty">Couldn\'t load site trends right now.</p>';
+  }
+}
+
+function loadAll(){
+  const section = document.getElementById('sectionFilter').value;
+  loadBluesky(section);
+  loadSite(section);
+}
+
+loadAll();
+</script>
+
+</body>
+</html>
