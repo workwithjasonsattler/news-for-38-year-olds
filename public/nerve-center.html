@@ -43,6 +43,23 @@
   .nc-empty{font-family:var(--mono);font-size:11.5px;color:#999;padding:10px 0;}
   .nc-loading{font-family:var(--mono);font-size:11.5px;color:#999;padding:10px 0;}
 
+  /* Chatter panel — full width below the two-column grid */
+  .nc-chatter-section{max-width:1000px;margin:32px auto 0;padding:0 24px;}
+  .nc-chatter-section h2{font-family:var(--display);font-style:italic;font-weight:700;font-size:17px;color:var(--wire-red);border-top:2px solid #111;padding-top:8px;margin:0 0 4px;}
+  .nc-chatter-section .nc-panel-sub{font-family:var(--mono);font-size:10.5px;color:#999;margin:0 0 20px;}
+
+  .nc-story-block{margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid #ddd;}
+  .nc-story-block:last-child{border-bottom:none;}
+  .nc-story-hed{font-weight:700;font-size:15px;line-height:1.35;margin:0 0 2px;}
+  .nc-story-hed a:hover{text-decoration:underline;}
+  .nc-story-meta{font-family:var(--mono);font-size:10px;color:#999;margin:0 0 10px;}
+  .nc-chatter-posts{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
+  .nc-chatter-post{background:#f7f5ef;padding:10px 12px;border-left:3px solid var(--wire-red);}
+  .nc-chatter-post .nc-chatter-outlet{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--wire-blue);margin-bottom:4px;}
+  .nc-chatter-post .nc-chatter-text{font-size:13px;line-height:1.4;color:#111;}
+  .nc-chatter-post .nc-chatter-stats{font-family:var(--mono);font-size:10px;color:#999;margin-top:6px;}
+  .nc-chatter-post .nc-chatter-stats a{color:var(--wire-blue);text-decoration:underline;}
+
   footer.nc-footer{max-width:1000px;margin:0 auto;padding:20px 24px 50px;text-align:center;font-family:var(--mono);font-size:10.5px;color:#999;}
 </style>
 </head>
@@ -77,6 +94,12 @@
     <div id="sitePanel"><p class="nc-loading">Loading…</p></div>
   </section>
 </main>
+
+<section class="nc-chatter-section">
+  <h2>What our journalists are saying about today's big stories</h2>
+  <p class="nc-panel-sub">Guardian US frontpage × our journalists' Bluesky posts — matched by topic, last 8 hours</p>
+  <div id="chatterPanel"><p class="nc-loading">Loading…</p></div>
+</section>
 
 <footer class="nc-footer">NEWS FOR 38 YEAR OLDS — NO PAYWALL. NO ALGORITHM. TIP YOUR REPORTER.</footer>
 
@@ -133,6 +156,38 @@ function loadAll(){
   const section = document.getElementById('sectionFilter').value;
   loadBluesky(section);
   loadSite(section);
+  loadChatter(); // chatter isn't filtered by section — it's always story-level
+}
+
+async function loadChatter(){
+  const panel = document.getElementById('chatterPanel');
+  try {
+    const res = await fetch(`${API}/api/nerve-center/chatter`);
+    const stories = await res.json();
+    if (!stories.length){
+      panel.innerHTML = '<p class="nc-empty">No chatter from our journalists on today\'s big stories yet — check back as the day unfolds.</p>';
+      return;
+    }
+    panel.innerHTML = stories.map(s => `
+      <div class="nc-story-block">
+        <p class="nc-story-hed"><a href="${s.storyLink}" target="_blank" rel="noopener">${s.story}</a></p>
+        <p class="nc-story-meta">${s.chatter.length} journalist${s.chatter.length===1?'':'s'} in our network posting about this</p>
+        <div class="nc-chatter-posts">
+          ${s.chatter.map(p => `
+            <div class="nc-chatter-post">
+              <div class="nc-chatter-outlet">${p.outlet}</div>
+              <div class="nc-chatter-text">${p.text || '(no text preview)'}</div>
+              <div class="nc-chatter-stats">
+                ♥ ${p.likeCount} &nbsp;↺ ${p.repostCount} &nbsp;· &nbsp;<a href="${p.blueskyUrl}" target="_blank" rel="noopener">view on Bluesky</a>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `).join('');
+  } catch(err) {
+    panel.innerHTML = '<p class="nc-empty">Couldn\'t load chatter right now.</p>';
+  }
 }
 
 loadAll();

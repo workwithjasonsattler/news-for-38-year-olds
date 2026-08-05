@@ -594,6 +594,81 @@ app.get("/api/nerve-center/site", async (req, res) => {
   }
 });
 
+// ---------- Nerve Center: What are our journalists saying about today's big stories? ----------
+// Pulls the Guardian US frontpage (our existing cached feed), then for each story
+// extracts 2-3 meaningful keywords and scans our cached Bluesky posts for mentions.
+// All matching is done server-side on already-cached data — zero extra API calls.
+
+// Common words to skip when extracting keywords from a headline
+const STOP_WORDS = new Set([
+  "a","an","the","and","or","but","in","on","at","to","for","of","with",
+  "is","are","was","were","be","been","being","have","has","had","do","does",
+  "did","will","would","could","should","may","might","that","this","these",
+  "those","it","its","by","as","from","about","into","than","then","so",
+  "after","before","over","under","up","out","off","how","what","who","when",
+  "where","which","why","not","no","new","says","said","say","us","their",
+  "his","her","him","they","we","he","she","after","amid","report","reports",
+]);
+
+function extractKeywords(title) {
+  return title
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(w => w.length > 3 && !STOP_WORDS.has(w))
+    .slice(0, 4); // top 4 meaningful words from the headline
+}
+
+function postMatchesKeywords(post, keywords) {
+  if (!keywords.length) return false;
+  const text = (post.text || "").toLowerCase();
+  const matchCount = keywords.filter(kw => text.includes(kw)).length;
+  // require at least 2 keyword hits, or 1 hit if the keyword is long/specific (>7 chars)
+  return matchCount >= 2 || (matchCount === 1 && keywords.some(kw => kw.length > 7 && text.includes(kw)));
+}
+
+app.get("/api/nerve-center/chatter", async (req, res) => {
+  try {
+    // 1. Get the frontpage stories (already cached from the homepage Frontpage box)
+    const stories = await getSimpleFeed("frontpage");
+    if (!stories.length) return res.json([]);
+
+    // 2. Get our journalists' Bluesky posts (already cached from the homepage box)
+    const now = Date.now();
+    if (now - blueskyCache.fetchedAt > BLUESKY_CACHE_TTL_MS) {
+      const data = await fetchBlueskyPopular();
+      blueskyCache = { data, fetchedAt: now };
+    }
+    const posts = blueskyCache.data;
+
+    // 3. For each story, find any Bluesky posts from our journalists that match
+    const result = stories.map(story => {
+      const keywords = extractKeywords(story.title);
+      const matches = posts.filter(post => postMatchesKeywords(post, keywords));
+      return {
+        story: story.title,
+        storyLink: story.link,
+        keywords,
+        chatter: matches.map(p => ({
+          outlet: p.outlet,
+          text: p.text,
+          blueskyUrl: p.blueskyUrl,
+          likeCount: p.likeCount,
+          repostCount: p.repostCount,
+          replyCount: p.replyCount,
+          score: p.score,
+          createdAt: p.createdAt,
+        })).sort((a, b) => b.score - a.score),
+      };
+    }).filter(s => s.chatter.length > 0); // only stories where someone in our network said something
+
+    res.json(result);
+  } catch (err) {
+    console.error("Nerve center chatter error:", err);
+    res.json([]);
+  }
+});
+
 // ---------- Curated "title feed" boxes — Actions, Frontpage, Climate ----------
 // All three just pull item titles+links from a public RSS/Atom feed and cache
 // them for a while. Same shape, different sources, so one generic fetcher
