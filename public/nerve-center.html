@@ -40,10 +40,66 @@
   .nc-item .nc-meta{display:block;font-family:var(--mono);font-size:10.5px;color:#888;margin-top:4px;}
   .nc-item .nc-meta .nc-outlet{color:var(--wire-blue);}
   .nc-item .nc-text{font-size:13px;color:#333;margin:3px 0 0;line-height:1.4;}
+  /* ===== Bluesky panel — BuzzFeed-style numbered list ===== */
+  #blueskyPanel .nc-item{
+    display:grid;
+    grid-template-columns:48px 1fr;
+    gap:0 12px;
+    padding:12px 0;
+    border-bottom:2px solid #f0f0f0;
+    align-items:start;
+  }
+  #blueskyPanel .nc-rank{
+    font-family:Impact,'Arial Black',sans-serif;
+    font-size:36px;
+    line-height:1;
+    color:#ee0000;
+    text-align:right;
+    padding-top:2px;
+  }
+  #blueskyPanel .nc-item-body{}
+  #blueskyPanel .nc-headline{
+    display:block;
+    font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
+    font-weight:800;
+    font-size:15px;
+    line-height:1.3;
+    color:#111;
+    text-decoration:none;
+  }
+  #blueskyPanel .nc-headline:hover{text-decoration:underline; color:#ee0000;}
+  #blueskyPanel .nc-meta{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    margin-top:5px;
+    align-items:center;
+  }
+  #blueskyPanel .nc-outlet{
+    background:#ee0000;
+    color:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
+    font-size:10px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    padding:2px 6px;
+    border-radius:2px;
+  }
+  #blueskyPanel .nc-stats{
+    font-family:var(--mono);
+    font-size:10px;
+    color:#999;
+  }
+  #blueskyPanel .nc-bsky-link{
+    font-family:var(--mono);
+    font-size:10px;
+    color:#0085ff;
+    text-decoration:underline;
+  }
+
   .nc-empty{font-family:var(--mono);font-size:11.5px;color:#999;padding:10px 0;}
   .nc-loading{font-family:var(--mono);font-size:11.5px;color:#999;padding:10px 0;}
-
-  /* Chatter panel — full width below the two-column grid */
   .nc-chatter-section{max-width:1000px;margin:32px auto 0;padding:0 24px;}
   .nc-chatter-section h2{font-family:var(--display);font-style:italic;font-weight:700;font-size:17px;color:var(--wire-red);border-top:2px solid #111;padding-top:8px;margin:0 0 4px;}
   .nc-chatter-section .nc-panel-sub{font-family:var(--mono);font-size:10.5px;color:#999;margin:0 0 20px;}
@@ -84,7 +140,7 @@
 <main class="nc-main">
   <section class="nc-panel">
     <h2>Trending on Bluesky</h2>
-    <p class="nc-panel-sub">Ranked by likes + reposts×2 + replies, last 8 hours</p>
+    <p class="nc-panel-sub">Ranked by likes + reposts×2 + replies, last 16 hours</p>
     <div id="blueskyPanel"><p class="nc-loading">Loading…</p></div>
   </section>
 
@@ -124,8 +180,15 @@ async function loadBluesky(section){
     if (!items.length){ panel.innerHTML = '<p class="nc-empty">Nothing trending on Bluesky right now for this view.</p>'; return; }
     panel.innerHTML = items.map((it, i) => `
       <div class="nc-item">
-        <span class="nc-rank">${i+1}.</span><a class="nc-headline" href="${it.link}" target="_blank" rel="noopener">${it.text || it.outlet}</a>
-        <span class="nc-meta"><span class="nc-outlet">${it.outlet}</span> · ${it.section} · ${it.likeCount} likes · ${it.repostCount} reposts · ${it.replyCount} replies · ${timeAgo(it.createdAt)} · <a href="${it.blueskyUrl}" target="_blank" rel="noopener">view post</a></span>
+        <span class="nc-rank">${i+1}</span>
+        <div class="nc-item-body">
+          <a class="nc-headline" href="${it.link}" target="_blank" rel="noopener">${it.text || it.outlet}</a>
+          <div class="nc-meta">
+            <span class="nc-outlet">${it.outlet}</span>
+            <span class="nc-stats">♥ ${it.likeCount} &nbsp;↺ ${it.repostCount} &nbsp;💬 ${it.replyCount} &nbsp;· ${timeAgo(it.createdAt)}</span>
+            <a class="nc-bsky-link" href="${it.blueskyUrl}" target="_blank" rel="noopener">Bluesky ↗</a>
+          </div>
+        </div>
       </div>
     `).join('');
   } catch (err) {

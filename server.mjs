@@ -488,7 +488,7 @@ async function fetchBlueskyPopular() {
   const feeds = await dbAll(
     `SELECT outlet, bluesky_handle, fallback_beat FROM feeds WHERE bluesky_handle IS NOT NULL AND bluesky_handle != ''`
   );
-  const cutoff = Date.now() - 8 * 60 * 60 * 1000; // last 8h (was 24h) — keeps the box feeling live instead of stale
+  const cutoff = Date.now() - 16 * 60 * 60 * 1000; // last 16h — wide enough to stay populated, tight enough to feel current
 
   const perOutlet = await Promise.allSettled(
     feeds.map(async (f) => {

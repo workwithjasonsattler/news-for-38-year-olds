@@ -105,13 +105,7 @@
 
   footer.colophon{border-top:1px solid #ccc;padding:26px 24px 50px;text-align:center;font-family:var(--mono);font-size:11px;color:#888;letter-spacing:.04em;}
 
-  .headline-history{max-width:900px;margin:10px auto 30px;padding:20px 24px 0;border-top:1px solid #ccc;}
-  .headline-history h3{font-family:var(--mono);font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#888;margin:0 0 12px;text-align:center;}
-  .headline-history ul{list-style:none;margin:0;padding:0;}
-  .headline-history li{display:flex;gap:12px;padding:6px 0;border-bottom:1px solid #eee;font-family:Georgia,'Times New Roman',serif;font-size:13px;}
-  .headline-history .hh-date{font-family:var(--mono);font-size:10.5px;color:#999;white-space:nowrap;min-width:70px;padding-top:2px;}
-  .headline-history a{color:#333;}
-  .headline-history a:hover{text-decoration:underline;}
+
 
   /* ============================================================
      ALTERNATE VIEWS — same data, different skin. Toggled via
@@ -155,9 +149,7 @@
   body[data-view="bbs"] .source-item{border-bottom:1px dashed #1a661a;}
   body[data-view="bbs"] .source-item .source-name, body[data-view="bbs"] .source-item .source-name a{color:#33ff33;}
   body[data-view="bbs"] footer.colophon{border-top:1px dashed #33ff33; color:#1a9c1a;}
-  body[data-view="bbs"] .headline-history{border-top:1px dashed #33ff33;}
-  body[data-view="bbs"] .headline-history h3, body[data-view="bbs"] .headline-history .hh-date{color:#1a9c1a;}
-  body[data-view="bbs"] .headline-history a{color:#33ff33;}
+
 
   /* ===== VIEW: RSS Reader ===== */
   body[data-view="rss"]{background:#fafafa; color:#1a1a1a;}
@@ -185,7 +177,7 @@
   body[data-view="rss"] .wire-columns{grid-template-columns:1fr; max-width:720px; margin:0 auto; gap:0;}
   body[data-view="rss"] .wire-col{border-top:1px solid #e0e0e0;}
   body[data-view="rss"] footer.colophon{max-width:720px; margin:0 auto; text-align:left;}
-  body[data-view="rss"] .headline-history{max-width:720px;}
+
 
   /* ===== VIEW: Right Wing (same journalism, loud cable-news skin) ===== */
   body[data-view="rightwing"]{background:#0a1a3d; color:#fff;}
@@ -219,9 +211,7 @@
   body[data-view="rightwing"] .source-item .source-name, body[data-view="rightwing"] .source-item .source-name a{color:#fff;}
   body[data-view="rightwing"] .source-item .source-link{color:#ffd700;}
   body[data-view="rightwing"] footer.colophon{background:#b31942; color:#ffd700; border-top:4px solid #ffd700;}
-  body[data-view="rightwing"] .headline-history{border-top:4px solid #ffd700;}
-  body[data-view="rightwing"] .headline-history h3{color:#ffd700;}
-  body[data-view="rightwing"] .headline-history a{color:#fff;}
+
 
 </style>
 </head>
@@ -249,7 +239,7 @@
 
 <main class="wire" id="wireView"></main>
 
-<section class="headline-history" id="headlineHistory"></section>
+
 
 <section class="wire-resources-bottom">
   <aside class="wire-resources-box">
@@ -466,22 +456,6 @@ async function loadTopHeadlines(){
   renderHeadlineHistory(headlines);
 }
 
-function renderHeadlineHistory(headlines){
-  const el = document.getElementById('headlineHistory');
-  if (!headlines.length) { el.innerHTML = ''; return; }
-  const sorted = [...headlines].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-  el.innerHTML = `
-    <h3>Headline History</h3>
-    <ul>
-      ${sorted.map(h => `
-        <li>
-          <span class="hh-date">${formatDisplayDate(h.created_at.slice(0,10))}</span>
-          ${h.link ? `<a href="${h.link}" target="_blank" rel="noopener">${h.text}</a>` : `<span>${h.text}</span>`}
-        </li>
-      `).join('')}
-    </ul>
-  `;
-}
 
 // ---- Wire (Drudge-style) view ----
 const SECTION_MAP = {
@@ -562,15 +536,18 @@ function renderWire(){
   loadClimateFeed();
 }
 
-// dateline counters (calculated live so they never go stale)
+// dateline counters — recalculated every minute so they never go stale mid-session
 const MIDTERM_DATE = new Date('2026-11-03T00:00:00');
-const IRAN_WAR_START = new Date('2026-02-28T00:00:00'); // date the current round of US-Iran fighting began
-function daysBetween(a, b){ return Math.round((b - a) / 86400000); }
-const today = new Date();
-const daysToMidterms = daysBetween(today, MIDTERM_DATE);
-const warDay = daysBetween(IRAN_WAR_START, today) + 1;
-document.getElementById('datelineLeft').textContent = `${daysToMidterms} DAYS TO THE MIDTERMS`;
-document.getElementById('datelineRight').textContent = `DAY ${warDay} OF THE IRAN WAR`;
+const IRAN_WAR_START = new Date('2026-02-28T00:00:00');
+function updateDateline(){
+  const now = new Date();
+  const daysToMidterms = Math.ceil((MIDTERM_DATE - now) / 86400000);
+  const warDay = Math.floor((now - IRAN_WAR_START) / 86400000) + 1;
+  document.getElementById('datelineLeft').textContent = `${daysToMidterms} DAYS TO THE MIDTERMS`;
+  document.getElementById('datelineRight').textContent = `DAY ${warDay} OF THE IRAN WAR`;
+}
+updateDateline();
+setInterval(updateDateline, 60000);
 
 // tip modal
 const tipOverlay = document.getElementById('tipOverlay');
