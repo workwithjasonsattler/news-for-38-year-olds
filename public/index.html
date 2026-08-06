@@ -50,7 +50,7 @@
   /* ---- Wire (Drudge-style) view ---- */
   .wire{max-width:1180px;margin:20px auto 70px;padding:0 24px;display:block;}
 
-  .wire-new-grid{display:grid;grid-template-columns:repeat(3, 1fr);row-gap:24px;align-items:start;border-top:2px solid #111;padding-top:10px;margin-bottom:24px;}
+  .wire-new-grid{display:grid;grid-template-columns:repeat(3, 1fr);row-gap:24px;align-items:start;padding-top:10px;margin-bottom:24px;}
   .wire-new-grid > *{padding:0 22px;margin:0;}
   .wire-new-grid > *:nth-child(3n+1){padding-left:0;}
   .wire-new-grid > *:nth-child(3n){padding-right:0;}
@@ -428,7 +428,7 @@ async function loadBlueskyPopular(){
       const lastSpace = cut.lastIndexOf(' ');
       return (lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trim() + '…';
     };
-    list.innerHTML = items.slice(0, 8).map(item => `
+    list.innerHTML = items.slice(0, 20).map(item => `
       <li>
         <a href="${item.link}" target="_blank" rel="noopener">${trim(stripUrls(item.text), 110) || item.outlet}</a>
         <span class="bsky-meta">${item.outlet} · ${item.likeCount} likes · ${item.repostCount} reposts · <a href="${item.blueskyUrl}" target="_blank" rel="noopener">view on Bluesky</a></span>
@@ -475,7 +475,7 @@ function renderWire(){
   const rest = DISPATCHES.filter(d => !d.pinned);
   if (rest.length === 0){ wire.innerHTML = `<p class="wire-empty">No dispatches yet — add one in the CMS.</p>`; return; }
 
-  const alsoBig = rest.slice(0, 8); // single column now, so a shorter count keeps it roughly level with the Actions box
+  const alsoBig = rest.slice(0, 20);
 
   const sectionOrder = ["Indie Media", "Data Centers", "People Power"];
   const bySection = { "Indie Media": [], "Data Centers": [], "People Power": [] };
@@ -519,7 +519,7 @@ function renderWire(){
       ${sectionOrder.map(sec => `
         <div class="wire-col">
           <h4>${sec}</h4>
-          ${bySection[sec].length ? bySection[sec].slice(0, 25).map(d => `
+          ${bySection[sec].length ? bySection[sec].slice(0, 20).map(d => `
             <div class="wire-item">
               <a href="/go/${d.id}" target="_blank" rel="noopener">${d.headline}</a>
               <span class="wire-meta">${d.outlet} — ${formatDisplayDate(d.date)}${d.subscribe_url ? ` · <a href="${d.subscribe_url}" target="_blank" rel="noopener" style="color:var(--wire-blue);">Subscribe</a>` : ''}${d.tip_url ? ` · <a href="${d.tip_url}" target="_blank" rel="noopener" style="color:var(--wire-blue);">Tip</a>` : ''}</span>

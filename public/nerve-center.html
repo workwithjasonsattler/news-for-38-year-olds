@@ -408,10 +408,10 @@
 
   <section class="nc-panel">
     <div class="nc-panel-header">
-      <h2><span class="panel-emoji">🔥</span>Most Read</h2>
-      <span class="nc-panel-sub">All time clicks</span>
+      <h2><span class="panel-emoji">🖋️</span>Our Journalists</h2>
+      <span class="nc-panel-sub">Bluesky-only contributors</span>
     </div>
-    <div id="sitePanel"><p class="nc-loading">Loading…</p></div>
+    <div id="journalistsPanel"><p class="nc-loading">Loading…</p></div>
   </section>
 </main>
 
@@ -464,28 +464,28 @@ async function loadBluesky(section){
   }
 }
 
-async function loadSite(section){
-  const panel = document.getElementById('sitePanel');
+async function loadJournalists(section){
+  const panel = document.getElementById('journalistsPanel');
   try {
-    const url = `${API}/api/nerve-center/site` + (section ? `?section=${encodeURIComponent(section)}` : '');
-    const res = await fetch(url);
-    const items = await res.json();
-    const withClicks = items.filter(it => it.clicks > 0);
-    if (!withClicks.length){ panel.innerHTML = '<p class="nc-empty">No reader click data yet — check back as people read!</p>'; return; }
-    panel.innerHTML = withClicks.map((it, i) => `
+    const res = await fetch(`${API}/api/sources`);
+    const rows = await res.json();
+    let journalists = rows.filter(r => r.feed_type === 'journalist' && r.bluesky_handle);
+    if (section) journalists = journalists.filter(r => (r.fallback_beat || 'Indie Media') === section);
+    if (!journalists.length){ panel.innerHTML = '<p class="nc-empty">No journalists added yet — add some in the admin panel.</p>'; return; }
+    panel.innerHTML = journalists.map((it, i) => `
       <div class="nc-item">
         <span class="nc-rank">${i+1}</span>
         <div class="nc-item-body">
-          <a class="nc-headline" href="${it.link}" target="_blank" rel="noopener">${it.headline}</a>
+          <a class="nc-headline" href="https://bsky.app/profile/${it.bluesky_handle}" target="_blank" rel="noopener">${it.outlet}</a>
           <div class="nc-meta">
-            <span class="nc-outlet">${it.outlet}</span>
-            <span class="nc-stats">${it.clicks} click${it.clicks===1?'':'s'}${it.tip_clicks ? ` · ${it.tip_clicks} tip${it.tip_clicks===1?'':'s'}` : ''}</span>
+            <span class="nc-outlet">@${it.bluesky_handle}</span>
+            ${it.subscribe_url ? `<a class="nc-bsky-link" href="${it.subscribe_url}" target="_blank" rel="noopener">Site ↗</a>` : ''}
           </div>
         </div>
       </div>
     `).join('');
   } catch(err){
-    panel.innerHTML = '<p class="nc-empty">Couldn\'t load site trends right now.</p>';
+    panel.innerHTML = '<p class="nc-empty">Couldn\'t load journalists right now.</p>';
   }
 }
 
@@ -527,7 +527,7 @@ async function loadChatter(){
 function loadAll(){
   const section = document.getElementById('sectionFilter').value;
   loadBluesky(section);
-  loadSite(section);
+  loadJournalists(section);
   loadChatter();
 }
 
