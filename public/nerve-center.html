@@ -258,34 +258,7 @@
   }
   #sitePanel .nc-stats{font-size:10px;color:#999;}
 
-  /* ===== CHATTER SECTION ===== */
-  .nc-chatter-section{
-    max-width:1100px;
-    margin:40px auto 0;
-    padding:0 24px;
-  }
-  .nc-chatter-header{
-    background:var(--bf-yellow);
-    border-left:8px solid var(--bf-red);
-    padding:10px 16px;
-    margin-bottom:20px;
-  }
-  .nc-chatter-header h2{
-    font-family:Impact,'Arial Black',sans-serif;
-    font-size:22px;
-    text-transform:uppercase;
-    letter-spacing:.04em;
-    color:var(--bf-red);
-    margin:0 0 2px;
-  }
-  .nc-chatter-header p{
-    font-size:11px;
-    color:#555;
-    font-weight:700;
-    text-transform:uppercase;
-    letter-spacing:.04em;
-    margin:0;
-  }
+  /* ===== ON TREND (chatter) ===== */
   .nc-story-block{
     margin-bottom:32px;
     border:3px solid #eee;
@@ -357,6 +330,22 @@
 
   .nc-empty{font-size:12px;color:#999;padding:16px 0;font-style:italic;}
   .nc-loading{font-size:12px;color:#999;padding:16px 0;}
+  .nc-expand-btn{
+    display:block;
+    width:100%;
+    margin-top:4px;
+    padding:10px;
+    background:var(--bf-gray);
+    border:none;
+    border-top:3px solid var(--bf-navy);
+    font-family:Impact,'Arial Black',sans-serif;
+    font-size:12px;
+    letter-spacing:.05em;
+    text-transform:uppercase;
+    color:var(--bf-navy);
+    cursor:pointer;
+  }
+  .nc-expand-btn:hover{background:var(--bf-yellow);}
 
   footer.nc-footer{
     background:var(--bf-navy);
@@ -408,20 +397,13 @@
 
   <section class="nc-panel">
     <div class="nc-panel-header">
-      <h2><span class="panel-emoji">🖋️</span>Our Journalists</h2>
-      <span class="nc-panel-sub">Bluesky-only contributors</span>
+      <h2><span class="panel-emoji">🗞️</span>On Trend</h2>
+      <span class="nc-panel-sub">Our journalists on today's top stories</span>
     </div>
-    <div id="journalistsPanel"><p class="nc-loading">Loading…</p></div>
+    <div id="chatterPanel"><p class="nc-loading">Loading…</p></div>
+    <button id="chatterExpandBtn" class="nc-expand-btn" onclick="expandChatter()" style="display:none;">Show more ↓</button>
   </section>
 </main>
-
-<section class="nc-chatter-section">
-  <div class="nc-chatter-header">
-    <h2>🗞️ What our journalists are saying</h2>
-    <p>Guardian US frontpage × our network's Bluesky posts — matched by topic</p>
-  </div>
-  <div id="chatterPanel"><p class="nc-loading">Loading…</p></div>
-</section>
 
 <footer class="nc-footer">
   <span>NEWS FOR 38 YEAR OLDS</span> — NO PAYWALL. NO ALGORITHM. NO BILLIONAIRES. TIP YOUR REPORTER.
@@ -464,71 +446,64 @@ async function loadBluesky(section){
   }
 }
 
-async function loadJournalists(section){
-  const panel = document.getElementById('journalistsPanel');
-  try {
-    const res = await fetch(`${API}/api/sources`);
-    const rows = await res.json();
-    let journalists = rows.filter(r => r.feed_type === 'journalist' && r.bluesky_handle);
-    if (section) journalists = journalists.filter(r => (r.fallback_beat || 'Indie Media') === section);
-    if (!journalists.length){ panel.innerHTML = '<p class="nc-empty">No journalists added yet — add some in the admin panel.</p>'; return; }
-    panel.innerHTML = journalists.map((it, i) => `
-      <div class="nc-item">
-        <span class="nc-rank">${i+1}</span>
-        <div class="nc-item-body">
-          <a class="nc-headline" href="https://bsky.app/profile/${it.bluesky_handle}" target="_blank" rel="noopener">${it.outlet}</a>
-          <div class="nc-meta">
-            <span class="nc-outlet">@${it.bluesky_handle}</span>
-            ${it.subscribe_url ? `<a class="nc-bsky-link" href="${it.subscribe_url}" target="_blank" rel="noopener">Site ↗</a>` : ''}
-          </div>
-        </div>
+let chatterStories = [];
+
+function renderChatter(stories){
+  return stories.map(s => `
+    <div class="nc-story-block">
+      <div class="nc-story-block-header">
+        <p class="nc-story-hed"><a href="${s.storyLink}" target="_blank" rel="noopener">${s.story}</a></p>
+        <span class="nc-story-count">${s.chatter.length} journalist${s.chatter.length===1?'':'s'}</span>
       </div>
-    `).join('');
-  } catch(err){
-    panel.innerHTML = '<p class="nc-empty">Couldn\'t load journalists right now.</p>';
-  }
+      <div class="nc-chatter-posts">
+        ${s.chatter.map(p => `
+          <div class="nc-chatter-post">
+            <span class="nc-chatter-outlet">${p.outlet}</span>
+            <div class="nc-chatter-text">${p.text || '(no text preview)'}</div>
+            <div class="nc-chatter-stats">
+              <span>♥ ${p.likeCount}</span>
+              <span>↺ ${p.repostCount}</span>
+              <a href="${p.blueskyUrl}" target="_blank" rel="noopener">Bluesky ↗</a>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
 }
 
-async function loadChatter(){
+async function loadChatter(section){
   const panel = document.getElementById('chatterPanel');
+  const btn = document.getElementById('chatterExpandBtn');
+  btn.style.display = 'none';
   try {
     const res = await fetch(`${API}/api/nerve-center/chatter`);
-    const stories = await res.json();
+    let stories = await res.json();
+    if (section) stories = stories.filter(s => s.chatter.some(p => p.section === section));
+    chatterStories = stories;
     if (!stories.length){
       panel.innerHTML = '<p class="nc-empty">No chatter from our journalists on today\'s big stories yet — check back as the day unfolds.</p>';
       return;
     }
-    panel.innerHTML = stories.map(s => `
-      <div class="nc-story-block">
-        <div class="nc-story-block-header">
-          <p class="nc-story-hed"><a href="${s.storyLink}" target="_blank" rel="noopener">${s.story}</a></p>
-          <span class="nc-story-count">${s.chatter.length} journalist${s.chatter.length===1?'':'s'}</span>
-        </div>
-        <div class="nc-chatter-posts">
-          ${s.chatter.map(p => `
-            <div class="nc-chatter-post">
-              <span class="nc-chatter-outlet">${p.outlet}</span>
-              <div class="nc-chatter-text">${p.text || '(no text preview)'}</div>
-              <div class="nc-chatter-stats">
-                <span>♥ ${p.likeCount}</span>
-                <span>↺ ${p.repostCount}</span>
-                <a href="${p.blueskyUrl}" target="_blank" rel="noopener">Bluesky ↗</a>
-              </div>
-            </div>
-          `).join('')}
-        </div>
-      </div>
-    `).join('');
+    panel.innerHTML = renderChatter(stories.slice(0, 5));
+    if (stories.length > 5){
+      btn.style.display = 'block';
+      btn.textContent = `Show ${stories.length - 5} more ↓`;
+    }
   } catch(err){
     panel.innerHTML = '<p class="nc-empty">Couldn\'t load chatter right now.</p>';
   }
 }
 
+function expandChatter(){
+  document.getElementById('chatterPanel').innerHTML = renderChatter(chatterStories);
+  document.getElementById('chatterExpandBtn').style.display = 'none';
+}
+
 function loadAll(){
   const section = document.getElementById('sectionFilter').value;
   loadBluesky(section);
-  loadJournalists(section);
-  loadChatter();
+  loadChatter(section);
 }
 
 loadAll();

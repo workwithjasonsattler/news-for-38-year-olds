@@ -660,7 +660,8 @@ app.get("/api/nerve-center/chatter", async (req, res) => {
           createdAt: p.createdAt,
         })).sort((a, b) => b.score - a.score),
       };
-    }).filter(s => s.chatter.length > 0); // only stories where someone in our network said something
+    }).filter(s => s.chatter.length > 0) // only stories where someone in our network said something
+      .sort((a, b) => (b.chatter[0]?.score || 0) - (a.chatter[0]?.score || 0)); // lead with what's trending hardest on Bluesky
 
     res.json(result);
   } catch (err) {
