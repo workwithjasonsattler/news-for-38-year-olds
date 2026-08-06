@@ -7,128 +7,388 @@
 <meta name="description" content="What's trending across our independent journalists on Bluesky and on the site itself.">
 <style>
   :root{
-    --paper:#FFFFFF; --paper-card:#F7F5EF; --text:#111111; --text-muted:#666;
-    --wire-red:#B33A3A; --wire-blue:#0000CC; --support-teal:#2F6F62;
-    --hairline:#ddd;
-    --display:Georgia,'Times New Roman',serif;
+    --bf-red:#ee0000;
+    --bf-yellow:#ffed00;
+    --bf-navy:#222244;
+    --bf-gray:#f4f4f4;
+    --bf-text:#222;
+    --wire-blue:#0000CC;
     --mono:'IBM Plex Mono','Courier New',monospace;
   }
   *{box-sizing:border-box;} html,body{margin:0;padding:0;}
-  body{background:var(--paper);color:var(--text);font-family:var(--display);-webkit-font-smoothing:antialiased;}
+  body{
+    background:#fff;
+    color:var(--bf-text);
+    font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
   a{color:inherit;text-decoration:none;}
 
-  header.nc-header{max-width:1000px;margin:0 auto;padding:24px 24px 10px;text-align:center;border-bottom:2px solid #111;}
-  .nc-back{font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;display:inline-block;margin-bottom:10px;}
-  .nc-title{font-family:var(--display);font-weight:800;font-size:34px;letter-spacing:-.01em;margin:0;}
-  .nc-title .amp{color:var(--wire-red);font-style:italic;}
-  .nc-subtitle{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#666;margin:8px 0 16px;}
+  /* ===== HEADER ===== */
+  header.nc-header{
+    background:var(--bf-red);
+    padding:0;
+    border-bottom:6px solid var(--bf-yellow);
+  }
+  .nc-header-inner{
+    max-width:1100px;
+    margin:0 auto;
+    padding:18px 24px 14px;
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    flex-wrap:wrap;
+    gap:10px;
+  }
+  .nc-back{
+    font-family:Impact,'Arial Black',sans-serif;
+    font-size:12px;
+    letter-spacing:.08em;
+    text-transform:uppercase;
+    color:#fff;
+    text-decoration:none;
+    border:2px solid rgba(255,255,255,.5);
+    padding:4px 10px;
+  }
+  .nc-back:hover{background:rgba(255,255,255,.15);}
+  .nc-logo{text-align:center;flex:1;}
+  .nc-logo-eyebrow{
+    font-family:Impact,'Arial Black',sans-serif;
+    font-size:10px;
+    letter-spacing:.2em;
+    text-transform:uppercase;
+    color:rgba(255,255,255,.7);
+    margin:0 0 2px;
+  }
+  .nc-title{
+    font-family:Impact,'Arial Black',sans-serif;
+    font-size:52px;
+    line-height:1;
+    color:#fff;
+    text-transform:uppercase;
+    letter-spacing:-.01em;
+    margin:0;
+    text-shadow:3px 3px 0 rgba(0,0,0,.2);
+  }
+  .nc-title .bang{color:var(--bf-yellow);}
+  .nc-subtitle{
+    font-size:12px;
+    color:rgba(255,255,255,.85);
+    font-weight:600;
+    margin:6px 0 0;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+  }
 
-  .nc-controls{max-width:1000px;margin:16px auto 0;padding:0 24px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
-  .nc-controls label{font-family:var(--mono);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:#555;}
-  .nc-controls select{font-family:var(--mono);font-size:12px;padding:4px 8px;border:1px solid #999;background:#fff;color:#111;}
+  /* ===== TICKER STRIP ===== */
+  .nc-ticker{
+    background:var(--bf-yellow);
+    padding:6px 24px;
+    font-family:Impact,'Arial Black',sans-serif;
+    font-size:12px;
+    letter-spacing:.1em;
+    text-transform:uppercase;
+    color:var(--bf-red);
+    text-align:center;
+  }
 
-  main.nc-main{max-width:1000px;margin:24px auto 60px;padding:0 24px;display:grid;grid-template-columns:1fr 1fr;gap:0 40px;align-items:start;}
-  @media (max-width:760px){ main.nc-main{grid-template-columns:1fr;} }
+  /* ===== CONTROLS ===== */
+  .nc-controls{
+    max-width:1100px;
+    margin:20px auto 0;
+    padding:0 24px;
+    display:flex;
+    align-items:center;
+    gap:10px;
+    flex-wrap:wrap;
+  }
+  .nc-controls label{
+    font-weight:800;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    color:#555;
+  }
+  .nc-controls select{
+    font-size:12px;
+    font-weight:700;
+    padding:5px 10px;
+    border:2px solid #111;
+    background:#fff;
+    cursor:pointer;
+  }
 
-  .nc-panel h2{font-family:var(--display);font-style:italic;font-weight:700;font-size:17px;color:var(--wire-red);border-top:2px solid #111;padding-top:8px;margin:0 0 4px;}
-  .nc-panel .nc-panel-sub{font-family:var(--mono);font-size:10.5px;color:#999;margin:0 0 14px;}
-
-  .nc-item{padding:10px 0;border-bottom:1px solid #eee;}
-  .nc-item .nc-rank{font-family:var(--mono);font-size:11px;color:#bbb;margin-right:6px;}
-  .nc-item .nc-headline{font-weight:700;font-size:14.5px;line-height:1.35;}
-  .nc-item .nc-headline:hover{text-decoration:underline;}
-  .nc-item .nc-meta{display:block;font-family:var(--mono);font-size:10.5px;color:#888;margin-top:4px;}
-  .nc-item .nc-meta .nc-outlet{color:var(--wire-blue);}
-  .nc-item .nc-text{font-size:13px;color:#333;margin:3px 0 0;line-height:1.4;}
-  /* ===== Bluesky panel — BuzzFeed-style numbered list ===== */
-  #blueskyPanel .nc-item{
+  /* ===== MAIN GRID ===== */
+  main.nc-main{
+    max-width:1100px;
+    margin:20px auto 0;
+    padding:0 24px;
     display:grid;
-    grid-template-columns:48px 1fr;
-    gap:0 12px;
-    padding:12px 0;
-    border-bottom:2px solid #f0f0f0;
+    grid-template-columns:1fr 1fr;
+    gap:0 48px;
     align-items:start;
   }
+  @media(max-width:760px){main.nc-main{grid-template-columns:1fr;}}
+
+  .nc-panel{}
+  .nc-panel-header{
+    background:var(--bf-navy);
+    color:#fff;
+    padding:8px 14px;
+    margin-bottom:0;
+    display:flex;
+    align-items:baseline;
+    gap:10px;
+  }
+  .nc-panel-header h2{
+    font-family:Impact,'Arial Black',sans-serif;
+    font-size:20px;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    margin:0;
+    color:#fff;
+  }
+  .nc-panel-header h2 .panel-emoji{margin-right:6px;}
+  .nc-panel-sub{
+    font-size:10px;
+    color:rgba(255,255,255,.6);
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    margin:0;
+  }
+
+  /* ===== BLUESKY ITEMS — BIG BUZZFEED LIST ===== */
+  #blueskyPanel .nc-item{
+    display:grid;
+    grid-template-columns:60px 1fr;
+    gap:0;
+    border-bottom:3px solid var(--bf-gray);
+    background:#fff;
+  }
+  #blueskyPanel .nc-item:nth-child(odd){background:#fafafa;}
   #blueskyPanel .nc-rank{
     font-family:Impact,'Arial Black',sans-serif;
-    font-size:36px;
+    font-size:48px;
     line-height:1;
-    color:#ee0000;
-    text-align:right;
-    padding-top:2px;
+    color:var(--bf-red);
+    text-align:center;
+    padding:14px 8px;
+    border-right:3px solid var(--bf-gray);
+    align-self:stretch;
+    display:flex;
+    align-items:center;
+    justify-content:center;
   }
-  #blueskyPanel .nc-item-body{}
+  #blueskyPanel .nc-item:first-child .nc-rank{
+    background:var(--bf-yellow);
+    color:var(--bf-red);
+    font-size:52px;
+  }
+  #blueskyPanel .nc-item-body{padding:12px 14px;}
   #blueskyPanel .nc-headline{
     display:block;
-    font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
     font-weight:800;
-    font-size:15px;
+    font-size:14px;
     line-height:1.3;
     color:#111;
-    text-decoration:none;
   }
-  #blueskyPanel .nc-headline:hover{text-decoration:underline; color:#ee0000;}
+  #blueskyPanel .nc-headline:hover{color:var(--bf-red);text-decoration:underline;}
   #blueskyPanel .nc-meta{
     display:flex;
     flex-wrap:wrap;
     gap:6px;
-    margin-top:5px;
+    margin-top:7px;
     align-items:center;
   }
   #blueskyPanel .nc-outlet{
-    background:#ee0000;
+    background:var(--bf-red);
     color:#fff;
-    font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
-    font-size:10px;
-    font-weight:700;
+    font-size:9px;
+    font-weight:800;
     text-transform:uppercase;
-    letter-spacing:.04em;
+    letter-spacing:.05em;
     padding:2px 6px;
     border-radius:2px;
   }
-  #blueskyPanel .nc-stats{
-    font-family:var(--mono);
+  #blueskyPanel .nc-stats{font-size:10px;color:#999;}
+  #blueskyPanel .nc-bsky-link{font-size:10px;color:var(--wire-blue);text-decoration:underline;}
+
+  /* ===== SITE ITEMS ===== */
+  #sitePanel .nc-item{
+    display:grid;
+    grid-template-columns:44px 1fr;
+    gap:0;
+    border-bottom:3px solid var(--bf-gray);
+  }
+  #sitePanel .nc-rank{
+    font-family:Impact,'Arial Black',sans-serif;
+    font-size:36px;
+    line-height:1;
+    color:var(--bf-navy);
+    text-align:center;
+    padding:12px 6px;
+    border-right:3px solid var(--bf-gray);
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  #sitePanel .nc-item:first-child .nc-rank{
+    background:var(--bf-navy);
+    color:var(--bf-yellow);
+  }
+  #sitePanel .nc-item-body{padding:10px 12px;}
+  #sitePanel .nc-headline{
+    display:block;
+    font-weight:800;
+    font-size:13px;
+    line-height:1.3;
+    color:#111;
+  }
+  #sitePanel .nc-headline:hover{color:var(--bf-navy);text-decoration:underline;}
+  #sitePanel .nc-meta{margin-top:5px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
+  #sitePanel .nc-outlet{
+    background:var(--bf-navy);
+    color:#fff;
+    font-size:9px;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    padding:2px 6px;
+    border-radius:2px;
+  }
+  #sitePanel .nc-stats{font-size:10px;color:#999;}
+
+  /* ===== CHATTER SECTION ===== */
+  .nc-chatter-section{
+    max-width:1100px;
+    margin:40px auto 0;
+    padding:0 24px;
+  }
+  .nc-chatter-header{
+    background:var(--bf-yellow);
+    border-left:8px solid var(--bf-red);
+    padding:10px 16px;
+    margin-bottom:20px;
+  }
+  .nc-chatter-header h2{
+    font-family:Impact,'Arial Black',sans-serif;
+    font-size:22px;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    color:var(--bf-red);
+    margin:0 0 2px;
+  }
+  .nc-chatter-header p{
+    font-size:11px;
+    color:#555;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    margin:0;
+  }
+  .nc-story-block{
+    margin-bottom:32px;
+    border:3px solid #eee;
+  }
+  .nc-story-block-header{
+    background:var(--bf-navy);
+    padding:10px 16px;
+    display:flex;
+    align-items:baseline;
+    gap:12px;
+    flex-wrap:wrap;
+  }
+  .nc-story-hed{
+    font-weight:800;
+    font-size:15px;
+    line-height:1.3;
+    color:#fff;
+    margin:0;
+    flex:1;
+  }
+  .nc-story-hed a:hover{text-decoration:underline;color:var(--bf-yellow);}
+  .nc-story-count{
+    font-family:Impact,'Arial Black',sans-serif;
+    font-size:11px;
+    color:var(--bf-yellow);
+    text-transform:uppercase;
+    letter-spacing:.05em;
+    white-space:nowrap;
+  }
+  .nc-chatter-posts{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(240px,1fr));
+    gap:0;
+  }
+  .nc-chatter-post{
+    padding:14px 16px;
+    border-right:3px solid #eee;
+    border-bottom:3px solid #eee;
+  }
+  .nc-chatter-post:last-child{border-right:none;}
+  .nc-chatter-outlet{
+    display:inline-block;
+    background:var(--bf-red);
+    color:#fff;
+    font-size:9px;
+    font-weight:800;
+    text-transform:uppercase;
+    letter-spacing:.06em;
+    padding:2px 7px;
+    border-radius:2px;
+    margin-bottom:7px;
+  }
+  .nc-chatter-text{
+    font-size:13px;
+    line-height:1.45;
+    color:#111;
+    font-weight:500;
+  }
+  .nc-chatter-stats{
+    margin-top:8px;
     font-size:10px;
     color:#999;
+    display:flex;
+    gap:8px;
+    align-items:center;
+    flex-wrap:wrap;
   }
-  #blueskyPanel .nc-bsky-link{
-    font-family:var(--mono);
-    font-size:10px;
-    color:#0085ff;
-    text-decoration:underline;
+  .nc-chatter-stats a{color:var(--wire-blue);text-decoration:underline;}
+
+  .nc-empty{font-size:12px;color:#999;padding:16px 0;font-style:italic;}
+  .nc-loading{font-size:12px;color:#999;padding:16px 0;}
+
+  footer.nc-footer{
+    background:var(--bf-navy);
+    color:rgba(255,255,255,.5);
+    text-align:center;
+    padding:24px;
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:.1em;
+    margin-top:60px;
   }
-
-  .nc-empty{font-family:var(--mono);font-size:11.5px;color:#999;padding:10px 0;}
-  .nc-loading{font-family:var(--mono);font-size:11.5px;color:#999;padding:10px 0;}
-  .nc-chatter-section{max-width:1000px;margin:32px auto 0;padding:0 24px;}
-  .nc-chatter-section h2{font-family:var(--display);font-style:italic;font-weight:700;font-size:17px;color:var(--wire-red);border-top:2px solid #111;padding-top:8px;margin:0 0 4px;}
-  .nc-chatter-section .nc-panel-sub{font-family:var(--mono);font-size:10.5px;color:#999;margin:0 0 20px;}
-
-  .nc-story-block{margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid #ddd;}
-  .nc-story-block:last-child{border-bottom:none;}
-  .nc-story-hed{font-weight:700;font-size:15px;line-height:1.35;margin:0 0 2px;}
-  .nc-story-hed a:hover{text-decoration:underline;}
-  .nc-story-meta{font-family:var(--mono);font-size:10px;color:#999;margin:0 0 10px;}
-  .nc-chatter-posts{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;}
-  .nc-chatter-post{background:#f7f5ef;padding:10px 12px;border-left:3px solid var(--wire-red);}
-  .nc-chatter-post .nc-chatter-outlet{font-family:var(--mono);font-size:10px;font-weight:700;color:var(--wire-blue);margin-bottom:4px;}
-  .nc-chatter-post .nc-chatter-text{font-size:13px;line-height:1.4;color:#111;}
-  .nc-chatter-post .nc-chatter-stats{font-family:var(--mono);font-size:10px;color:#999;margin-top:6px;}
-  .nc-chatter-post .nc-chatter-stats a{color:var(--wire-blue);text-decoration:underline;}
-
-  footer.nc-footer{max-width:1000px;margin:0 auto;padding:20px 24px 50px;text-align:center;font-family:var(--mono);font-size:10.5px;color:#999;}
+  footer.nc-footer span{color:var(--bf-yellow);}
 </style>
 </head>
 <body>
 
 <header class="nc-header">
-  <a href="/" class="nc-back">&larr; BACK TO THE WIRE</a>
-  <h1 class="nc-title">NERVE CENTER<span class="amp">.</span></h1>
-  <p class="nc-subtitle">What's moving right now — across Bluesky and across this site</p>
+  <div class="nc-header-inner">
+    <a href="/" class="nc-back">← Wire</a>
+    <div class="nc-logo">
+      <p class="nc-logo-eyebrow">News for 38 Year Olds</p>
+      <h1 class="nc-title">NERVE CENTER<span class="bang">!</span></h1>
+      <p class="nc-subtitle">What's moving right now — Bluesky × the wire</p>
+    </div>
+    <div style="width:80px;"></div><!-- spacer to center logo -->
+  </div>
 </header>
 
+<div class="nc-ticker">🔴 LIVE TRENDS &nbsp;·&nbsp; INDEPENDENT JOURNALISTS &nbsp;·&nbsp; NO BILLIONAIRES &nbsp;·&nbsp; TIP YOUR REPORTER</div>
+
 <div class="nc-controls">
-  <label for="sectionFilter">Focus on:</label>
+  <label for="sectionFilter">🎯 Focus:</label>
   <select id="sectionFilter" onchange="loadAll()">
     <option value="">All sections</option>
     <option value="Indie Media">Indie Media</option>
@@ -139,25 +399,33 @@
 
 <main class="nc-main">
   <section class="nc-panel">
-    <h2>Trending on Bluesky</h2>
-    <p class="nc-panel-sub">Ranked by likes + reposts×2 + replies, last 16 hours</p>
+    <div class="nc-panel-header">
+      <h2><span class="panel-emoji">🦋</span>Trending on Bluesky</h2>
+      <span class="nc-panel-sub">Last 16 hours</span>
+    </div>
     <div id="blueskyPanel"><p class="nc-loading">Loading…</p></div>
   </section>
 
   <section class="nc-panel">
-    <h2>Most Read on the Site</h2>
-    <p class="nc-panel-sub">Ranked by reader clicks, all time</p>
+    <div class="nc-panel-header">
+      <h2><span class="panel-emoji">🔥</span>Most Read</h2>
+      <span class="nc-panel-sub">All time clicks</span>
+    </div>
     <div id="sitePanel"><p class="nc-loading">Loading…</p></div>
   </section>
 </main>
 
 <section class="nc-chatter-section">
-  <h2>What our journalists are saying about today's big stories</h2>
-  <p class="nc-panel-sub">Guardian US frontpage × our journalists' Bluesky posts — matched by topic, last 8 hours</p>
+  <div class="nc-chatter-header">
+    <h2>🗞️ What our journalists are saying</h2>
+    <p>Guardian US frontpage × our network's Bluesky posts — matched by topic</p>
+  </div>
   <div id="chatterPanel"><p class="nc-loading">Loading…</p></div>
 </section>
 
-<footer class="nc-footer">NEWS FOR 38 YEAR OLDS — NO PAYWALL. NO ALGORITHM. TIP YOUR REPORTER.</footer>
+<footer class="nc-footer">
+  <span>NEWS FOR 38 YEAR OLDS</span> — NO PAYWALL. NO ALGORITHM. NO BILLIONAIRES. TIP YOUR REPORTER.
+</footer>
 
 <script>
 const API = "";
@@ -177,7 +445,7 @@ async function loadBluesky(section){
     const url = `${API}/api/nerve-center/bluesky` + (section ? `?section=${encodeURIComponent(section)}` : '');
     const res = await fetch(url);
     const items = await res.json();
-    if (!items.length){ panel.innerHTML = '<p class="nc-empty">Nothing trending on Bluesky right now for this view.</p>'; return; }
+    if (!items.length){ panel.innerHTML = '<p class="nc-empty">Nothing trending on Bluesky right now — check back soon.</p>'; return; }
     panel.innerHTML = items.map((it, i) => `
       <div class="nc-item">
         <span class="nc-rank">${i+1}</span>
@@ -186,12 +454,12 @@ async function loadBluesky(section){
           <div class="nc-meta">
             <span class="nc-outlet">${it.outlet}</span>
             <span class="nc-stats">♥ ${it.likeCount} &nbsp;↺ ${it.repostCount} &nbsp;💬 ${it.replyCount} &nbsp;· ${timeAgo(it.createdAt)}</span>
-            <a class="nc-bsky-link" href="${it.blueskyUrl}" target="_blank" rel="noopener">Bluesky ↗</a>
+            <a class="nc-bsky-link" href="${it.blueskyUrl}" target="_blank" rel="noopener">View ↗</a>
           </div>
         </div>
       </div>
     `).join('');
-  } catch (err) {
+  } catch(err){
     panel.innerHTML = '<p class="nc-empty">Couldn\'t load Bluesky trends right now.</p>';
   }
 }
@@ -203,23 +471,22 @@ async function loadSite(section){
     const res = await fetch(url);
     const items = await res.json();
     const withClicks = items.filter(it => it.clicks > 0);
-    if (!withClicks.length){ panel.innerHTML = '<p class="nc-empty">No reader click data yet for this view.</p>'; return; }
+    if (!withClicks.length){ panel.innerHTML = '<p class="nc-empty">No reader click data yet — check back as people read!</p>'; return; }
     panel.innerHTML = withClicks.map((it, i) => `
       <div class="nc-item">
-        <span class="nc-rank">${i+1}.</span><a class="nc-headline" href="${it.link}" target="_blank" rel="noopener">${it.headline}</a>
-        <span class="nc-meta"><span class="nc-outlet">${it.outlet}</span> · ${it.beat} · ${it.clicks} click${it.clicks===1?'':'s'}${it.tip_clicks ? ` · ${it.tip_clicks} tip click${it.tip_clicks===1?'':'s'}` : ''}</span>
+        <span class="nc-rank">${i+1}</span>
+        <div class="nc-item-body">
+          <a class="nc-headline" href="${it.link}" target="_blank" rel="noopener">${it.headline}</a>
+          <div class="nc-meta">
+            <span class="nc-outlet">${it.outlet}</span>
+            <span class="nc-stats">${it.clicks} click${it.clicks===1?'':'s'}${it.tip_clicks ? ` · ${it.tip_clicks} tip${it.tip_clicks===1?'':'s'}` : ''}</span>
+          </div>
+        </div>
       </div>
     `).join('');
-  } catch (err) {
+  } catch(err){
     panel.innerHTML = '<p class="nc-empty">Couldn\'t load site trends right now.</p>';
   }
-}
-
-function loadAll(){
-  const section = document.getElementById('sectionFilter').value;
-  loadBluesky(section);
-  loadSite(section);
-  loadChatter(); // chatter isn't filtered by section — it's always story-level
 }
 
 async function loadChatter(){
@@ -233,24 +500,35 @@ async function loadChatter(){
     }
     panel.innerHTML = stories.map(s => `
       <div class="nc-story-block">
-        <p class="nc-story-hed"><a href="${s.storyLink}" target="_blank" rel="noopener">${s.story}</a></p>
-        <p class="nc-story-meta">${s.chatter.length} journalist${s.chatter.length===1?'':'s'} in our network posting about this</p>
+        <div class="nc-story-block-header">
+          <p class="nc-story-hed"><a href="${s.storyLink}" target="_blank" rel="noopener">${s.story}</a></p>
+          <span class="nc-story-count">${s.chatter.length} journalist${s.chatter.length===1?'':'s'}</span>
+        </div>
         <div class="nc-chatter-posts">
           ${s.chatter.map(p => `
             <div class="nc-chatter-post">
-              <div class="nc-chatter-outlet">${p.outlet}</div>
+              <span class="nc-chatter-outlet">${p.outlet}</span>
               <div class="nc-chatter-text">${p.text || '(no text preview)'}</div>
               <div class="nc-chatter-stats">
-                ♥ ${p.likeCount} &nbsp;↺ ${p.repostCount} &nbsp;· &nbsp;<a href="${p.blueskyUrl}" target="_blank" rel="noopener">view on Bluesky</a>
+                <span>♥ ${p.likeCount}</span>
+                <span>↺ ${p.repostCount}</span>
+                <a href="${p.blueskyUrl}" target="_blank" rel="noopener">Bluesky ↗</a>
               </div>
             </div>
           `).join('')}
         </div>
       </div>
     `).join('');
-  } catch(err) {
+  } catch(err){
     panel.innerHTML = '<p class="nc-empty">Couldn\'t load chatter right now.</p>';
   }
+}
+
+function loadAll(){
+  const section = document.getElementById('sectionFilter').value;
+  loadBluesky(section);
+  loadSite(section);
+  loadChatter();
 }
 
 loadAll();
