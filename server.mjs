@@ -503,7 +503,7 @@ async function fetchBlueskyPopular() {
         const createdAt = new Date(post.record?.createdAt || post.indexedAt).getTime();
         if (!createdAt || createdAt < cutoff) continue;
         const link = post.embed?.external?.uri || post.record?.embed?.external?.uri;
-        if (!link) continue; // only posts sharing an external link
+        const blueskyUrl = `https://bsky.app/profile/${f.bluesky_handle}/post/${String(post.uri).split("/").pop()}`;
         const likeCount = post.likeCount || 0;
         const repostCount = post.repostCount || 0;
         const replyCount = post.replyCount || 0;
@@ -511,8 +511,9 @@ async function fetchBlueskyPopular() {
           outlet: f.outlet,
           section: f.fallback_beat || "Indie Media",
           text: (post.record?.text || "").slice(0, 260),
-          link,
-          blueskyUrl: `https://bsky.app/profile/${f.bluesky_handle}/post/${String(post.uri).split("/").pop()}`,
+          link: link || blueskyUrl, // fall back to the Bluesky post itself when there's no external link
+          hasLink: !!link,
+          blueskyUrl,
           likeCount, repostCount, replyCount,
           score: likeCount + repostCount * 2 + replyCount,
           createdAt,
@@ -541,10 +542,14 @@ app.get("/api/bluesky-popular", async (req, res) => {
       const data = await fetchBlueskyPopular();
       blueskyCache = { data, fetchedAt: now };
     }
-    res.json(blueskyCache.data.slice(0, 20));
+    const linksOnly = req.query.links === "1";
+    const data = linksOnly ? blueskyCache.data.filter(i => i.hasLink) : blueskyCache.data;
+    res.json(data.slice(0, 20));
   } catch (err) {
     console.error("Bluesky popular error:", err);
-    res.json(blueskyCache.data.slice(0, 20)); // fail soft — never break the page over this
+    const linksOnly = req.query.links === "1";
+    const data = linksOnly ? blueskyCache.data.filter(i => i.hasLink) : blueskyCache.data;
+    res.json(data.slice(0, 20)); // fail soft — never break the page over this
   }
 });
 

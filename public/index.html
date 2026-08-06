@@ -76,6 +76,11 @@
   .source-item .source-link + .source-link{margin-left:10px;}
 
   .wire-bluesky-box h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;}
+  .bsky-filter-toggle{display:flex;gap:6px;margin-bottom:8px;}
+  .bsky-filter-btn{font-family:var(--mono, monospace);font-size:10px;text-transform:uppercase;letter-spacing:.03em;
+    background:#f4f4f4;border:1px solid #ddd;color:#555;padding:3px 8px;cursor:pointer;border-radius:2px;}
+  .bsky-filter-btn:hover{background:#eee;}
+  .bsky-filter-btn.active{background:var(--wire-blue);border-color:var(--wire-blue);color:#fff;}
   .wire-bluesky-list{list-style:none;margin:0;padding:0;}
   .wire-bluesky-list li{padding:4px 0 8px;font-family:Georgia,'Times New Roman',serif;font-size:13px;border-bottom:1px solid #eee;margin-bottom:6px;}
   .wire-bluesky-list a{color:var(--wire-blue);font-weight:700;}
@@ -410,12 +415,14 @@ async function loadActionsFeed(){
   }
 }
 
-async function loadBlueskyPopular(){
+async function loadBlueskyPopular(filter){
   const box = document.getElementById('blueskyPopularBox');
   const list = document.getElementById('blueskyPopularList');
   if (!box || !list) return;
+  filter = filter || 'all';
   try {
-    const res = await fetch(`${API}/api/bluesky-popular`);
+    const url = `${API}/api/bluesky-popular` + (filter === 'links' ? '?links=1' : '');
+    const res = await fetch(url);
     const items = await res.json();
     if (!items || !items.length){ box.style.display = 'none'; return; }
     // Bluesky's raw post text often has the shared link pasted right into it —
@@ -499,6 +506,10 @@ function renderWire(){
 
       <aside class="wire-bluesky-box" id="blueskyPopularBox" style="display:none;">
         <h4>Most Popular on Bluesky <a href="/nerve-center.html" style="font-family:var(--mono);font-size:10px;font-style:normal;font-weight:400;text-transform:uppercase;color:var(--wire-blue);text-decoration:underline;letter-spacing:.03em;">Nerve Center &rarr;</a></h4>
+        <div class="bsky-filter-toggle" id="blueskyFilterToggle">
+          <button type="button" class="bsky-filter-btn active" data-filter="all">All posts</button>
+          <button type="button" class="bsky-filter-btn" data-filter="links">With links only</button>
+        </div>
         <ul id="blueskyPopularList" class="wire-bluesky-list"></ul>
       </aside>
 
@@ -531,6 +542,16 @@ function renderWire(){
   `;
   loadSources();
   loadBlueskyPopular();
+  const bskyToggle = document.getElementById('blueskyFilterToggle');
+  if (bskyToggle){
+    bskyToggle.addEventListener('click', (e) => {
+      const btn = e.target.closest('.bsky-filter-btn');
+      if (!btn) return;
+      bskyToggle.querySelectorAll('.bsky-filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      loadBlueskyPopular(btn.dataset.filter);
+    });
+  }
   loadActionsFeed();
   loadFrontpageFeed();
   loadClimateFeed();
