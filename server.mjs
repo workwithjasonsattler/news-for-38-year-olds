@@ -553,6 +553,79 @@ app.get("/api/bluesky-popular", async (req, res) => {
   }
 });
 
+// ---------- Nerve Center: Popular on Bluesky (feeds + starter packs) ----------
+// Feeds: Bluesky's own "most popular custom feeds" ranking, straight from their API.
+// Starter packs: Bluesky doesn't expose a platform-wide "most popular" ranking for
+// these, so we search a handful of politics/news-relevant terms and rank the
+// combined results ourselves by joinedAllTimeCount (their own join-count field).
+const BLUESKY_DISCOVER_TTL_MS = 60 * 60 * 1000; // 1 hour — this changes slowly, no need to hammer the API
+let blueskyDiscoverCache = { feeds: [], starterPacks: [], fetchedAt: 0 };
+const STARTER_PACK_SEARCH_TERMS = ["news", "politics", "journalism", "indie media"];
+
+async function fetchPopularBlueskyFeeds() {
+  const url = "https://public.api.bsky.app/xrpc/app.bsky.unspecced.getPopularFeedGenerators?limit=10";
+  const resp = await fetch(url, { headers: { "User-Agent": "n38-cms/1.0" } });
+  if (!resp.ok) throw new Error(`getPopularFeedGenerators ${resp.status}`);
+  const json = await resp.json();
+  return (json.feeds || []).map(f => ({
+    uri: f.uri,
+    name: f.displayName || "Untitled feed",
+    description: (f.description || "").slice(0, 160),
+    creatorHandle: f.creator?.handle || "",
+    likeCount: f.likeCount || 0,
+    avatar: f.avatar || null,
+    link: `https://bsky.app/profile/${f.creator?.handle || f.did}/feed/${String(f.uri).split("/").pop()}`,
+  })).sort((a, b) => b.likeCount - a.likeCount).slice(0, 10);
+}
+
+async function fetchPopularStarterPacks() {
+  const perTerm = await Promise.allSettled(
+    STARTER_PACK_SEARCH_TERMS.map(async (term) => {
+      const url = `https://public.api.bsky.app/xrpc/app.bsky.graph.searchStarterPacks?q=${encodeURIComponent(term)}&limit=25`;
+      const resp = await fetch(url, { headers: { "User-Agent": "n38-cms/1.0" } });
+      if (!resp.ok) throw new Error(`searchStarterPacks(${term}) ${resp.status}`);
+      const json = await resp.json();
+      return json.starterPacks || [];
+    })
+  );
+  const all = perTerm.filter(r => r.status === "fulfilled").flatMap(r => r.value);
+  perTerm.filter(r => r.status === "rejected").forEach(r => console.error("Starter pack search failed:", r.reason?.message || r.reason));
+
+  const byUri = new Map();
+  for (const sp of all) {
+    if (!byUri.has(sp.uri)) byUri.set(sp.uri, sp);
+  }
+  return [...byUri.values()]
+    .map(sp => ({
+      uri: sp.uri,
+      name: sp.record?.name || "Untitled starter pack",
+      description: (sp.record?.description || "").slice(0, 160),
+      creatorHandle: sp.creator?.handle || "",
+      joinedAllTimeCount: sp.joinedAllTimeCount || 0,
+      listItemCount: sp.listItemCount || 0,
+      link: `https://bsky.app/starter-pack/${sp.creator?.handle}/${String(sp.uri).split("/").pop()}`,
+    }))
+    .sort((a, b) => b.joinedAllTimeCount - a.joinedAllTimeCount)
+    .slice(0, 10);
+}
+
+app.get("/api/nerve-center/bluesky-discover", async (req, res) => {
+  try {
+    const now = Date.now();
+    if (now - blueskyDiscoverCache.fetchedAt > BLUESKY_DISCOVER_TTL_MS) {
+      const [feeds, starterPacks] = await Promise.all([
+        fetchPopularBlueskyFeeds().catch(err => { console.error("Popular feeds error:", err.message); return blueskyDiscoverCache.feeds; }),
+        fetchPopularStarterPacks().catch(err => { console.error("Popular starter packs error:", err.message); return blueskyDiscoverCache.starterPacks; }),
+      ]);
+      blueskyDiscoverCache = { feeds, starterPacks, fetchedAt: now };
+    }
+    res.json({ feeds: blueskyDiscoverCache.feeds, starterPacks: blueskyDiscoverCache.starterPacks });
+  } catch (err) {
+    console.error("Bluesky discover error:", err);
+    res.json({ feeds: blueskyDiscoverCache.feeds, starterPacks: blueskyDiscoverCache.starterPacks }); // fail soft
+  }
+});
+
 // ---------- Nerve Center: full Bluesky trending + site engagement leaderboard ----------
 // Public (no admin gate) — aggregate engagement numbers only, nothing sensitive.
 // Reuses the same Bluesky cache as the homepage box (fetchBlueskyPopular pulls

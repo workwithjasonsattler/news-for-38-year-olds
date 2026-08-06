@@ -213,14 +213,14 @@
   #blueskyPanel .nc-stats{font-size:10px;color:#999;}
   #blueskyPanel .nc-bsky-link{font-size:10px;color:var(--wire-blue);text-decoration:underline;}
 
-  /* ===== SITE ITEMS ===== */
-  #sitePanel .nc-item{
+  /* ===== DISCOVER (popular feeds & starter packs) ===== */
+  #discoverFeedsList .nc-item, #discoverPacksList .nc-item{
     display:grid;
     grid-template-columns:44px 1fr;
     gap:0;
     border-bottom:3px solid var(--bf-gray);
   }
-  #sitePanel .nc-rank{
+  #discoverFeedsList .nc-rank, #discoverPacksList .nc-rank{
     font-family:Impact,'Arial Black',sans-serif;
     font-size:36px;
     line-height:1;
@@ -232,21 +232,22 @@
     align-items:center;
     justify-content:center;
   }
-  #sitePanel .nc-item:first-child .nc-rank{
+  #discoverFeedsList .nc-item:first-child .nc-rank, #discoverPacksList .nc-item:first-child .nc-rank{
     background:var(--bf-navy);
     color:var(--bf-yellow);
   }
-  #sitePanel .nc-item-body{padding:10px 12px;}
-  #sitePanel .nc-headline{
+  #discoverFeedsList .nc-item-body, #discoverPacksList .nc-item-body{padding:10px 12px;}
+  #discoverFeedsList .nc-headline, #discoverPacksList .nc-headline{
     display:block;
     font-weight:800;
     font-size:13px;
     line-height:1.3;
     color:#111;
   }
-  #sitePanel .nc-headline:hover{color:var(--bf-navy);text-decoration:underline;}
-  #sitePanel .nc-meta{margin-top:5px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
-  #sitePanel .nc-outlet{
+  #discoverFeedsList .nc-headline:hover, #discoverPacksList .nc-headline:hover{color:var(--bf-navy);text-decoration:underline;}
+  #discoverFeedsList .nc-desc, #discoverPacksList .nc-desc{font-size:11px;color:#666;margin-top:3px;line-height:1.3;}
+  #discoverFeedsList .nc-meta, #discoverPacksList .nc-meta{margin-top:5px;display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
+  #discoverFeedsList .nc-outlet, #discoverPacksList .nc-outlet{
     background:var(--bf-navy);
     color:#fff;
     font-size:9px;
@@ -256,7 +257,19 @@
     padding:2px 6px;
     border-radius:2px;
   }
-  #sitePanel .nc-stats{font-size:10px;color:#999;}
+  #discoverFeedsList .nc-stats, #discoverPacksList .nc-stats{font-size:10px;color:#999;}
+
+  .nc-discover-section{max-width:1100px;margin:32px auto 0;padding:0 24px;}
+  .nc-discover-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 48px;margin-top:12px;}
+  @media(max-width:760px){.nc-discover-grid{grid-template-columns:1fr;}}
+  .nc-discover-subhead{
+    font-family:Impact,'Arial Black',sans-serif;
+    font-size:14px;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+    color:var(--bf-navy);
+    margin:0 0 8px;
+  }
 
   /* ===== ON TREND (chatter) ===== */
   .nc-story-block{
@@ -405,6 +418,23 @@
   </section>
 </main>
 
+<section class="nc-discover-section">
+  <div class="nc-panel-header">
+    <h2><span class="panel-emoji">🔎</span>Popular on Bluesky</h2>
+    <span class="nc-panel-sub">Top feeds &amp; starter packs to follow</span>
+  </div>
+  <div class="nc-discover-grid">
+    <div>
+      <h3 class="nc-discover-subhead">Top Feeds</h3>
+      <div id="discoverFeedsList"><p class="nc-loading">Loading…</p></div>
+    </div>
+    <div>
+      <h3 class="nc-discover-subhead">Top Starter Packs</h3>
+      <div id="discoverPacksList"><p class="nc-loading">Loading…</p></div>
+    </div>
+  </div>
+</section>
+
 <footer class="nc-footer">
   <span>NEWS FOR 38 YEAR OLDS</span> — NO PAYWALL. NO ALGORITHM. NO BILLIONAIRES. TIP YOUR REPORTER.
 </footer>
@@ -500,10 +530,51 @@ function expandChatter(){
   document.getElementById('chatterExpandBtn').style.display = 'none';
 }
 
+async function loadDiscover(){
+  const feedsList = document.getElementById('discoverFeedsList');
+  const packsList = document.getElementById('discoverPacksList');
+  try {
+    const res = await fetch(`${API}/api/nerve-center/bluesky-discover`);
+    const { feeds, starterPacks } = await res.json();
+
+    feedsList.innerHTML = (feeds && feeds.length) ? feeds.map((f, i) => `
+      <div class="nc-item">
+        <span class="nc-rank">${i+1}</span>
+        <div class="nc-item-body">
+          <a class="nc-headline" href="${f.link}" target="_blank" rel="noopener">${f.name}</a>
+          ${f.description ? `<div class="nc-desc">${f.description}</div>` : ''}
+          <div class="nc-meta">
+            ${f.creatorHandle ? `<span class="nc-outlet">@${f.creatorHandle}</span>` : ''}
+            <span class="nc-stats">♥ ${f.likeCount}</span>
+          </div>
+        </div>
+      </div>
+    `).join('') : '<p class="nc-empty">Couldn\'t load popular feeds right now.</p>';
+
+    packsList.innerHTML = (starterPacks && starterPacks.length) ? starterPacks.map((s, i) => `
+      <div class="nc-item">
+        <span class="nc-rank">${i+1}</span>
+        <div class="nc-item-body">
+          <a class="nc-headline" href="${s.link}" target="_blank" rel="noopener">${s.name}</a>
+          ${s.description ? `<div class="nc-desc">${s.description}</div>` : ''}
+          <div class="nc-meta">
+            ${s.creatorHandle ? `<span class="nc-outlet">@${s.creatorHandle}</span>` : ''}
+            <span class="nc-stats">${s.joinedAllTimeCount} joined · ${s.listItemCount} accounts</span>
+          </div>
+        </div>
+      </div>
+    `).join('') : '<p class="nc-empty">Couldn\'t load popular starter packs right now.</p>';
+  } catch(err){
+    feedsList.innerHTML = '<p class="nc-empty">Couldn\'t load popular feeds right now.</p>';
+    packsList.innerHTML = '<p class="nc-empty">Couldn\'t load popular starter packs right now.</p>';
+  }
+}
+
 function loadAll(){
   const section = document.getElementById('sectionFilter').value;
   loadBluesky(section);
   loadChatter(section);
+  loadDiscover();
 }
 
 loadAll();
