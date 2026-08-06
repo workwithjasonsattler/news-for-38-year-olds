@@ -504,6 +504,8 @@ async function fetchBlueskyPopular() {
         if (!createdAt || createdAt < cutoff) continue;
         const link = post.embed?.external?.uri || post.record?.embed?.external?.uri;
         const blueskyUrl = `https://bsky.app/profile/${f.bluesky_handle}/post/${String(post.uri).split("/").pop()}`;
+        const embedType = post.embed?.$type || "";
+        const hasQuote = embedType === "app.bsky.embed.record#view" || embedType === "app.bsky.embed.recordWithMedia#view";
         const likeCount = post.likeCount || 0;
         const repostCount = post.repostCount || 0;
         const replyCount = post.replyCount || 0;
@@ -513,6 +515,7 @@ async function fetchBlueskyPopular() {
           text: (post.record?.text || "").slice(0, 260),
           link: link || blueskyUrl, // fall back to the Bluesky post itself when there's no external link
           hasLink: !!link,
+          hasQuote,
           blueskyUrl,
           likeCount, repostCount, replyCount,
           score: likeCount + repostCount * 2 + replyCount,
@@ -536,20 +539,21 @@ async function fetchBlueskyPopular() {
 }
 
 app.get("/api/bluesky-popular", async (req, res) => {
+  const filterData = (data) => {
+    if (req.query.filter === "links") return data.filter(i => i.hasLink);
+    if (req.query.filter === "quotes") return data.filter(i => i.hasQuote);
+    return data;
+  };
   try {
     const now = Date.now();
     if (now - blueskyCache.fetchedAt > BLUESKY_CACHE_TTL_MS) {
       const data = await fetchBlueskyPopular();
       blueskyCache = { data, fetchedAt: now };
     }
-    const linksOnly = req.query.links === "1";
-    const data = linksOnly ? blueskyCache.data.filter(i => i.hasLink) : blueskyCache.data;
-    res.json(data.slice(0, 20));
+    res.json(filterData(blueskyCache.data).slice(0, 25));
   } catch (err) {
     console.error("Bluesky popular error:", err);
-    const linksOnly = req.query.links === "1";
-    const data = linksOnly ? blueskyCache.data.filter(i => i.hasLink) : blueskyCache.data;
-    res.json(data.slice(0, 20)); // fail soft — never break the page over this
+    res.json(filterData(blueskyCache.data).slice(0, 25)); // fail soft — never break the page over this
   }
 });
 
@@ -686,23 +690,55 @@ const STOP_WORDS = new Set([
   "after","before","over","under","up","out","off","how","what","who","when",
   "where","which","why","not","no","new","says","said","say","us","their",
   "his","her","him","they","we","he","she","after","amid","report","reports",
+  // generic news/legal scaffolding — too common across unrelated stories to be useful signals
+  "judge","judges","federal","order","orders","halt","halts","halted","halting",
+  "block","blocked","blocking","dismiss","dismissed","dismisses","dismissing",
+  "case","cases","court","courts","ruling","rulings","rules","ruled",
+  "official","officials","calls","called","calling","plan","plans","planned",
+  "planning","million","billion","government","administration","week","weeks",
+  "day","days","year","years","state","states","national","city","county",
+  "department","agency","agencies","law","laws","act","bill","bills","news",
+  "breaking","exclusive","analysis","opinion","latest","turn","turns","turned",
+  "against","still","yet","another","continue","continues","continuing","pour",
+  "pours","pouring","success","rate","losses","outstanding","appointed","target",
+  "targets","targeting","targeted","lost","win","wins","won","take","takes","taken",
 ]);
 
+// Words that read as proper nouns/entities — capitalized mid-sentence, or an ALL-CAPS
+// acronym — are far more distinctive than generic verbs/nouns, so they're the keywords
+// we actually want to match Bluesky posts against (e.g. "Trump", "BBC" beat "federal", "judge").
 function extractKeywords(title) {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .split(/\s+/)
-    .filter(w => w.length > 3 && !STOP_WORDS.has(w))
-    .slice(0, 4); // top 4 meaningful words from the headline
+  const words = title.split(/\s+/);
+  const candidates = [];
+  words.forEach((raw, i) => {
+    const clean = raw.replace(/[^A-Za-z0-9]/g, "");
+    if (!clean) return;
+    const lower = clean.toLowerCase();
+    const isAllCaps = clean.length > 1 && clean === clean.toUpperCase() && /[A-Z]/.test(clean);
+    const isProper = isAllCaps || (i > 0 && /^[A-Z]/.test(clean));
+    const minLen = isProper ? 2 : 4; // acronyms/proper nouns (BBC, DOJ) can be short and still distinctive
+    if (lower.length < minLen || STOP_WORDS.has(lower)) return;
+    candidates.push({ word: lower, proper: isProper, length: lower.length });
+  });
+  candidates.sort((a, b) => (b.proper - a.proper) || (b.length - a.length));
+  const seen = new Set();
+  const keywords = [];
+  for (const c of candidates) {
+    if (seen.has(c.word)) continue;
+    seen.add(c.word);
+    keywords.push(c);
+    if (keywords.length >= 5) break;
+  }
+  return keywords;
 }
 
 function postMatchesKeywords(post, keywords) {
   if (!keywords.length) return false;
   const text = (post.text || "").toLowerCase();
-  const matchCount = keywords.filter(kw => text.includes(kw)).length;
-  // require at least 2 keyword hits, or 1 hit if the keyword is long/specific (>7 chars)
-  return matchCount >= 2 || (matchCount === 1 && keywords.some(kw => kw.length > 7 && text.includes(kw)));
+  const hits = keywords.filter(kw => text.includes(kw.word));
+  // Require 2+ distinct keyword hits. A single hit — even a proper noun like "Trump" — is
+  // too common across unrelated posts on a politics site to be a reliable match on its own.
+  return hits.length >= 2;
 }
 
 app.get("/api/nerve-center/chatter", async (req, res) => {
@@ -726,7 +762,7 @@ app.get("/api/nerve-center/chatter", async (req, res) => {
       return {
         story: story.title,
         storyLink: story.link,
-        keywords,
+        keywords: keywords.map(k => k.word),
         chatter: matches.map(p => ({
           outlet: p.outlet,
           text: p.text,
