@@ -91,6 +91,9 @@
   .wire-resources-box h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;}
   .wire-resources-box ul{list-style:none;margin:0;padding:0;}
   .wire-resources-box li{padding:3px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;border-bottom:1px solid #eee;}
+  .actions-preview{margin:6px 0 4px;}
+  .actions-preview img{display:block;width:100%;max-height:120px;object-fit:cover;border-radius:2px;margin-bottom:6px;}
+  .actions-preview p{margin:0;font-size:12px;line-height:1.4;color:#555;font-style:italic;}
   .wire-resources-box li:last-child{border-bottom:none;}
   .wire-resources-box a{color:var(--wire-blue);font-weight:700;}
   .wire-resources-box a:hover{text-decoration:underline;}
@@ -407,8 +410,16 @@ async function loadActionsFeed(){
     const res = await fetch(`${API}/api/actions-feed`);
     const items = await res.json();
     if (!items || !items.length){ box.style.display = 'none'; return; }
-    list.innerHTML = items.map(item => `
-      <li><a href="${item.link}" target="_blank" rel="noopener">${item.title}</a></li>
+    list.innerHTML = items.map((item, i) => `
+      <li>
+        <a href="${item.link}" target="_blank" rel="noopener">${item.title}</a>
+        ${i === 0 && (item.excerpt || item.image) ? `
+          <div class="actions-preview">
+            ${item.image ? `<img src="${item.image}" alt="" loading="lazy">` : ''}
+            ${item.excerpt ? `<p>${item.excerpt}</p>` : ''}
+          </div>
+        ` : ''}
+      </li>
     `).join('');
     box.style.display = '';
   } catch (err) {

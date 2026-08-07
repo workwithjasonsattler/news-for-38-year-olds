@@ -807,7 +807,14 @@ async function fetchSimpleFeed(url, max) {
   return items
     .filter(it => it.title && it.link)
     .slice(0, max || 8)
-    .map(it => ({ title: stripHtml(it.title), link: it.link }));
+    .map((it, i) => ({
+      title: stripHtml(it.title),
+      link: it.link,
+      // Preview data (excerpt + thumbnail) only needed for the top item — no point
+      // carrying it for the rest of a 20-item list.
+      excerpt: i === 0 ? truncate(stripHtml(it.summary || ""), 200) : undefined,
+      image: i === 0 ? (it.image || undefined) : undefined,
+    }));
 }
 
 async function getSimpleFeed(key) {
@@ -974,26 +981,51 @@ function pickBeat(text, beatKeywords = {}, fallbackBeat = "General") {
   }
   return fallbackBeat;
 }
+function extractImage(it, summaryHtml) {
+  const mediaContent = it["media:content"];
+  const mediaList = Array.isArray(mediaContent) ? mediaContent : (mediaContent ? [mediaContent] : []);
+  const mediaImg = mediaList.find(m => (m["@_medium"] === "image") || (m["@_type"] || "").startsWith("image"));
+  if (mediaImg?.["@_url"]) return mediaImg["@_url"];
+
+  const thumb = it["media:thumbnail"];
+  const thumbUrl = Array.isArray(thumb) ? thumb[0]?.["@_url"] : thumb?.["@_url"];
+  if (thumbUrl) return thumbUrl;
+
+  const enclosure = it.enclosure;
+  if (enclosure?.["@_url"] && (enclosure["@_type"] || "").startsWith("image")) return enclosure["@_url"];
+
+  const imgMatch = (summaryHtml || "").match(/<img[^>]+src=["']([^"']+)["']/i);
+  if (imgMatch) return imgMatch[1];
+
+  return null;
+}
+
 function extractItems(parsed) {
   const rssItems = parsed?.rss?.channel?.item;
   if (rssItems) {
     const items = Array.isArray(rssItems) ? rssItems : [rssItems];
-    return items.map((it) => ({
-      title: textOf(it.title), link: textOf(it.link),
-      pubDate: textOf(it.pubDate ?? it["dc:date"]),
-      author: textOf(it["dc:creator"] ?? it.author),
-      summary: textOf(it.description ?? it["content:encoded"]),
-    }));
+    return items.map((it) => {
+      const summaryHtml = textOf(it.description ?? it["content:encoded"]);
+      return {
+        title: textOf(it.title), link: textOf(it.link),
+        pubDate: textOf(it.pubDate ?? it["dc:date"]),
+        author: textOf(it["dc:creator"] ?? it.author),
+        summary: summaryHtml,
+        image: extractImage(it, summaryHtml),
+      };
+    });
   }
   const atomEntries = parsed?.feed?.entry;
   if (atomEntries) {
     const entries = Array.isArray(atomEntries) ? atomEntries : [atomEntries];
     return entries.map((e) => {
       const linkField = Array.isArray(e.link) ? e.link[0] : e.link;
+      const summaryHtml = textOf(e.summary ?? e.content);
       return {
         title: textOf(e.title), link: (linkField && linkField["@_href"]) || textOf(linkField),
         pubDate: textOf(e.updated ?? e.published), author: textOf(e.author?.name),
-        summary: textOf(e.summary ?? e.content),
+        summary: summaryHtml,
+        image: extractImage(e, summaryHtml),
       };
     });
   }
