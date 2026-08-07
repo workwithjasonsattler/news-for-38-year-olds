@@ -305,8 +305,9 @@
 
     <div id="customizeSignedIn" style="display:none;">
       <p style="font-family:var(--mono);font-size:11.5px;color:var(--text-muted);margin:0 0 14px;">Signed in as <span id="customizeEmail" style="color:var(--text);"></span> · <a href="javascript:void(0)" onclick="signOut()" style="color:var(--wire-blue);">Sign out</a></p>
+      <p style="font-family:Georgia,serif;font-size:12.5px;color:var(--text-muted);margin:0 0 12px;">Conscious filtering, not an algorithm — you set the dial per source, we don't infer it from your clicks.</p>
       <div id="customizeSourceList" style="margin-bottom:16px;"></div>
-      <button onclick="saveFeedPrefs()" style="width:100%;padding:12px 0;font-weight:700;font-size:14.5px;background:var(--support-teal);color:#F3EFE4;border:none;border-radius:3px;cursor:pointer;">Save</button>
+      <button onclick="saveSourceTiers()" style="width:100%;padding:12px 0;font-weight:700;font-size:14.5px;background:var(--support-teal);color:#F3EFE4;border:none;border-radius:3px;cursor:pointer;">Save</button>
       <p id="customizeSaveMsg" style="text-align:center;font-family:var(--mono);font-size:12px;color:var(--support-teal-dark);margin-top:12px;"></p>
     </div>
   </div>
@@ -679,34 +680,46 @@ async function signOut(){
   loadDispatches();
 }
 
+const SOURCE_TIERS = [
+  { value: 'pinned', label: 'Pin to top' },
+  { value: 'normal', label: 'Normal' },
+  { value: 'less',   label: 'Show less' },
+  { value: 'hidden', label: 'Hide' },
+];
+
 async function renderSourceCheckboxes(){
   const listEl = document.getElementById('customizeSourceList');
   listEl.innerHTML = 'Loading sources...';
-  const [sourcesRes, prefsRes] = await Promise.all([
+  const [sourcesRes, tiersRes] = await Promise.all([
     fetch(`${API}/api/sources`),
-    fetch(`${API}/api/my/feed-prefs`)
+    fetch(`${API}/api/my/source-tiers`)
   ]);
   const sources = await sourcesRes.json();
-  const prefs = await prefsRes.json();
-  const prefMap = Object.fromEntries(prefs.map(p => [p.outlet, !!p.enabled]));
+  const tiers = await tiersRes.json();
+  const tierMap = Object.fromEntries(tiers.map(t => [t.outlet, t.tier]));
   listEl.innerHTML = sources.map(s => {
-    const checked = prefMap[s.outlet] !== undefined ? prefMap[s.outlet] : true;
+    const current = tierMap[s.outlet] || 'normal';
+    const options = SOURCE_TIERS.map(t =>
+      `<option value="${t.value}" ${t.value === current ? 'selected' : ''}>${t.label}</option>`
+    ).join('');
     return `
-      <label style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid #eee;font-family:var(--mono);font-size:12.5px;cursor:pointer;">
-        <input type="checkbox" data-outlet="${s.outlet}" ${checked ? 'checked' : ''}>
-        ${s.outlet}
-      </label>
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid #eee;font-family:var(--mono);font-size:12.5px;">
+        <span>${s.outlet}</span>
+        <select data-outlet="${s.outlet}" style="font-family:var(--mono);font-size:12px;padding:4px 6px;border:1.5px solid var(--paper-hairline);border-radius:3px;background:#fff;">
+          ${options}
+        </select>
+      </div>
     `;
   }).join('') || 'No sources configured yet.';
 }
 
-async function saveFeedPrefs(){
-  const boxes = document.querySelectorAll('#customizeSourceList input[type=checkbox]');
-  const prefs = Array.from(boxes).map(b => ({ outlet: b.dataset.outlet, enabled: b.checked }));
+async function saveSourceTiers(){
+  const selects = document.querySelectorAll('#customizeSourceList select[data-outlet]');
+  const tiers = Array.from(selects).map(s => ({ outlet: s.dataset.outlet, tier: s.value }));
   const msgEl = document.getElementById('customizeSaveMsg');
   msgEl.textContent = 'Saving...';
-  await fetch(`${API}/api/my/feed-prefs`, {
-    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({prefs})
+  await fetch(`${API}/api/my/source-tiers`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({tiers})
   });
   msgEl.textContent = '✓ Saved — your wire is updated.';
   loadDispatches();

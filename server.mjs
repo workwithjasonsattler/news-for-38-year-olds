@@ -139,10 +139,14 @@ async function initSchema() {
       enabled INTEGER NOT NULL DEFAULT 1,
       PRIMARY KEY (user_id, outlet)
     )`,
+    // Phase 2: "conscious filtering" — readers set an explicit tier per
+    // source (pinned/normal/less/hidden) rather than an algorithm inferring
+    // a score. `rating` stores the tier as TEXT (SQLite has no strict
+    // column typing, so re-using this pre-existing column is safe).
     `CREATE TABLE IF NOT EXISTS user_source_ratings (
       user_id INTEGER NOT NULL,
       outlet TEXT NOT NULL,
-      rating INTEGER NOT NULL DEFAULT 0,
+      rating TEXT NOT NULL DEFAULT 'normal',
       PRIMARY KEY (user_id, outlet)
     )`,
   ];
@@ -440,6 +444,37 @@ app.post("/api/my/feed-prefs", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- reader source tiers (Phase 2: conscious filtering, not an algorithm) ----------
+// Readers set an explicit tier per source instead of a hidden score:
+//   pinned  -> always sorts first (within admin-pinned breaking items)
+//   normal  -> default, sorts by time like today
+//   less    -> still shows, sinks toward the bottom
+//   hidden  -> filtered out entirely (same effect as old feed-prefs "off")
+const VALID_TIERS = new Set(["pinned", "normal", "less", "hidden"]);
+
+app.get("/api/my/source-tiers", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const rows = await dbAll(`SELECT outlet, rating AS tier FROM user_source_ratings WHERE user_id = ?`, [user.id]);
+  res.json(rows);
+});
+
+app.post("/api/my/source-tiers", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const { tiers } = req.body || {};
+  if (!Array.isArray(tiers)) return res.status(400).json({ error: "tiers must be an array" });
+  for (const t of tiers) {
+    if (!t.outlet || !VALID_TIERS.has(t.tier)) continue;
+    await dbRun(
+      `INSERT INTO user_source_ratings (user_id, outlet, rating) VALUES (?, ?, ?)
+       ON CONFLICT(user_id, outlet) DO UPDATE SET rating = excluded.rating`,
+      [user.id, t.outlet, t.tier]
+    );
+  }
+  res.json({ ok: true });
+});
+
 app.post("/api/login", (req, res) => {
   const { password } = req.body || {};
   if (password === ADMIN_PASSWORD) return res.json({ ok: true, token: ADMIN_PASSWORD });
@@ -453,16 +488,36 @@ app.get("/api/dispatches", async (req, res) => {
     ? await dbAll(`SELECT * FROM dispatches WHERE beat = ? ORDER BY pinned DESC, date DESC, id DESC`, [beat])
     : await dbAll(`SELECT * FROM dispatches ORDER BY pinned DESC, date DESC, id DESC`);
 
-  // Personalize for signed-in readers: if they've saved any feed prefs, only
-  // show dispatches from outlets they've left enabled. No saved prefs yet
-  // (new reader, or not signed in) means everyone sees the full wire — the
-  // curated default never gets narrower without the reader opting in.
+  // Personalize for signed-in readers via conscious filtering — the reader
+  // sets an explicit tier per source (pinned/normal/less/hidden), not an
+  // algorithm inferring one from behavior. No saved tiers yet (new reader,
+  // or not signed in) means everyone sees the full wire, curated-default
+  // order — nothing narrows or reorders without the reader opting in.
   const user = await getCurrentUser(req);
   if (user) {
-    const prefRows = await dbAll(`SELECT outlet, enabled FROM user_feed_prefs WHERE user_id = ?`, [user.id]);
-    if (prefRows.length > 0) {
-      const allowed = new Set(prefRows.filter(r => r.enabled).map(r => r.outlet));
-      rows = rows.filter(r => allowed.has(r.outlet));
+    const tierRows = await dbAll(`SELECT outlet, rating AS tier FROM user_source_ratings WHERE user_id = ?`, [user.id]);
+    if (tierRows.length > 0) {
+      const tierMap = new Map(tierRows.map(r => [r.outlet, r.tier]));
+      const tierRank = { pinned: 0, normal: 1, less: 2, hidden: 3 };
+      rows = rows
+        .filter(r => (tierMap.get(r.outlet) || "normal") !== "hidden")
+        .map(r => ({ ...r, _tier: tierRank[tierMap.get(r.outlet)] ?? 1 }))
+        .sort((a, b) => {
+          // editorial breaking-news pin (admin-set) always wins first
+          if (a.pinned !== b.pinned) return b.pinned - a.pinned;
+          if (a._tier !== b._tier) return a._tier - b._tier;
+          if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+          return b.id - a.id;
+        })
+        .map(({ _tier, ...rest }) => rest);
+    } else {
+      // fall back to the old on/off feed-prefs for readers who customized
+      // their wire before this feature existed, but haven't re-saved yet
+      const prefRows = await dbAll(`SELECT outlet, enabled FROM user_feed_prefs WHERE user_id = ?`, [user.id]);
+      if (prefRows.length > 0) {
+        const allowed = new Set(prefRows.filter(r => r.enabled).map(r => r.outlet));
+        rows = rows.filter(r => allowed.has(r.outlet));
+      }
     }
   }
 
