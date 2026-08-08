@@ -91,8 +91,16 @@
     <h2 style="font-family:var(--mono);font-size:14px;">FEEDS</h2>
     <p style="font-size:13px;color:#666;">Add an outlet's RSS/Atom feed here — no file editing needed. Feeds refresh automatically in the background; "Run import now" pulls immediately if you don't want to wait.</p>
 
+    <div id="pendingChannelsPanel" style="display:none;margin-bottom:20px;padding:14px;border:1px solid #e0b84b;background:#fffaf0;">
+      <h3 style="font-family:var(--mono);font-size:12px;margin:0 0 10px;">PENDING YOUTUBE CHANNEL SUGGESTIONS</h3>
+      <table style="margin:0;">
+        <thead><tr><th>Outlet</th><th>YouTube Channel</th><th></th></tr></thead>
+        <tbody id="pendingChannelRows"></tbody>
+      </table>
+    </div>
+
     <table id="feedTable" style="margin-bottom:16px;">
-      <thead><tr><th>Outlet</th><th>Type</th><th>Feed URL</th><th>Default section</th><th>Bluesky</th><th></th></tr></thead>
+      <thead><tr><th>Outlet</th><th>Type</th><th>Feed URL</th><th>Default section</th><th>Bluesky</th><th>YouTube</th><th></th></tr></thead>
       <tbody id="feedRows"></tbody>
     </table>
 
@@ -116,6 +124,7 @@
       </select>
     </div>
     <label>Bluesky handle (e.g. marisakabas.bsky.social — required for Journalist type, optional for Outlets to power the "Most Popular on Bluesky" box)</label><input id="ff_bluesky" placeholder="handle.bsky.social">
+    <label>YouTube channel (optional — handle, channel ID, or full URL; powers the Videos box)</label><input id="ff_youtube" placeholder="@channelhandle">
     <button class="btn-primary" id="feedSubmitBtn" onclick="submitFeed()">Add feed</button>
     <button class="btn-secondary" onclick="clearFeedForm()">Clear / Cancel edit</button>
     <p id="feedFormMsg" style="font-family:var(--mono);font-size:12px;"></p>
@@ -125,11 +134,12 @@
 
     <h3 style="font-family:var(--mono);font-size:12px;margin-top:28px;border-top:1px solid rgba(0,0,0,.1);padding-top:20px;">BULK ADD FEEDS</h3>
     <p style="font-size:13px;color:#666;">Paste one feed per line, fields separated by <code>|</code>:<br>
-    <code>Outlet | Feed URL | Section | Default Author | Tip URL | Subscribe URL | Bluesky Handle | Type</code><br>
-    <strong>Outlet</strong> is always required, and you need either a <strong>Feed URL</strong> or a <strong>Bluesky Handle</strong> (or both) — leave the rest blank if you don't have them, e.g. <code>Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media</code>. To add a reporter who only has a Bluesky handle and no RSS feed, just leave the Feed URL field blank. Section must be exactly <code>Indie Media</code>, <code>Data Centers</code>, or <code>People Power</code> (defaults to Indie Media if left blank or misspelled). Bluesky Handle can be a bare handle (<code>marisakabas.bsky.social</code>) or a full profile URL. Leave <strong>Type</strong> blank for a normal outlet — write <code>journalist</code> to add a Bluesky-only person who never gets a wire column and only shows up in Sources.</p>
+    <code>Outlet | Feed URL | Section | Default Author | Tip URL | Subscribe URL | Bluesky Handle | Type | YouTube Channel</code><br>
+    <strong>Outlet</strong> is always required, and you need at least one of a <strong>Feed URL</strong>, a <strong>Bluesky Handle</strong>, or a <strong>YouTube Channel</strong> — leave the rest blank if you don't have them, e.g. <code>Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media</code>. To add a reporter who only has a Bluesky handle and no RSS feed, just leave the Feed URL field blank. Section must be exactly <code>Indie Media</code>, <code>Data Centers</code>, or <code>People Power</code> (defaults to Indie Media if left blank or misspelled). Bluesky Handle can be a bare handle (<code>marisakabas.bsky.social</code>) or a full profile URL. Leave <strong>Type</strong> blank for a normal outlet — write <code>journalist</code> to add a Bluesky-only person who never gets a wire column and only shows up in Sources. YouTube Channel can be a handle (<code>@channelname</code>), raw channel ID, or full URL.</p>
     <textarea id="bulk_feeds" rows="6" style="min-height:120px;" placeholder="Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media
 Blood in the Machine | https://www.bloodinthemachine.com/feed | People Power | Brian Merchant | | https://www.bloodinthemachine.com/subscribe | bloodinthemachine.bsky.social
-Some Reporter | | | | | | somereporter.bsky.social | journalist"></textarea>
+Some Reporter | | | | | | somereporter.bsky.social | journalist
+Some Video Creator | | Indie Media | | | | | | @somecreator"></textarea>
     <button class="btn-primary" onclick="submitBulkFeeds()">Add all</button>
     <p id="bulkFeedMsg" style="font-family:var(--mono);font-size:12px;"></p>
   </div>
@@ -334,7 +344,10 @@ function toggleFeedTypeFields(){
 
 async function loadFeeds(){
   const res = await fetch('/api/feeds', {headers: authHeaders()});
-  allFeeds = await res.json();
+  const all = await res.json();
+  allFeeds = all.filter(f => f.submission_status !== 'pending');
+  const pending = all.filter(f => f.submission_status === 'pending');
+
   document.getElementById('feedRows').innerHTML = allFeeds.map(f => `
     <tr>
       <td>${f.outlet}</td>
@@ -342,12 +355,44 @@ async function loadFeeds(){
       <td>${f.feed_url ? `<a class="link-cell" href="${f.feed_url}" target="_blank">${f.feed_url}</a>` : '<span style="color:#999;">—</span>'}</td>
       <td>${f.feed_type === 'journalist' ? '<span style="color:#999;">—</span>' : f.fallback_beat}</td>
       <td>${f.bluesky_handle ? `<span style="color:#1185FE;">@${f.bluesky_handle}</span>` : '<span style="color:#999;">—</span>'}</td>
+      <td>${f.youtube_channel_id ? `<span style="color:#B33A3A;">${f.youtube_channel_id}</span>` : '<span style="color:#999;">—</span>'}</td>
       <td>
         <button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="editFeed(${f.id})">Edit</button>
         <button class="btn-danger" onclick="deleteFeed(${f.id})">Delete</button>
       </td>
     </tr>
-  `).join('') || '<tr><td colspan="6" style="color:#666;">No feeds yet — add one below.</td></tr>';
+  `).join('') || '<tr><td colspan="7" style="color:#666;">No feeds yet — add one below.</td></tr>';
+
+  renderPendingChannels(pending);
+}
+
+function renderPendingChannels(pending){
+  const panel = document.getElementById('pendingChannelsPanel');
+  const rows = document.getElementById('pendingChannelRows');
+  if (!panel || !rows) return;
+  if (!pending.length){ panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  rows.innerHTML = pending.map(f => `
+    <tr>
+      <td>${f.outlet}</td>
+      <td>${f.youtube_channel_id || ''}</td>
+      <td>
+        <button class="btn-primary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="approveChannel(${f.id})">Approve</button>
+        <button class="btn-danger" onclick="rejectChannel(${f.id})">Reject</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function approveChannel(id){
+  await fetch(`/api/feeds/${id}/approve`, {method:'POST', headers: authHeaders()});
+  await loadFeeds();
+}
+
+async function rejectChannel(id){
+  if (!confirm('Reject and remove this suggested channel?')) return;
+  await fetch(`/api/feeds/${id}`, {method:'DELETE', headers: authHeaders()});
+  await loadFeeds();
 }
 
 function editFeed(id){
@@ -362,6 +407,7 @@ function editFeed(id){
   document.getElementById('ff_tip_url').value = f.tip_url || '';
   document.getElementById('ff_subscribe_url').value = f.subscribe_url || '';
   document.getElementById('ff_bluesky').value = f.bluesky_handle || '';
+  document.getElementById('ff_youtube').value = f.youtube_channel_id || '';
   document.getElementById('ff_section').value = f.fallback_beat;
   document.getElementById('feedFormTitle').textContent = `EDITING FEED #${id}`;
   document.getElementById('feedSubmitBtn').textContent = 'Update feed';
@@ -378,6 +424,7 @@ async function submitFeed(){
     tip_url: document.getElementById('ff_tip_url').value,
     subscribe_url: document.getElementById('ff_subscribe_url').value,
     bluesky_handle: document.getElementById('ff_bluesky').value,
+    youtube_channel_id: document.getElementById('ff_youtube').value,
     fallback_beat: document.getElementById('ff_section').value,
     feed_type: feedType,
   };
@@ -387,8 +434,8 @@ async function submitFeed(){
   if (feedType === 'journalist' && !body.bluesky_handle.trim()){
     msg.style.color = '#B33A3A'; msg.textContent = 'Journalist feeds need a Bluesky handle.'; return;
   }
-  if (feedType === 'outlet' && !body.feed_url.trim() && !body.bluesky_handle.trim()){
-    msg.style.color = '#B33A3A'; msg.textContent = 'Add either a Feed URL or a Bluesky handle.'; return;
+  if (feedType === 'outlet' && !body.feed_url.trim() && !body.bluesky_handle.trim() && !body.youtube_channel_id.trim()){
+    msg.style.color = '#B33A3A'; msg.textContent = 'Add a Feed URL, a Bluesky handle, or a YouTube channel.'; return;
   }
   const url = editingFeedId ? `/api/feeds/${editingFeedId}` : '/api/feeds';
   const method = editingFeedId ? 'PUT' : 'POST';
@@ -403,7 +450,7 @@ async function submitFeed(){
 }
 
 function clearFeedForm(){
-  ['ff_outlet','ff_author','ff_url','ff_tip_url','ff_subscribe_url','ff_bluesky'].forEach(id => document.getElementById(id).value = '');
+  ['ff_outlet','ff_author','ff_url','ff_tip_url','ff_subscribe_url','ff_bluesky','ff_youtube'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('ff_section').value = 'Indie Media';
   document.getElementById('ff_type').value = 'outlet';
   toggleFeedTypeFields();
@@ -424,7 +471,7 @@ async function submitBulkFeeds(){
   }
   const feeds = lines.map(line => {
     const parts = line.split('|').map(p => p.trim());
-    const [outlet, feed_url, section, default_author, tip_url, subscribe_url, bluesky_handle, feed_type] = parts;
+    const [outlet, feed_url, section, default_author, tip_url, subscribe_url, bluesky_handle, feed_type, youtube_channel_id] = parts;
     return {
       outlet,
       feed_url,
@@ -434,6 +481,7 @@ async function submitBulkFeeds(){
       subscribe_url: subscribe_url || '',
       bluesky_handle: bluesky_handle || '',
       feed_type: (feed_type || '').trim().toLowerCase() === 'journalist' ? 'journalist' : 'outlet',
+      youtube_channel_id: youtube_channel_id || '',
     };
   });
   msg.style.color = '#333'; msg.textContent = 'Adding…';

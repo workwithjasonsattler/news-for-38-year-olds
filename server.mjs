@@ -45,6 +45,24 @@ function normalizeHandle(input) {
   return h.replace(/^@/, "").trim();
 }
 
+// ---------- YouTube channel identifier helper ----------
+// Accepts a raw channel ID ("UCxxxxxxxxxxxxxxxxxxxxxx"), an @handle (with or
+// without the @ or a full youtube.com URL), or a legacy /user//c/ URL, and
+// strips it down to the bare identifier resolveYoutubeUploadsPlaylist() expects.
+function normalizeYoutubeChannel(input) {
+  if (!input) return "";
+  let h = String(input).trim();
+  const channelUrlMatch = h.match(/youtube\.com\/channel\/([^/?#\s]+)/i);
+  if (channelUrlMatch) return channelUrlMatch[1];
+  const handleUrlMatch = h.match(/youtube\.com\/@([^/?#\s]+)/i);
+  if (handleUrlMatch) h = handleUrlMatch[1];
+  else {
+    const legacyUrlMatch = h.match(/youtube\.com\/(?:user|c)\/([^/?#\s]+)/i);
+    if (legacyUrlMatch) h = legacyUrlMatch[1];
+  }
+  return h.replace(/^@/, "").trim();
+}
+
 // ---------- thin helpers so the rest of the file reads like sync SQLite ----------
 async function dbAll(sql, args = []) {
   const res = await client.execute({ sql, args });
@@ -159,6 +177,8 @@ async function initSchema() {
     `ALTER TABLE feeds ADD COLUMN subscribe_url TEXT`,
     `ALTER TABLE feeds ADD COLUMN bluesky_handle TEXT`,
     `ALTER TABLE feeds ADD COLUMN feed_type TEXT NOT NULL DEFAULT 'outlet'`,
+    `ALTER TABLE feeds ADD COLUMN youtube_channel_id TEXT`,
+    `ALTER TABLE feeds ADD COLUMN submission_status TEXT NOT NULL DEFAULT 'approved'`,
     `ALTER TABLE headlines ADD COLUMN subhead TEXT`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
@@ -184,6 +204,8 @@ async function migrateFeedUrlNullable() {
     tip_url TEXT,
     subscribe_url TEXT,
     bluesky_handle TEXT,
+    youtube_channel_id TEXT,
+    submission_status TEXT NOT NULL DEFAULT 'approved',
     fallback_beat TEXT NOT NULL DEFAULT 'Indie Media',
     beat_keywords TEXT NOT NULL DEFAULT '{}',
     items_per_feed INTEGER NOT NULL DEFAULT 3,
@@ -285,6 +307,49 @@ async function autoSeedIfEmpty() {
     if (info.changes) added++;
   }
   console.log(`Auto-seeded ${added} starter dispatch(es) (database was empty).`);
+}
+
+// ---------- curated starting YouTube channel list ----------
+// Jason's confirmed list. Two entries (Democracy Now!, Degenerate Art) have
+// no @handle on YouTube, so they're stored as their legacy username / raw
+// channel ID instead — see SESSION-NOTES-youtube-video-feed for how each
+// was resolved.
+const STARTER_YOUTUBE_CHANNELS = [
+  { outlet: "More Perfect Union", youtube_channel_id: "moreperfectunion" },
+  { outlet: "Democracy Now!", youtube_channel_id: "democracynow" },
+  { outlet: "Degenerate Art", youtube_channel_id: "UCGbfp7gMn8nk0SUTb9ooCuw" },
+  { outlet: "PBS NewsHour", youtube_channel_id: "PBSNewsHour" },
+  { outlet: "MS NOW", youtube_channel_id: "msnow" },
+  { outlet: "Second Thought", youtube_channel_id: "SecondThought" },
+  { outlet: "emptywheel", youtube_channel_id: "emptywheel" },
+  { outlet: "The Daily Show", youtube_channel_id: "TheDailyShow" },
+  { outlet: "Last Week Tonight", youtube_channel_id: "LastWeekTonight" },
+];
+
+// Idempotent: matches an existing outlet by name (case-insensitive) first
+// and just attaches a channel id if it's missing one, rather than creating
+// a duplicate row. Only inserts a new row when no matching outlet exists.
+async function seedYoutubeChannels() {
+  const existingFeeds = await dbAll(`SELECT id, outlet, youtube_channel_id FROM feeds`);
+  const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
+  let attached = 0, inserted = 0;
+  for (const ch of STARTER_YOUTUBE_CHANNELS) {
+    const match = byOutletLower.get(ch.outlet.toLowerCase());
+    if (match) {
+      if (!match.youtube_channel_id) {
+        await dbRun(`UPDATE feeds SET youtube_channel_id = ? WHERE id = ?`, [ch.youtube_channel_id, match.id]);
+        attached++;
+      }
+      continue;
+    }
+    await dbRun(
+      `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status)
+       VALUES (?, '', NULL, '', '', 'Indie Media', '{}', 3, '', 'outlet', ?, 'approved')`,
+      [ch.outlet, ch.youtube_channel_id]
+    );
+    inserted++;
+  }
+  if (attached || inserted) console.log(`YouTube channel seed: attached ${attached} to existing outlets, inserted ${inserted} new row(s).`);
 }
 
 // ---------- express app ----------
@@ -526,7 +591,7 @@ app.get("/api/dispatches", async (req, res) => {
 
 app.get("/api/sources", async (req, res) => {
   const rows = await dbAll(
-    `SELECT outlet, default_author, subscribe_url, tip_url, feed_url, bluesky_handle, feed_type FROM feeds ORDER BY outlet ASC`
+    `SELECT outlet, default_author, subscribe_url, tip_url, feed_url, bluesky_handle, feed_type FROM feeds WHERE submission_status = 'approved' ORDER BY outlet ASC`
   );
   res.json(rows);
 });
@@ -891,6 +956,140 @@ app.get("/api/actions-feed", async (req, res) => res.json(await getSimpleFeed("a
 app.get("/api/frontpage-feed", async (req, res) => res.json(await getSimpleFeed("frontpage")));
 app.get("/api/climate-feed", async (req, res) => res.json(await getSimpleFeed("climate")));
 
+// ---------- YouTube video feed (curated, not algorithmic) ----------
+// Pulls each curated channel's "uploads" playlist via playlistItems.list
+// (~1 quota unit/call, vs. 100 for search.list). Thumbnail+link-out only,
+// no embedded players — matches the Bluesky box's page-weight philosophy.
+const YOUTUBE_API_KEY = process.env.YOUTUBE_API_KEY || "";
+const youtubeUploadsPlaylistCache = new Map(); // identifier -> {playlistId, channelTitle, thumbnail, cachedAt}
+const YOUTUBE_PLAYLIST_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h — channel->playlist mapping barely ever changes
+
+async function resolveYoutubeUploadsPlaylist(identifier) {
+  if (!YOUTUBE_API_KEY) throw new Error("YOUTUBE_API_KEY not configured");
+  const cached = youtubeUploadsPlaylistCache.get(identifier);
+  if (cached && Date.now() - cached.cachedAt < YOUTUBE_PLAYLIST_CACHE_TTL_MS) return cached;
+
+  const base = "https://www.googleapis.com/youtube/v3/channels";
+  const looksLikeChannelId = /^UC[a-zA-Z0-9_-]{22}$/.test(identifier);
+  const attempts = looksLikeChannelId
+    ? [`id=${encodeURIComponent(identifier)}`]
+    : [`forHandle=${encodeURIComponent(identifier.replace(/^@/, ""))}`, `forUsername=${encodeURIComponent(identifier)}`];
+
+  let channel = null;
+  for (const qs of attempts) {
+    const resp = await fetch(`${base}?part=contentDetails,snippet&${qs}&key=${YOUTUBE_API_KEY}`);
+    if (!resp.ok) continue;
+    const json = await resp.json();
+    if (json.items?.[0]) { channel = json.items[0]; break; }
+  }
+  if (!channel) throw new Error(`YouTube channel not found for "${identifier}"`);
+
+  const result = {
+    playlistId: channel.contentDetails?.relatedPlaylists?.uploads,
+    channelTitle: channel.snippet?.title || identifier,
+    thumbnail: channel.snippet?.thumbnails?.default?.url || "",
+    cachedAt: Date.now(),
+  };
+  if (!result.playlistId) throw new Error(`No uploads playlist for "${identifier}"`);
+  youtubeUploadsPlaylistCache.set(identifier, result);
+  return result;
+}
+
+async function fetchChannelVideos(identifier, outletName) {
+  const { playlistId, channelTitle, thumbnail: channelThumb } = await resolveYoutubeUploadsPlaylist(identifier);
+  const url = `https://www.googleapis.com/youtube/v3/playlistItems?part=snippet&maxResults=5&playlistId=${encodeURIComponent(playlistId)}&key=${YOUTUBE_API_KEY}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`playlistItems ${resp.status} for ${identifier}`);
+  const json = await resp.json();
+  return (json.items || []).map(item => {
+    const s = item.snippet || {};
+    const videoId = s.resourceId?.videoId;
+    return {
+      channel: outletName || channelTitle,
+      channelThumbnail: channelThumb,
+      title: s.title || "",
+      thumbnail: s.thumbnails?.medium?.url || s.thumbnails?.default?.url || "",
+      url: videoId ? `https://www.youtube.com/watch?v=${videoId}` : null,
+      published_at: s.publishedAt || null,
+    };
+  }).filter(v => v.url && v.title);
+}
+
+const YOUTUBE_VIDEO_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+let youtubeVideoCache = { data: [], fetchedAt: 0 };
+
+async function getVideoFeed() {
+  if (!YOUTUBE_API_KEY) return []; // fail soft — box just won't render
+  const now = Date.now();
+  if (now - youtubeVideoCache.fetchedAt < YOUTUBE_VIDEO_CACHE_TTL_MS) return youtubeVideoCache.data;
+
+  const channels = await dbAll(
+    `SELECT outlet, youtube_channel_id FROM feeds WHERE youtube_channel_id IS NOT NULL AND youtube_channel_id != '' AND submission_status = 'approved'`
+  );
+  const results = await Promise.allSettled(
+    channels.map(c => fetchChannelVideos(c.youtube_channel_id, c.outlet))
+  );
+  const all = results.filter(r => r.status === "fulfilled").flatMap(r => r.value);
+  results.filter(r => r.status === "rejected").forEach(r => console.error("YouTube fetch failed:", r.reason?.message || r.reason));
+  all.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+  youtubeVideoCache = { data: all, fetchedAt: now };
+  return all;
+}
+
+app.get("/api/video-feed", async (req, res) => {
+  try {
+    res.json(await getVideoFeed());
+  } catch (err) {
+    console.error("Video feed error:", err);
+    res.json(youtubeVideoCache.data); // fail soft — never break the page over this
+  }
+});
+
+// ---------- reader-submitted YouTube channel suggestions ----------
+// Simple per-IP cooldown (in-memory, not persistent across restarts — fine
+// at this scale) plus a honeypot field the frontend form must include as a
+// visually-hidden input. Validates the channel actually resolves on YouTube
+// before saving, so typos/fake channels never even hit the pending queue.
+const suggestCooldowns = new Map(); // ip -> last-submit timestamp
+const SUGGEST_COOLDOWN_MS = 60 * 1000;
+
+app.post("/api/video-feed/suggest", async (req, res) => {
+  const { channel, website } = req.body || {};
+  if (website) return res.json({ ok: true }); // honeypot tripped — pretend success, do nothing
+  if (!channel || !String(channel).trim()) return res.status(400).json({ error: "Channel is required." });
+  if (!YOUTUBE_API_KEY) return res.status(503).json({ error: "Video suggestions aren't available right now." });
+
+  const ip = req.ip || req.headers["x-forwarded-for"] || "unknown";
+  const last = suggestCooldowns.get(ip) || 0;
+  if (Date.now() - last < SUGGEST_COOLDOWN_MS) {
+    return res.status(429).json({ error: "Please wait a moment before suggesting another channel." });
+  }
+
+  const identifier = normalizeYoutubeChannel(channel);
+  let resolved;
+  try {
+    resolved = await resolveYoutubeUploadsPlaylist(identifier);
+  } catch (err) {
+    return res.status(400).json({ error: "Couldn't find that channel on YouTube — double-check the handle or URL." });
+  }
+
+  const existing = await dbGet(`SELECT id FROM feeds WHERE youtube_channel_id = ?`, [identifier]);
+  if (existing) return res.status(409).json({ error: "That channel has already been suggested." });
+
+  suggestCooldowns.set(ip, Date.now());
+  await dbRun(
+    `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status)
+     VALUES (?, '', NULL, '', '', 'Indie Media', '{}', 3, '', 'outlet', ?, 'pending')`,
+    [resolved.channelTitle, identifier]
+  );
+  res.json({ ok: true });
+});
+
+app.post("/api/feeds/:id/approve", requireAdmin, async (req, res) => {
+  await dbRun(`UPDATE feeds SET submission_status = 'approved' WHERE id = ?`, [req.params.id]);
+  res.json({ ok: true });
+});
+
 app.get("/go/:id", async (req, res) => {
   const row = await dbGet(`SELECT link FROM dispatches WHERE id = ?`, [req.params.id]);
   if (!row) return res.status(404).send("Not found");
@@ -1094,17 +1293,18 @@ app.get("/api/feeds", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/feeds", requireAdmin, async (req, res) => {
-  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type } = req.body;
+  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type, youtube_channel_id } = req.body;
   const handle = normalizeHandle(bluesky_handle);
+  const ytChannel = normalizeYoutubeChannel(youtube_channel_id);
   const type = feed_type === "journalist" ? "journalist" : "outlet";
   if (!outlet) return res.status(400).json({ error: "outlet is required" });
   if (type === "journalist" && !handle) return res.status(400).json({ error: "journalist feeds need a Bluesky handle" });
-  if (type === "outlet" && !feed_url && !handle) return res.status(400).json({ error: "outlet is required, and either feed_url or bluesky_handle" });
+  if (type === "outlet" && !feed_url && !handle && !ytChannel) return res.status(400).json({ error: "outlet is required, and either feed_url, bluesky_handle, or youtube_channel_id" });
   try {
     const info = await dbRun(
-      `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type)
-       VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)`,
-      [outlet, default_author || "", type === "journalist" ? null : (feed_url || null), tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle, type]
+      `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status)
+       VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, 'approved')`,
+      [outlet, default_author || "", type === "journalist" ? null : (feed_url || null), tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle, type, ytChannel || null]
     );
     res.json({ id: info.lastInsertRowid });
   } catch (err) {
@@ -1121,6 +1321,7 @@ app.post("/api/feeds/bulk", requireAdmin, async (req, res) => {
   const errors = [];
   for (const f of feeds) {
     const handle = normalizeHandle(f.bluesky_handle);
+    const ytChannel = normalizeYoutubeChannel(f.youtube_channel_id);
     const type = f.feed_type === "journalist" ? "journalist" : "outlet";
     if (!f.outlet) {
       errors.push(`Skipped a row — outlet name is required: ${JSON.stringify(f)}`);
@@ -1130,15 +1331,15 @@ app.post("/api/feeds/bulk", requireAdmin, async (req, res) => {
       errors.push(`Skipped ${f.outlet} — journalist rows need a Bluesky handle.`);
       continue;
     }
-    if (type === "outlet" && !f.feed_url && !handle) {
-      errors.push(`Skipped a row — needs outlet plus either a feed URL or a Bluesky handle: ${JSON.stringify(f)}`);
+    if (type === "outlet" && !f.feed_url && !handle && !ytChannel) {
+      errors.push(`Skipped a row — needs outlet plus a feed URL, Bluesky handle, or YouTube channel: ${JSON.stringify(f)}`);
       continue;
     }
     try {
       await dbRun(
-        `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type)
-         VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?, ?)`,
-        [f.outlet, f.default_author || "", type === "journalist" ? null : (f.feed_url || null), f.tip_url || "", f.subscribe_url || "", f.fallback_beat || "Indie Media", f.items_per_feed || 3, handle, type]
+        `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status)
+         VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, 'approved')`,
+        [f.outlet, f.default_author || "", type === "journalist" ? null : (f.feed_url || null), f.tip_url || "", f.subscribe_url || "", f.fallback_beat || "Indie Media", f.items_per_feed || 3, handle, type, ytChannel || null]
       );
       added++;
     } catch (err) {
@@ -1149,17 +1350,20 @@ app.post("/api/feeds/bulk", requireAdmin, async (req, res) => {
 });
 
 app.put("/api/feeds/:id", requireAdmin, async (req, res) => {
-  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type } = req.body;
+  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type, youtube_channel_id } = req.body;
   const handle = normalizeHandle(bluesky_handle);
+  const ytChannel = normalizeYoutubeChannel(youtube_channel_id);
   const type = feed_type === "journalist" ? "journalist" : "outlet";
   if (!outlet) return res.status(400).json({ error: "outlet is required" });
   if (type === "journalist" && !handle) return res.status(400).json({ error: "journalist feeds need a Bluesky handle" });
-  if (type === "outlet" && !feed_url && !handle) return res.status(400).json({ error: "outlet is required, and either feed_url or bluesky_handle" });
+  if (type === "outlet" && !feed_url && !handle && !ytChannel) return res.status(400).json({ error: "outlet is required, and either feed_url, bluesky_handle, or youtube_channel_id" });
   try {
+    // An admin editing/saving a feed doubles as the approval action for a
+    // pending reader-submitted channel — no separate step needed.
     await dbRun(
-      `UPDATE feeds SET outlet=?, default_author=?, feed_url=?, tip_url=?, subscribe_url=?, fallback_beat=?, items_per_feed=?, bluesky_handle=?, feed_type=?
+      `UPDATE feeds SET outlet=?, default_author=?, feed_url=?, tip_url=?, subscribe_url=?, fallback_beat=?, items_per_feed=?, bluesky_handle=?, feed_type=?, youtube_channel_id=?, submission_status='approved'
        WHERE id=?`,
-      [outlet, default_author || "", type === "journalist" ? null : (feed_url || null), tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle, type, req.params.id]
+      [outlet, default_author || "", type === "journalist" ? null : (feed_url || null), tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle, type, ytChannel || null, req.params.id]
     );
     res.json({ ok: true });
   } catch (err) {
@@ -1243,6 +1447,7 @@ async function start() {
       await migrateFeedsJsonIfNeeded();
       await migrateDateFormats();
       await autoSeedIfEmpty();
+      await seedYoutubeChannels();
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       return;
     } catch (err) {

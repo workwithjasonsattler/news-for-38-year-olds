@@ -94,6 +94,13 @@
   .actions-preview{margin:6px 0 4px;}
   .actions-preview img{display:block;width:100%;max-height:120px;object-fit:cover;border-radius:2px;margin-bottom:6px;}
   .actions-preview p{margin:0;font-size:12px;line-height:1.4;color:#555;font-style:italic;}
+
+  .video-item{padding:6px 0 !important;}
+  .video-item a{display:block;color:#111 !important;font-weight:400 !important;}
+  .video-item img{display:block;width:100%;max-height:90px;object-fit:cover;border-radius:2px;margin-bottom:4px;}
+  .video-item .video-title{display:block;font-size:13px;line-height:1.35;}
+  .video-item a:hover .video-title{text-decoration:underline;}
+  .video-item .wire-meta{display:block;margin-top:2px;}
   .wire-resources-box li:last-child{border-bottom:none;}
   .wire-resources-box a{color:var(--wire-blue);font-weight:700;}
   .wire-resources-box a:hover{text-decoration:underline;}
@@ -410,6 +417,29 @@ async function loadClimateFeed(){
   }
 }
 
+async function loadVideoFeed(){
+  const box = document.getElementById('videosBox');
+  const list = document.getElementById('videosList');
+  if (!box || !list) return;
+  try {
+    const res = await fetch(`${API}/api/video-feed`);
+    const items = await res.json();
+    if (!items || !items.length){ box.style.display = 'none'; return; }
+    list.innerHTML = items.slice(0, 4).map(item => `
+      <li class="video-item">
+        <a href="${item.url}" target="_blank" rel="noopener">
+          ${item.thumbnail ? `<img src="${item.thumbnail}" alt="" loading="lazy">` : ''}
+          <span class="video-title">${item.title}</span>
+        </a>
+        <span class="wire-meta">${item.channel}</span>
+      </li>
+    `).join('');
+    box.style.display = '';
+  } catch (err) {
+    box.style.display = 'none';
+  }
+}
+
 async function loadActionsFeed(){
   const box = document.getElementById('actionsBox');
   const list = document.getElementById('actionsList');
@@ -552,6 +582,11 @@ function renderWire(){
       </aside>
 
       <div class="wire-sources" id="sourcesSection"></div>
+
+      <aside class="wire-resources-box" id="videosBox" style="display:none;">
+        <h4>Videos <a href="/videos.html" style="font-family:var(--mono);font-size:10px;font-style:normal;font-weight:400;text-transform:uppercase;color:var(--wire-blue);text-decoration:underline;letter-spacing:.03em;">See all &rarr;</a></h4>
+        <ul id="videosList"></ul>
+      </aside>
     </div>
 
     <div class="wire-columns">
@@ -580,6 +615,7 @@ function renderWire(){
   loadActionsFeed();
   loadFrontpageFeed();
   loadClimateFeed();
+  loadVideoFeed();
 }
 
 // dateline counters — recalculated every minute so they never go stale mid-session

@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIDEOS — News for 38 Year Olds</title>
+<meta name="description" content="Curated video from independent, progressive creators — no algorithm, just picks.">
+<style>
+  :root{
+    --paper:#FFFFFF; --paper-card:#F7F5EF; --text:#111111; --text-muted:#666;
+    --wire-red:#B33A3A; --wire-blue:#0000CC;
+    --hairline:#ddd;
+    --body:Georgia,'Times New Roman',serif;
+    --mono:'IBM Plex Mono','Courier New',monospace;
+  }
+  *{box-sizing:border-box;} html,body{margin:0;padding:0;}
+  body{background:var(--paper);color:var(--text);font-family:var(--body);-webkit-font-smoothing:antialiased;}
+  a{color:inherit;text-decoration:none;}
+
+  header.v-header{max-width:1180px;margin:0 auto;padding:20px 24px 12px;}
+  .v-back{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--wire-blue);text-decoration:underline;}
+  h1.v-title{font-family:Georgia,serif;font-style:italic;font-weight:900;font-size:clamp(28px,5vw,44px);margin:10px 0 4px;letter-spacing:-.01em;}
+  .v-subtitle{font-family:var(--mono);font-size:12px;color:var(--text-muted);margin:0 0 8px;}
+
+  main{max-width:1180px;margin:0 auto;padding:8px 24px 60px;}
+
+  .v-grid{display:grid;grid-template-columns:repeat(auto-fill, minmax(240px, 1fr));gap:24px;margin:20px 0 40px;}
+  .v-card{display:block;}
+  .v-card img{display:block;width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:2px;background:var(--paper-card);margin-bottom:8px;}
+  .v-card .v-card-title{display:block;font-size:15px;line-height:1.35;font-weight:700;color:var(--text);}
+  .v-card:hover .v-card-title{text-decoration:underline;}
+  .v-card .v-card-meta{display:block;font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:4px;text-transform:uppercase;letter-spacing:.03em;}
+
+  .v-empty{font-family:var(--mono);font-size:13px;color:var(--text-muted);padding:30px 0;}
+
+  .v-suggest{border-top:2px solid #111;padding-top:24px;margin-top:20px;max-width:480px;}
+  .v-suggest h3{font-family:var(--mono);font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin:0 0 6px;}
+  .v-suggest p{font-size:14px;color:var(--text-muted);margin:0 0 14px;}
+  .v-suggest input[type="text"]{width:100%;padding:10px 12px;font-family:var(--body);font-size:14px;border:1px solid #ccc;border-radius:2px;margin-bottom:10px;}
+  .v-suggest button{background:#111;color:#fff;border:none;padding:10px 18px;font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;border-radius:2px;}
+  .v-suggest button:hover{background:#333;}
+  .v-suggest-msg{font-family:var(--mono);font-size:12px;margin-top:10px;}
+
+  /* honeypot — off-screen, not display:none/visibility:hidden (some bots check for those) */
+  .v-hp{position:absolute;left:-9999px;top:-9999px;}
+</style>
+</head>
+<body>
+
+<header class="v-header">
+  <a class="v-back" href="/">&larr; Back to the Wire</a>
+  <h1 class="v-title">Videos</h1>
+  <p class="v-subtitle">Curated by hand, not by an algorithm — pulled from progressive creators readers can trust.</p>
+</header>
+
+<main>
+  <div id="videoGrid" class="v-grid"></div>
+  <div id="videoEmpty" class="v-empty" style="display:none;">No videos to show right now — check back soon.</div>
+
+  <section class="v-suggest">
+    <h3>Suggest a channel</h3>
+    <p>Know a progressive YouTube channel that belongs here? Suggestions go into a review queue before anything goes live.</p>
+    <form id="suggestForm" onsubmit="return submitSuggestion(event)">
+      <input type="text" id="suggestChannel" placeholder="@channelhandle or a YouTube URL" required>
+      <input type="text" id="suggestWebsite" name="website" class="v-hp" tabindex="-1" autocomplete="off">
+      <button type="submit">Suggest channel</button>
+    </form>
+    <p class="v-suggest-msg" id="suggestMsg"></p>
+  </section>
+</main>
+
+<script>
+async function loadVideos(){
+  const grid = document.getElementById('videoGrid');
+  const empty = document.getElementById('videoEmpty');
+  try {
+    const res = await fetch('/api/video-feed');
+    const items = await res.json();
+    if (!items || !items.length){ empty.style.display = 'block'; return; }
+    grid.innerHTML = items.map(item => `
+      <a class="v-card" href="${item.url}" target="_blank" rel="noopener">
+        ${item.thumbnail ? `<img src="${item.thumbnail}" alt="" loading="lazy">` : ''}
+        <span class="v-card-title">${item.title}</span>
+        <span class="v-card-meta">${item.channel}</span>
+      </a>
+    `).join('');
+  } catch (err) {
+    empty.style.display = 'block';
+  }
+}
+loadVideos();
+
+async function submitSuggestion(e){
+  e.preventDefault();
+  const msg = document.getElementById('suggestMsg');
+  const channel = document.getElementById('suggestChannel').value.trim();
+  const website = document.getElementById('suggestWebsite').value; // honeypot
+  if (!channel){ return false; }
+  msg.style.color = '#666'; msg.textContent = 'Checking…';
+  try {
+    const res = await fetch('/api/video-feed/suggest', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({channel, website}),
+    });
+    const data = await res.json();
+    if (res.ok){
+      msg.style.color = 'green';
+      msg.textContent = 'Thanks — that channel is now in the review queue.';
+      document.getElementById('suggestChannel').value = '';
+    } else {
+      msg.style.color = '#B33A3A';
+      msg.textContent = data.error || 'Something went wrong — try again.';
+    }
+  } catch (err) {
+    msg.style.color = '#B33A3A';
+    msg.textContent = 'Something went wrong — try again.';
+  }
+  return false;
+}
+</script>
+
+</body>
+</html>
