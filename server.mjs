@@ -186,6 +186,27 @@ async function initSchema() {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(user_id, feed_url)
     )`,
+    // ---------- Super RSS Reader, Session 2: Mixes ----------
+    // A reader's named, shareable snapshot of curated + custom sources.
+    // Public directory + view + clone, per SCOPING-super-rss-reader doc.
+    `CREATE TABLE IF NOT EXISTS feed_mixes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      creator_user_id INTEGER NOT NULL,
+      location_label TEXT,
+      is_public INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS feed_mix_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mix_id INTEGER NOT NULL,
+      source_type TEXT NOT NULL,
+      outlet TEXT,
+      custom_source_id INTEGER,
+      sort_order INTEGER NOT NULL DEFAULT 0
+    )`,
   ];
   for (const sql of statements) await dbRun(sql);
 
@@ -645,6 +666,280 @@ app.delete("/api/my/custom-sources/:id", async (req, res) => {
   if (!user) return res.status(401).json({ error: "not signed in" });
   await dbRun(`DELETE FROM user_custom_sources WHERE id = ? AND user_id = ?`, [req.params.id, user.id]);
   res.json({ ok: true });
+});
+
+// ---------- Super RSS Reader, Session 2: Mixes ----------
+// A reader's named, shareable snapshot of curated + custom sources. Public
+// directory browsing (GET /api/mixes?location=) is Session 3 — this session
+// covers save / view / clone only, per the locked scoping doc.
+const MIX_SOURCE_CAP = 25; // per mix, Jason's call
+
+function slugify(name) {
+  return String(name || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40) || "mix";
+}
+
+async function generateUniqueMixSlug(name) {
+  const base = slugify(name);
+  const existing = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [base]);
+  if (!existing) return base;
+  for (let i = 0; i < 5; i++) {
+    const candidate = `${base}-${newToken(3)}`;
+    const clash = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [candidate]);
+    if (!clash) return candidate;
+  }
+  return `${base}-${newToken(5)}`; // astronomically unlikely to still clash
+}
+
+// Resolves a mix's saved sources into live wire items — admin_outlet rows
+// pull from the curated `dispatches` table (already fetched by the 20-min
+// import job), custom rows fetch on-demand via the same cached helper used
+// for a reader's own wire. `includePending` shows a mix owner their own
+// not-yet-approved custom sources (still their own reading list); public
+// viewers only ever see approved ones, matching decision #5 in the scoping
+// doc — approval gates visibility in OTHERS' view, not the owner's own.
+async function resolveMixSources(mixId, { includePending = false } = {}) {
+  const sourceRows = await dbAll(
+    `SELECT fms.*, ucs.name AS custom_name, ucs.feed_url AS custom_feed_url, ucs.submission_status AS custom_status
+     FROM feed_mix_sources fms
+     LEFT JOIN user_custom_sources ucs ON ucs.id = fms.custom_source_id
+     WHERE fms.mix_id = ? ORDER BY fms.sort_order ASC, fms.id ASC`,
+    [mixId]
+  );
+
+  const outletNames = sourceRows.filter((s) => s.source_type === "admin_outlet").map((s) => s.outlet);
+  const customRows = sourceRows.filter((s) => s.source_type === "custom" && s.custom_feed_url &&
+    (includePending || s.custom_status === "approved"));
+
+  let dispatchItems = [];
+  if (outletNames.length > 0) {
+    const placeholders = outletNames.map(() => "?").join(",");
+    dispatchItems = await dbAll(
+      `SELECT * FROM dispatches WHERE outlet IN (${placeholders}) ORDER BY pinned DESC, date DESC, id DESC LIMIT 60`,
+      outletNames
+    );
+  }
+
+  let customItems = [];
+  if (customRows.length > 0) {
+    const results = await Promise.allSettled(
+      customRows.map(async (cs) => {
+        const items = await fetchCustomSourceItems(cs.custom_feed_url);
+        return items.map((it) => ({
+          id: `mix-custom-${cs.custom_source_id}-${Buffer.from(it.link).toString("base64url").slice(0, 16)}`,
+          name: cs.custom_name,
+          outlet: cs.custom_name,
+          beat: "Custom",
+          date: formatDate(it.pubDate),
+          headline: it.title,
+          excerpt: null,
+          link: it.link,
+          tip_url: null,
+          subscribe_url: null,
+          pinned: 0,
+        }));
+      })
+    );
+    results.filter((r) => r.status === "rejected").forEach((r) => console.error("Mix custom source fetch failed:", r.reason?.message || r.reason));
+    customItems = results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value);
+  }
+
+  return {
+    sources: sourceRows.map((s) => ({
+      source_type: s.source_type,
+      outlet: s.source_type === "admin_outlet" ? s.outlet : s.custom_name,
+      pending: s.source_type === "custom" && s.custom_status !== "approved",
+    })),
+    items: [...customItems, ...dispatchItems],
+  };
+}
+
+app.post("/api/mixes", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  const name = String(req.body?.name || "").trim();
+  const locationLabel = req.body?.location_label ? String(req.body.location_label).trim().slice(0, 100) : null;
+  const isPublic = req.body?.is_public === false ? 0 : 1; // default public
+  const sources = Array.isArray(req.body?.sources) ? req.body.sources : [];
+
+  if (!name) return res.status(400).json({ error: "name is required" });
+  if (sources.length === 0) return res.status(400).json({ error: "a mix needs at least one source" });
+  if (sources.length > MIX_SOURCE_CAP) return res.status(400).json({ error: `mixes are capped at ${MIX_SOURCE_CAP} sources` });
+
+  // Validate every source up front so a mix never half-saves.
+  const validated = [];
+  for (const s of sources) {
+    if (s.source_type === "admin_outlet") {
+      const outlet = String(s.outlet || "").trim();
+      if (!outlet) return res.status(400).json({ error: "admin_outlet source missing outlet name" });
+      const exists = await dbGet(`SELECT id FROM feeds WHERE outlet = ? AND submission_status = 'approved'`, [outlet]);
+      if (!exists) return res.status(400).json({ error: `Unknown source: ${outlet}` });
+      validated.push({ source_type: "admin_outlet", outlet, custom_source_id: null });
+    } else if (s.source_type === "custom") {
+      const csId = Number(s.custom_source_id);
+      if (!csId) return res.status(400).json({ error: "custom source missing custom_source_id" });
+      const owned = await dbGet(`SELECT id FROM user_custom_sources WHERE id = ? AND user_id = ?`, [csId, user.id]);
+      if (!owned) return res.status(400).json({ error: "you can only add your own custom sources to a mix" });
+      validated.push({ source_type: "custom", outlet: null, custom_source_id: csId });
+    } else {
+      return res.status(400).json({ error: `unknown source_type: ${s.source_type}` });
+    }
+  }
+
+  const slug = await generateUniqueMixSlug(name);
+  const info = await dbRun(
+    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public) VALUES (?, ?, ?, ?, ?)`,
+    [slug, name, user.id, locationLabel, isPublic]
+  );
+  for (let i = 0; i < validated.length; i++) {
+    const v = validated[i];
+    await dbRun(
+      `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, ?, ?, ?, ?)`,
+      [info.lastInsertRowid, v.source_type, v.outlet, v.custom_source_id, i]
+    );
+  }
+  res.json({ id: info.lastInsertRowid, slug, name, location_label: locationLabel, is_public: !!isPublic });
+});
+
+app.put("/api/mixes/:slug", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix) return res.status(404).json({ error: "mix not found" });
+  if (mix.creator_user_id !== user.id) return res.status(403).json({ error: "not your mix" });
+
+  const name = req.body?.name !== undefined ? String(req.body.name).trim() : mix.name;
+  const locationLabel = req.body?.location_label !== undefined
+    ? (req.body.location_label ? String(req.body.location_label).trim().slice(0, 100) : null)
+    : mix.location_label;
+  const isPublic = req.body?.is_public !== undefined ? (req.body.is_public ? 1 : 0) : mix.is_public;
+  if (!name) return res.status(400).json({ error: "name is required" });
+
+  await dbRun(
+    `UPDATE feed_mixes SET name = ?, location_label = ?, is_public = ?, updated_at = datetime('now') WHERE id = ?`,
+    [name, locationLabel, isPublic, mix.id]
+  );
+
+  // Sources are optional on edit — only replace them if the caller sent a
+  // sources array at all, so a plain "rename this mix" call doesn't need to
+  // re-send the whole source list.
+  if (Array.isArray(req.body?.sources)) {
+    const sources = req.body.sources;
+    if (sources.length === 0) return res.status(400).json({ error: "a mix needs at least one source" });
+    if (sources.length > MIX_SOURCE_CAP) return res.status(400).json({ error: `mixes are capped at ${MIX_SOURCE_CAP} sources` });
+    const validated = [];
+    for (const s of sources) {
+      if (s.source_type === "admin_outlet") {
+        const outlet = String(s.outlet || "").trim();
+        const exists = outlet && await dbGet(`SELECT id FROM feeds WHERE outlet = ? AND submission_status = 'approved'`, [outlet]);
+        if (!exists) return res.status(400).json({ error: `Unknown source: ${outlet}` });
+        validated.push({ source_type: "admin_outlet", outlet, custom_source_id: null });
+      } else if (s.source_type === "custom") {
+        const csId = Number(s.custom_source_id);
+        const owned = csId && await dbGet(`SELECT id FROM user_custom_sources WHERE id = ? AND user_id = ?`, [csId, user.id]);
+        if (!owned) return res.status(400).json({ error: "you can only add your own custom sources to a mix" });
+        validated.push({ source_type: "custom", outlet: null, custom_source_id: csId });
+      } else {
+        return res.status(400).json({ error: `unknown source_type: ${s.source_type}` });
+      }
+    }
+    await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
+    for (let i = 0; i < validated.length; i++) {
+      const v = validated[i];
+      await dbRun(
+        `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, ?, ?, ?, ?)`,
+        [mix.id, v.source_type, v.outlet, v.custom_source_id, i]
+      );
+    }
+  }
+
+  res.json({ ok: true, slug: mix.slug });
+});
+
+app.get("/api/mixes/:slug", async (req, res) => {
+  const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix) return res.status(404).json({ error: "mix not found" });
+
+  const user = await getCurrentUser(req);
+  const isOwner = !!(user && user.id === mix.creator_user_id);
+  if (!mix.is_public && !isOwner) return res.status(404).json({ error: "mix not found" });
+
+  const { sources, items } = await resolveMixSources(mix.id, { includePending: isOwner });
+  res.json({
+    slug: mix.slug,
+    name: mix.name,
+    location_label: mix.location_label,
+    is_public: !!mix.is_public,
+    is_owner: isOwner,
+    created_at: mix.created_at,
+    sources,
+    items,
+  });
+});
+
+app.post("/api/mixes/:slug/clone", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix) return res.status(404).json({ error: "mix not found" });
+  const isOwner = user.id === mix.creator_user_id;
+  if (!mix.is_public && !isOwner) return res.status(404).json({ error: "mix not found" });
+
+  const sourceRows = await dbAll(
+    `SELECT fms.*, ucs.name AS custom_name, ucs.feed_url AS custom_feed_url, ucs.submission_status AS custom_status
+     FROM feed_mix_sources fms
+     LEFT JOIN user_custom_sources ucs ON ucs.id = fms.custom_source_id
+     WHERE fms.mix_id = ? ORDER BY fms.sort_order ASC, fms.id ASC`,
+    [mix.id]
+  );
+
+  let outletsAdded = 0, customAdded = 0, customSkipped = 0;
+  const existingCount = (await dbGet(`SELECT COUNT(*) AS n FROM user_custom_sources WHERE user_id = ?`, [user.id])).n;
+  let customBudget = CUSTOM_SOURCE_CAP - existingCount;
+
+  for (const s of sourceRows) {
+    if (s.source_type === "admin_outlet") {
+      await dbRun(
+        `INSERT INTO user_feed_prefs (user_id, outlet, enabled) VALUES (?, ?, 1)
+         ON CONFLICT(user_id, outlet) DO UPDATE SET enabled = 1`,
+        [user.id, s.outlet]
+      );
+      outletsAdded++;
+    } else if (s.source_type === "custom" && s.custom_feed_url) {
+      // Cloning others' custom sources into your own wire only makes sense
+      // once they've cleared moderation (your own mix's pending ones are
+      // yours already, so always allowed there).
+      if (!isOwner && s.custom_status !== "approved") { customSkipped++; continue; }
+      const already = await dbGet(`SELECT id FROM user_custom_sources WHERE user_id = ? AND feed_url = ?`, [user.id, s.custom_feed_url]);
+      if (already) continue; // already have it, nothing to do
+      if (customBudget <= 0) { customSkipped++; continue; }
+      await dbRun(
+        `INSERT INTO user_custom_sources (user_id, name, feed_url, validated, submission_status) VALUES (?, ?, ?, 1, 'pending')`,
+        [user.id, s.custom_name, s.custom_feed_url]
+      );
+      customBudget--;
+      customAdded++;
+    }
+  }
+
+  res.json({ ok: true, outlets_added: outletsAdded, custom_added: customAdded, custom_skipped: customSkipped });
+});
+
+app.get("/api/my/mixes", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const rows = await dbAll(
+    `SELECT slug, name, location_label, is_public, created_at FROM feed_mixes WHERE creator_user_id = ? ORDER BY created_at DESC`,
+    [user.id]
+  );
+  res.json(rows);
 });
 
 app.post("/api/login", (req, res) => {
@@ -1246,6 +1541,32 @@ app.post("/api/video-feed/suggest", async (req, res) => {
 
 app.post("/api/feeds/:id/approve", requireAdmin, async (req, res) => {
   await dbRun(`UPDATE feeds SET submission_status = 'approved' WHERE id = ?`, [req.params.id]);
+  res.json({ ok: true });
+});
+
+// ---------- admin moderation: reader-submitted custom RSS sources ----------
+// Same shape as the YouTube channel approve/reject flow above. Approving a
+// custom source only affects whether it can show up in OTHERS' view/clone of
+// a mix (see resolveMixSources/decision #5) — it already powers the
+// submitting reader's own wire regardless of status. Rejecting reuses the
+// existing per-owner DELETE route below (no separate admin-delete endpoint —
+// an admin rejecting one is functionally the same row removal).
+app.get("/api/admin/pending-custom-sources", requireAdmin, async (req, res) => {
+  const rows = await dbAll(
+    `SELECT ucs.id, ucs.name, ucs.feed_url, ucs.created_at, u.email AS submitted_by
+     FROM user_custom_sources ucs JOIN users u ON u.id = ucs.user_id
+     WHERE ucs.submission_status = 'pending' ORDER BY ucs.created_at ASC`
+  );
+  res.json(rows);
+});
+
+app.post("/api/admin/custom-sources/:id/approve", requireAdmin, async (req, res) => {
+  await dbRun(`UPDATE user_custom_sources SET submission_status = 'approved' WHERE id = ?`, [req.params.id]);
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/custom-sources/:id", requireAdmin, async (req, res) => {
+  await dbRun(`DELETE FROM user_custom_sources WHERE id = ?`, [req.params.id]);
   res.json({ ok: true });
 });
 

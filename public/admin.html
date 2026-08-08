@@ -99,6 +99,15 @@
       </table>
     </div>
 
+    <div id="pendingCustomSourcesPanel" style="display:none;margin-bottom:20px;padding:14px;border:1px solid #e0b84b;background:#fffaf0;">
+      <h3 style="font-family:var(--mono);font-size:12px;margin:0 0 10px;">PENDING READER-SUBMITTED SOURCES (Super RSS Reader)</h3>
+      <p style="font-size:12px;color:#666;margin:0 0 10px;">These already power the submitting reader's own wire — approving only lets them show up when someone else views or clones a Mix containing this source.</p>
+      <table style="margin:0;">
+        <thead><tr><th>Name</th><th>Feed URL</th><th>Submitted by</th><th></th></tr></thead>
+        <tbody id="pendingCustomSourceRows"></tbody>
+      </table>
+    </div>
+
     <table id="feedTable" style="margin-bottom:16px;">
       <thead><tr><th>Outlet</th><th>Type</th><th>Feed URL</th><th>Default section</th><th>Bluesky</th><th>YouTube</th><th></th></tr></thead>
       <tbody id="feedRows"></tbody>
@@ -364,6 +373,40 @@ async function loadFeeds(){
   `).join('') || '<tr><td colspan="7" style="color:#666;">No feeds yet — add one below.</td></tr>';
 
   renderPendingChannels(pending);
+  loadPendingCustomSources();
+}
+
+async function loadPendingCustomSources(){
+  const panel = document.getElementById('pendingCustomSourcesPanel');
+  const rows = document.getElementById('pendingCustomSourceRows');
+  if (!panel || !rows) return;
+  const res = await fetch('/api/admin/pending-custom-sources', {headers: authHeaders()});
+  if (!res.ok) return; // stay silent — this panel is a nice-to-have, not core feed management
+  const pending = await res.json();
+  if (!pending.length){ panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  rows.innerHTML = pending.map(cs => `
+    <tr>
+      <td>${cs.name}</td>
+      <td><a class="link-cell" href="${cs.feed_url}" target="_blank">${cs.feed_url}</a></td>
+      <td style="color:#666;">${cs.submitted_by}</td>
+      <td>
+        <button class="btn-primary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="approveCustomSource(${cs.id})">Approve</button>
+        <button class="btn-danger" onclick="rejectCustomSource(${cs.id})">Reject</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function approveCustomSource(id){
+  await fetch(`/api/admin/custom-sources/${id}/approve`, {method:'POST', headers: authHeaders()});
+  await loadPendingCustomSources();
+}
+
+async function rejectCustomSource(id){
+  if (!confirm('Reject and remove this reader-submitted source? This deletes it from their account too.')) return;
+  await fetch(`/api/admin/custom-sources/${id}`, {method:'DELETE', headers: authHeaders()});
+  await loadPendingCustomSources();
 }
 
 function renderPendingChannels(pending){
