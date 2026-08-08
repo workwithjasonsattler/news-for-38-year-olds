@@ -101,6 +101,16 @@
   .video-item .video-title{display:block;font-size:13px;line-height:1.35;}
   .video-item a:hover .video-title{text-decoration:underline;}
   .video-item .wire-meta{display:block;margin-top:2px;}
+
+  /* Videos box spans the full grid width (3 columns) so its items lay out
+     as their own 3-col x 3-row grid, filled column-first — otherwise a
+     single narrow column here leaves the rest of that row empty. */
+  #videosBox{grid-column:1 / -1;padding-left:0 !important;padding-right:0 !important;}
+  #videosList{display:grid;grid-template-columns:repeat(3, 1fr);grid-template-rows:repeat(3, auto);grid-auto-flow:column;column-gap:24px;}
+  #videosList .video-item{border-bottom:none;}
+  @media (max-width:820px){
+    #videosList{grid-template-columns:1fr;grid-template-rows:none;grid-auto-flow:row;}
+  }
   .wire-resources-box li:last-child{border-bottom:none;}
   .wire-resources-box a{color:var(--wire-blue);font-weight:700;}
   .wire-resources-box a:hover{text-decoration:underline;}
@@ -425,7 +435,7 @@ async function loadVideoFeed(){
     const res = await fetch(`${API}/api/video-feed`);
     const items = await res.json();
     if (!items || !items.length){ box.style.display = 'none'; return; }
-    list.innerHTML = items.slice(0, 4).map(item => `
+    list.innerHTML = items.slice(0, 9).map(item => `
       <li class="video-item">
         <a href="${item.url}" target="_blank" rel="noopener">
           ${item.thumbnail ? `<img src="${item.thumbnail}" alt="" loading="lazy">` : ''}

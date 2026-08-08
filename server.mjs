@@ -1029,9 +1029,27 @@ async function getVideoFeed() {
   const results = await Promise.allSettled(
     channels.map(c => fetchChannelVideos(c.youtube_channel_id, c.outlet))
   );
-  const all = results.filter(r => r.status === "fulfilled").flatMap(r => r.value);
   results.filter(r => r.status === "rejected").forEach(r => console.error("YouTube fetch failed:", r.reason?.message || r.reason));
-  all.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+
+  // Round-robin interleave by channel, each channel's own videos sorted
+  // newest-first internally, rather than one flat sort across everything.
+  // A prolific channel (e.g. a cable-news account posting many clips a day)
+  // would otherwise crowd out slower-posting channels entirely, especially
+  // in a capped teaser list — this keeps the curated list actually diverse.
+  const perChannel = results
+    .filter(r => r.status === "fulfilled")
+    .map(r => [...r.value].sort((a, b) => new Date(b.published_at) - new Date(a.published_at)))
+    .filter(list => list.length > 0);
+
+  const all = [];
+  let round = 0;
+  while (perChannel.some(list => list.length > round)) {
+    for (const list of perChannel) {
+      if (list[round]) all.push(list[round]);
+    }
+    round++;
+  }
+
   youtubeVideoCache = { data: all, fetchedAt: now };
   return all;
 }
