@@ -167,6 +167,25 @@ async function initSchema() {
       rating TEXT NOT NULL DEFAULT 'normal',
       PRIMARY KEY (user_id, outlet)
     )`,
+    // ---------- Super RSS Reader: reader-submitted custom sources ----------
+    // A signed-in reader's own "bring your own RSS" list. Deliberately
+    // separate from the curated `feeds` table and NOT touched by the 20-min
+    // import job — an unvetted feed (malformed XML, redirect loop, hostile
+    // content) must never be able to degrade the pipeline that powers the
+    // main curated wire. `submission_status` gates visibility in a public,
+    // shareable mix (future work) — it does NOT gate a reader's own wire;
+    // an unapproved custom source still powers the reader's own view
+    // immediately, same as it's their own reading list.
+    `CREATE TABLE IF NOT EXISTS user_custom_sources (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      feed_url TEXT NOT NULL,
+      validated INTEGER NOT NULL DEFAULT 0,
+      submission_status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, feed_url)
+    )`,
   ];
   for (const sql of statements) await dbRun(sql);
 
@@ -540,6 +559,94 @@ app.post("/api/my/source-tiers", async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Super RSS Reader: reader-submitted custom sources ----------
+// "Bring your own RSS." Validated live (fetch + parse) before saving so
+// typos/dead feeds never get stored. Fetched on-demand and cached BY URL
+// (not per-user) with a short TTL — five readers adding the same local
+// paper's feed only triggers one fetch — and completely separate from the
+// curated `feeds` table / 20-min import job (see schema comment above).
+const CUSTOM_SOURCE_CAP = 50; // per reader
+const CUSTOM_SOURCE_CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes — shorter than the curated 20-min cycle since these aren't pre-warmed by a background job
+const customSourceCache = new Map(); // feed_url -> { data, fetchedAt }
+
+async function fetchCustomSourceItems(feedUrl) {
+  const cached = customSourceCache.get(feedUrl);
+  const now = Date.now();
+  if (cached && now - cached.fetchedAt < CUSTOM_SOURCE_CACHE_TTL_MS) return cached.data;
+
+  const resp = await fetch(feedUrl, {
+    headers: { "User-Agent": "n38-cms/1.0 (+https://news-for-38-year-olds.onrender.com)" },
+    signal: AbortSignal.timeout(8000), // a slow/hanging custom feed must not stall the request that triggered it
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const xml = await resp.text();
+  const parsed = xmlParser.parse(xml);
+  const items = extractItems(parsed)
+    .filter((it) => it.title && it.link)
+    .slice(0, 10)
+    .map((it) => ({ title: stripHtml(it.title), link: it.link, pubDate: it.pubDate || null }));
+
+  customSourceCache.set(feedUrl, { data: items, fetchedAt: now });
+  return items;
+}
+
+app.get("/api/my/custom-sources", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const rows = await dbAll(
+    `SELECT id, name, feed_url, submission_status, created_at FROM user_custom_sources WHERE user_id = ? ORDER BY created_at DESC`,
+    [user.id]
+  );
+  res.json(rows);
+});
+
+app.post("/api/my/custom-sources", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  const feedUrl = String(req.body?.feed_url || "").trim();
+  const name = String(req.body?.name || "").trim();
+  if (!feedUrl) return res.status(400).json({ error: "feed_url is required" });
+  if (!/^https?:\/\//i.test(feedUrl)) return res.status(400).json({ error: "feed_url must be a valid http(s) URL" });
+
+  const count = (await dbGet(`SELECT COUNT(*) AS n FROM user_custom_sources WHERE user_id = ?`, [user.id])).n;
+  if (count >= CUSTOM_SOURCE_CAP) {
+    return res.status(400).json({ error: `You've reached the ${CUSTOM_SOURCE_CAP}-source limit for custom feeds.` });
+  }
+
+  const existing = await dbGet(`SELECT id FROM user_custom_sources WHERE user_id = ? AND feed_url = ?`, [user.id, feedUrl]);
+  if (existing) return res.status(409).json({ error: "You've already added that source." });
+
+  try {
+    // fast-xml-parser doesn't reject non-RSS HTML/XML outright — it just
+    // yields zero items — so require at least one parsed item to count as
+    // "actually a feed" rather than trusting a 200 status alone.
+    const items = await fetchCustomSourceItems(feedUrl); // also warms the cache for this URL
+    if (items.length === 0) throw new Error("no items found");
+  } catch (err) {
+    return res.status(400).json({ error: "Couldn't read that as an RSS/Atom feed — double-check the URL." });
+  }
+
+  let sourceName = name;
+  if (!sourceName) {
+    try { sourceName = new URL(feedUrl).hostname.replace(/^www\./, ""); }
+    catch { sourceName = feedUrl; }
+  }
+
+  const info = await dbRun(
+    `INSERT INTO user_custom_sources (user_id, name, feed_url, validated, submission_status) VALUES (?, ?, ?, 1, 'pending')`,
+    [user.id, sourceName, feedUrl]
+  );
+  res.json({ id: info.lastInsertRowid, name: sourceName, feed_url: feedUrl });
+});
+
+app.delete("/api/my/custom-sources/:id", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  await dbRun(`DELETE FROM user_custom_sources WHERE id = ? AND user_id = ?`, [req.params.id, user.id]);
+  res.json({ ok: true });
+});
+
 app.post("/api/login", (req, res) => {
   const { password } = req.body || {};
   if (password === ADMIN_PASSWORD) return res.json({ ok: true, token: ADMIN_PASSWORD });
@@ -559,6 +666,40 @@ app.get("/api/dispatches", async (req, res) => {
   // or not signed in) means everyone sees the full wire, curated-default
   // order — nothing narrows or reorders without the reader opting in.
   const user = await getCurrentUser(req);
+
+  // Blend in the signed-in reader's own custom RSS sources (Super RSS
+  // Reader). Cached by URL, fetched on demand — never touches the curated
+  // 20-min import job. A slow or broken custom feed just contributes
+  // nothing (Promise.allSettled), it can never delay or break the rest of
+  // the wire. Only blended into the main unfiltered wire, not a beat-
+  // filtered view — custom sources aren't categorized into a beat.
+  if (user && !beat) {
+    const customSources = await dbAll(`SELECT id, name, feed_url FROM user_custom_sources WHERE user_id = ?`, [user.id]);
+    if (customSources.length > 0) {
+      const results = await Promise.allSettled(
+        customSources.map(async (cs) => {
+          const items = await fetchCustomSourceItems(cs.feed_url);
+          return items.map((it) => ({
+            id: `custom-${cs.id}-${Buffer.from(it.link).toString("base64url").slice(0, 16)}`,
+            name: cs.name,
+            outlet: cs.name,
+            beat: "My Sources",
+            date: formatDate(it.pubDate),
+            headline: it.title,
+            excerpt: null,
+            link: it.link,
+            tip_url: null,
+            subscribe_url: null,
+            pinned: 0,
+          }));
+        })
+      );
+      results.filter((r) => r.status === "rejected").forEach((r) => console.error("Custom source fetch failed:", r.reason?.message || r.reason));
+      const customRows = results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value);
+      rows = [...customRows, ...rows];
+    }
+  }
+
   if (user) {
     const tierRows = await dbAll(`SELECT outlet, rating AS tier FROM user_source_ratings WHERE user_id = ?`, [user.id]);
     if (tierRows.length > 0) {
