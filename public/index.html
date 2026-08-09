@@ -121,6 +121,11 @@
   .wire-cross-promo li{padding:2px 0;font-family:Georgia,'Times New Roman',serif;font-size:12.5px;border-bottom:none;}
   .wire-cross-promo a{color:var(--wire-blue);font-weight:700;}
   .wire-cross-promo a:hover{text-decoration:underline;}
+  .wire-follows-teaser{margin-top:8px;padding-top:8px;border-top:1px solid #ddd;}
+  .wire-follows-teaser ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px;}
+  .wire-follows-teaser li{padding:0;}
+  .wire-follows-teaser li a{display:inline-block;padding:3px 9px;border:1px solid var(--wire-blue);border-radius:12px;font-family:var(--mono,monospace);font-size:11px;color:var(--wire-blue);}
+  .wire-follows-teaser li a:hover{background:var(--wire-blue);color:#fff;}
 
   .wire-resources-bottom{max-width:1180px;margin:0 auto 40px;padding:0 24px;}
   .wire-resources-bottom .wire-resources-box{max-width:340px;}
@@ -475,6 +480,23 @@ async function loadActionsFeed(){
   }
 }
 
+async function loadFollowsTeaser(){
+  const box = document.getElementById('followsBox');
+  const list = document.getElementById('followsTopicList');
+  if (!box || !list) return;
+  try {
+    const res = await fetch(`${API}/api/topics`);
+    const topics = await res.json();
+    if (!topics || !topics.length){ box.style.display = 'none'; return; }
+    list.innerHTML = topics.slice(0, 6).map(t => `
+      <li><a href="/spray.html">${t.name}</a></li>
+    `).join('');
+    box.style.display = '';
+  } catch (err) {
+    box.style.display = 'none';
+  }
+}
+
 async function loadBlueskyPopular(filter){
   const box = document.getElementById('blueskyPopularBox');
   const list = document.getElementById('blueskyPopularList');
@@ -569,6 +591,10 @@ function renderWire(){
             <li><a href="https://stopthetrillionaires.com/ai-bubble" target="_blank" rel="noopener">How Big Is the AI Bubble?</a></li>
           </ul>
         </div>
+        <div class="wire-follows-teaser" id="followsBox" style="display:none;">
+          <div class="wire-cross-promo-label">Follows <a href="/spray.html" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--wire-blue);text-decoration:underline;">— build your own &rarr;</a></div>
+          <ul id="followsTopicList"></ul>
+        </div>
       </aside>
 
       <aside class="wire-bluesky-box" id="blueskyPopularBox" style="display:none;">
@@ -623,6 +649,7 @@ function renderWire(){
     });
   }
   loadActionsFeed();
+  loadFollowsTeaser();
   loadFrontpageFeed();
   loadClimateFeed();
   loadVideoFeed();

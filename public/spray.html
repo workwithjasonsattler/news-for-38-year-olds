@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FOLLOWS — News for 38 Year Olds</title>
+<meta name="description" content="Build and share a Follow — a named mix of sources around a topic or a place.">
+<style>
+  :root{
+    --paper:#FFFFFF; --paper-card:#F7F5EF; --text:#111111; --text-muted:#666;
+    --wire-red:#B33A3A; --wire-blue:#0000CC;
+    --hairline:#ddd;
+    --body:Georgia,'Times New Roman',serif;
+    --mono:'IBM Plex Mono','Courier New',monospace;
+  }
+  *{box-sizing:border-box;} html,body{margin:0;padding:0;}
+  body{background:var(--paper);color:var(--text);font-family:var(--body);-webkit-font-smoothing:antialiased;}
+  a{color:inherit;text-decoration:none;}
+
+  header.s-header{max-width:1000px;margin:0 auto;padding:20px 24px 12px;}
+  .s-back{font-family:var(--mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--wire-blue);text-decoration:underline;}
+  h1.s-title{font-family:Georgia,serif;font-style:italic;font-weight:900;font-size:clamp(28px,5vw,44px);margin:10px 0 4px;letter-spacing:-.01em;}
+  .s-subtitle{font-family:var(--mono);font-size:12px;color:var(--text-muted);margin:0 0 8px;}
+  .s-session{font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:6px;}
+  .s-session a{color:var(--wire-blue);text-decoration:underline;cursor:pointer;}
+
+  main{max-width:1000px;margin:0 auto;padding:8px 24px 60px;}
+
+  section.s-block{border-top:2px solid #111;padding-top:20px;margin-top:28px;}
+  section.s-block h2{font-family:var(--mono);font-size:13px;text-transform:uppercase;letter-spacing:.05em;margin:0 0 4px;}
+  section.s-block p.s-hint{font-size:14px;color:var(--text-muted);margin:0 0 14px;}
+
+  /* entry point: Local / Topic split */
+  .s-entry{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media (max-width:640px){ .s-entry{grid-template-columns:1fr;} }
+  .s-entry-card{background:var(--paper-card);border:1px solid var(--hairline);border-radius:3px;padding:18px;}
+  .s-entry-card h3{font-family:var(--body);font-style:italic;font-size:20px;margin:0 0 8px;}
+  .s-entry-card input[type="text"]{width:100%;padding:9px 10px;font-family:var(--body);font-size:14px;border:1px solid #ccc;border-radius:2px;margin-bottom:8px;}
+  .s-entry-card button{background:#111;color:#fff;border:none;padding:9px 16px;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;border-radius:2px;}
+  .s-entry-card button:hover{background:#333;}
+
+  .s-topic-list{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px;}
+  .s-topic-chip{display:inline-block;padding:6px 12px;border:1px solid var(--wire-blue);border-radius:14px;font-family:var(--mono);font-size:12px;color:var(--wire-blue);cursor:pointer;background:#fff;}
+  .s-topic-chip:hover{background:var(--wire-blue);color:#fff;}
+  .s-topic-chip .s-topic-count{color:var(--text-muted);}
+  .s-topic-chip:hover .s-topic-count{color:#dde;}
+
+  /* results grid */
+  .s-results{display:grid;grid-template-columns:repeat(auto-fill, minmax(260px, 1fr));gap:16px;margin-top:16px;}
+  .s-mix-card{display:block;background:var(--paper-card);border:1px solid var(--hairline);border-radius:3px;padding:14px;cursor:pointer;}
+  .s-mix-card:hover{border-color:var(--wire-blue);}
+  .s-mix-card .s-mix-name{display:block;font-weight:700;font-size:15px;margin-bottom:4px;}
+  .s-mix-card .s-mix-meta{display:block;font-family:var(--mono);font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:.03em;}
+  .s-empty{font-family:var(--mono);font-size:13px;color:var(--text-muted);padding:14px 0;}
+
+  /* mix detail view */
+  .s-mix-detail{display:none;}
+  .s-mix-detail.open{display:block;}
+  .s-mix-detail h3{font-family:Georgia,serif;font-style:italic;font-size:24px;margin:0 0 4px;}
+  .s-mix-detail .s-mix-detail-meta{font-family:var(--mono);font-size:12px;color:var(--text-muted);margin-bottom:14px;}
+  .s-mix-source-tags{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px;}
+  .s-mix-source-tag{font-family:var(--mono);font-size:11px;padding:3px 9px;background:#eee;border-radius:10px;color:#444;}
+  .s-mix-items{display:flex;flex-direction:column;gap:10px;}
+  .s-mix-item{padding:10px 0;border-bottom:1px solid #eee;}
+  .s-mix-item a{font-weight:600;font-size:15px;}
+  .s-mix-item a:hover{text-decoration:underline;}
+  .s-mix-item .s-mix-item-outlet{display:block;font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:3px;text-transform:uppercase;}
+  .s-clone-btn{margin-top:14px;background:var(--wire-blue);color:#fff;border:none;padding:9px 16px;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;border-radius:2px;}
+  .s-clone-btn:hover{background:#0000a8;}
+  .s-close-detail{font-family:var(--mono);font-size:11px;color:var(--wire-blue);text-decoration:underline;cursor:pointer;margin-bottom:14px;display:inline-block;}
+
+  /* create-a-follow form */
+  form.s-create input[type="text"], form.s-create select{
+    width:100%;padding:9px 10px;font-family:var(--body);font-size:14px;border:1px solid #ccc;border-radius:2px;margin-bottom:10px;
+  }
+  form.s-create label{display:block;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-muted);margin-bottom:4px;}
+  .s-checkbox-list{max-height:220px;overflow-y:auto;border:1px solid var(--hairline);border-radius:2px;padding:8px 10px;margin-bottom:12px;background:#fff;}
+  .s-checkbox-list label{display:flex;align-items:center;gap:8px;font-family:var(--body);font-size:13px;text-transform:none;letter-spacing:0;color:var(--text);padding:4px 0;}
+  .s-checkbox-list input[type="checkbox"]{width:auto;margin:0;}
+  form.s-create button[type="submit"]{background:#111;color:#fff;border:none;padding:10px 18px;font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;border-radius:2px;}
+  form.s-create button[type="submit"]:hover{background:#333;}
+  .s-inline-add{display:flex;gap:8px;margin-bottom:12px;}
+  .s-inline-add input{flex:1;margin-bottom:0 !important;}
+  .s-inline-add button{white-space:nowrap;background:#fff;border:1px solid #111;color:#111;padding:9px 14px;font-family:var(--mono);font-size:11px;cursor:pointer;border-radius:2px;}
+  .s-custom-source-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;font-family:var(--mono);font-size:12px;}
+  .s-custom-source-row button{background:none;border:none;color:var(--wire-red);cursor:pointer;font-family:var(--mono);font-size:11px;text-decoration:underline;}
+  .s-create-msg{font-family:var(--mono);font-size:12px;margin-top:10px;}
+  .s-signed-out-note{font-family:var(--mono);font-size:13px;color:var(--text-muted);padding:14px 0;}
+  .s-signed-out-note a{color:var(--wire-blue);text-decoration:underline;cursor:pointer;}
+</style>
+</head>
+<body>
+
+<header class="s-header">
+  <a class="s-back" href="/">&larr; Back to the Wire</a>
+  <h1 class="s-title">Follows</h1>
+  <p class="s-subtitle">What do you want to follow? Build a named mix of sources around a topic or a place, and share it.</p>
+  <p class="s-session" id="sessionLine">Checking sign-in…</p>
+</header>
+
+<main>
+
+  <section class="s-block">
+    <div class="s-entry">
+      <div class="s-entry-card">
+        <h3>By topic</h3>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px;">Browse curated topics readers have built Follows around.</p>
+        <div id="topicList" class="s-topic-list">Loading topics…</div>
+      </div>
+      <div class="s-entry-card">
+        <h3>By place</h3>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px;">Search Follows tagged with a location — city, state, region, whatever a reader typed.</p>
+        <input type="text" id="locationSearch" placeholder="e.g. Ann Arbor, MI">
+        <button onclick="searchByLocation()">Search</button>
+      </div>
+    </div>
+  </section>
+
+  <section class="s-block" id="resultsBlock" style="display:none;">
+    <h2 id="resultsHeading">FOLLOWS</h2>
+    <div id="resultsGrid" class="s-results"></div>
+    <div id="resultsEmpty" class="s-empty" style="display:none;">No public Follows here yet — be the first to build one.</div>
+  </section>
+
+  <section class="s-block s-mix-detail" id="mixDetail">
+    <span class="s-close-detail" onclick="closeMixDetail()">&larr; Back to results</span>
+    <h3 id="mixDetailName"></h3>
+    <p class="s-mix-detail-meta" id="mixDetailMeta"></p>
+    <div class="s-mix-source-tags" id="mixDetailSources"></div>
+    <button class="s-clone-btn" id="mixCloneBtn" onclick="cloneCurrentMix()">Copy this Follow into my account</button>
+    <p class="s-create-msg" id="mixCloneMsg"></p>
+    <div class="s-mix-items" id="mixDetailItems"></div>
+  </section>
+
+  <section class="s-block">
+    <h2>CREATE A FOLLOW</h2>
+    <p class="s-hint">Pick your sources — curated outlets and/or your own RSS feeds — name it, and share it.</p>
+
+    <div id="createSignedOut" class="s-signed-out-note">
+      Sign in from the homepage's <a href="/">Customize Feed</a> link to create a Follow, or
+      <a onclick="promptSignIn()">enter your email here</a>.
+      <div id="inlineSignIn" style="display:none;margin-top:10px;">
+        <div class="s-inline-add">
+          <input type="text" id="inlineSignInEmail" placeholder="you@example.com">
+          <button onclick="requestInlineSignIn()">Send link</button>
+        </div>
+        <p class="s-create-msg" id="inlineSignInMsg"></p>
+      </div>
+    </div>
+
+    <div id="createSignedIn" style="display:none;">
+
+      <h3 style="font-family:var(--mono);font-size:12px;text-transform:uppercase;letter-spacing:.04em;margin:18px 0 6px;">Your own RSS sources</h3>
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px;">Add a feed the site doesn't already carry — a local paper, a neighborhood Substack, whatever you follow.</p>
+      <div class="s-inline-add">
+        <input type="text" id="customSourceUrl" placeholder="https://example.com/feed">
+        <button onclick="addCustomSource()">Add source</button>
+      </div>
+      <p class="s-create-msg" id="customSourceMsg"></p>
+      <div id="customSourceList" style="margin-bottom:16px;"></div>
+
+      <form class="s-create" onsubmit="return submitMix(event)">
+        <label>Name your Follow</label>
+        <input type="text" id="mixName" placeholder="e.g. Ann Arbor Local News" required>
+
+        <label>Topic (optional)</label>
+        <select id="mixTopic">
+          <option value="">— none —</option>
+        </select>
+        <div class="s-inline-add" style="margin-top:-4px;">
+          <input type="text" id="proposeTopicName" placeholder="Don't see it? Propose a new topic">
+          <button type="button" onclick="proposeTopic()">Propose</button>
+        </div>
+        <p class="s-create-msg" id="proposeTopicMsg"></p>
+
+        <label>Location (optional)</label>
+        <input type="text" id="mixLocation" placeholder="e.g. Ann Arbor, MI">
+
+        <label>Curated outlets</label>
+        <div id="outletCheckboxes" class="s-checkbox-list">Loading sources…</div>
+
+        <label>Your own sources</label>
+        <div id="customSourceCheckboxes" class="s-checkbox-list">
+          <span style="color:var(--text-muted);font-family:var(--mono);font-size:12px;">Add a source above to include it.</span>
+        </div>
+
+        <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="mixPublic" checked style="width:auto;"> Make this Follow public and shareable</label>
+
+        <button type="submit">Save this Follow</button>
+        <p class="s-create-msg" id="mixCreateMsg"></p>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const API = '';
+let CURRENT_USER = null;
+let CURRENT_MIX_SLUG = null;
+
+async function checkSession(){
+  const res = await fetch(`${API}/api/me`);
+  const data = await res.json();
+  CURRENT_USER = data.user;
+  const line = document.getElementById('sessionLine');
+  if (CURRENT_USER){
+    line.innerHTML = `Signed in as ${CURRENT_USER.email}`;
+    document.getElementById('createSignedOut').style.display = 'none';
+    document.getElementById('createSignedIn').style.display = 'block';
+    loadOutletCheckboxes();
+    loadCustomSources();
+    loadTopicSelect();
+  } else {
+    line.textContent = '';
+    document.getElementById('createSignedOut').style.display = 'block';
+    document.getElementById('createSignedIn').style.display = 'none';
+  }
+}
+
+function promptSignIn(){
+  document.getElementById('inlineSignIn').style.display = 'block';
+}
+
+async function requestInlineSignIn(){
+  const email = document.getElementById('inlineSignInEmail').value.trim();
+  const msg = document.getElementById('inlineSignInMsg');
+  if (!email){ msg.textContent = 'Enter an email first.'; return; }
+  msg.textContent = 'Sending…';
+  const res = await fetch(`${API}/api/auth/request-link`, {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({email})
+  });
+  msg.textContent = res.ok ? '✓ Check your email for a sign-in link.' : "That email didn't look right — try again.";
+}
+
+// ---------- topics ----------
+async function loadTopics(){
+  const listEl = document.getElementById('topicList');
+  try {
+    const res = await fetch(`${API}/api/topics`);
+    const topics = await res.json();
+    if (!topics.length){ listEl.innerHTML = '<span style="font-family:var(--mono);font-size:12px;color:var(--text-muted);">No topics yet — propose one below.</span>'; return; }
+    listEl.innerHTML = topics.map(t => `
+      <span class="s-topic-chip" onclick="browseTopic('${t.slug}', '${t.name.replace(/'/g,"\\'")}')">${t.name} <span class="s-topic-count">(${t.mix_count})</span></span>
+    `).join('');
+  } catch (err) {
+    listEl.innerHTML = '<span style="font-family:var(--mono);font-size:12px;color:var(--text-muted);">Couldn\'t load topics.</span>';
+  }
+}
+
+async function loadTopicSelect(){
+  const sel = document.getElementById('mixTopic');
+  try {
+    const res = await fetch(`${API}/api/topics`);
+    const topics = await res.json();
+    sel.innerHTML = '<option value="">— none —</option>' + topics.map(t => `<option value="${t.id}">${t.name}</option>`).join('');
+  } catch (err) { /* leave default */ }
+}
+
+async function proposeTopic(){
+  const name = document.getElementById('proposeTopicName').value.trim();
+  const msg = document.getElementById('proposeTopicMsg');
+  if (!name){ msg.textContent = 'Enter a topic name first.'; return; }
+  msg.textContent = 'Submitting…';
+  try {
+    const res = await fetch(`${API}/api/topics`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name})
+    });
+    const data = await res.json();
+    if (res.ok){
+      msg.style.color = 'green';
+      msg.textContent = 'Thanks — that topic is in the review queue.';
+      document.getElementById('proposeTopicName').value = '';
+    } else {
+      msg.style.color = 'var(--wire-red)';
+      msg.textContent = data.error || 'Something went wrong.';
+    }
+  } catch (err) {
+    msg.style.color = 'var(--wire-red)';
+    msg.textContent = 'Something went wrong.';
+  }
+}
+
+// ---------- browse / directory ----------
+async function browseTopic(slug, name){
+  closeMixDetail();
+  document.getElementById('resultsBlock').style.display = 'block';
+  document.getElementById('resultsHeading').textContent = `FOLLOWS — ${name.toUpperCase()}`;
+  const res = await fetch(`${API}/api/mixes?topic=${encodeURIComponent(slug)}`);
+  renderResults(await res.json());
+}
+
+async function searchByLocation(){
+  const q = document.getElementById('locationSearch').value.trim();
+  if (!q) return;
+  closeMixDetail();
+  document.getElementById('resultsBlock').style.display = 'block';
+  document.getElementById('resultsHeading').textContent = `FOLLOWS NEAR "${q.toUpperCase()}"`;
+  const res = await fetch(`${API}/api/mixes?location=${encodeURIComponent(q)}`);
+  renderResults(await res.json());
+}
+
+function renderResults(mixes){
+  const grid = document.getElementById('resultsGrid');
+  const empty = document.getElementById('resultsEmpty');
+  if (!mixes.length){ grid.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  grid.innerHTML = mixes.map(m => `
+    <a class="s-mix-card" onclick="openMixDetail('${m.slug}')">
+      <span class="s-mix-name">${m.name}</span>
+      <span class="s-mix-meta">${m.topic_name ? m.topic_name : (m.location_label || 'Follow')} · ${m.clone_count} cop${m.clone_count === 1 ? 'y' : 'ies'}</span>
+    </a>
+  `).join('');
+}
+
+// ---------- mix detail ----------
+async function openMixDetail(slug){
+  const res = await fetch(`${API}/api/mixes/${slug}`);
+  if (!res.ok){ return; }
+  const mix = await res.json();
+  CURRENT_MIX_SLUG = slug;
+  document.getElementById('resultsBlock').style.display = 'none';
+  const detail = document.getElementById('mixDetail');
+  detail.classList.add('open');
+  document.getElementById('mixDetailName').textContent = mix.name;
+  document.getElementById('mixDetailMeta').textContent =
+    [mix.topic ? mix.topic.name : null, mix.location_label, `${mix.clone_count} cop${mix.clone_count === 1 ? 'y' : 'ies'}`].filter(Boolean).join(' · ');
+  document.getElementById('mixDetailSources').innerHTML = mix.sources.map(s =>
+    `<span class="s-mix-source-tag">${s.outlet}${s.pending ? ' (pending)' : ''}</span>`
+  ).join('');
+  document.getElementById('mixDetailItems').innerHTML = mix.items.length
+    ? mix.items.slice(0, 40).map(it => `
+        <div class="s-mix-item">
+          <a href="${it.link}" target="_blank" rel="noopener">${it.headline}</a>
+          <span class="s-mix-item-outlet">${it.outlet}</span>
+        </div>
+      `).join('')
+    : '<p class="s-empty">No items to show yet.</p>';
+  document.getElementById('mixCloneMsg').textContent = '';
+  document.getElementById('mixCloneBtn').style.display = CURRENT_USER ? 'inline-block' : 'none';
+  window.scrollTo({top: detail.offsetTop - 20, behavior: 'smooth'});
+}
+
+function closeMixDetail(){
+  document.getElementById('mixDetail').classList.remove('open');
+  CURRENT_MIX_SLUG = null;
+}
+
+async function cloneCurrentMix(){
+  if (!CURRENT_MIX_SLUG || !CURRENT_USER) return;
+  const msg = document.getElementById('mixCloneMsg');
+  msg.textContent = 'Copying…';
+  try {
+    const res = await fetch(`${API}/api/mixes/${CURRENT_MIX_SLUG}/clone`, {method: 'POST'});
+    const data = await res.json();
+    if (res.ok){
+      msg.style.color = 'green';
+      msg.textContent = `✓ Added ${data.outlets_added} outlet(s) and ${data.custom_added} source(s) to your account.`;
+    } else {
+      msg.style.color = 'var(--wire-red)';
+      msg.textContent = data.error || 'Something went wrong.';
+    }
+  } catch (err) {
+    msg.style.color = 'var(--wire-red)';
+    msg.textContent = 'Something went wrong.';
+  }
+}
+
+// ---------- your own custom sources (minimal manager) ----------
+async function loadCustomSources(){
+  const listEl = document.getElementById('customSourceList');
+  const checkEl = document.getElementById('customSourceCheckboxes');
+  try {
+    const res = await fetch(`${API}/api/my/custom-sources`);
+    const sources = await res.json();
+    if (!sources.length){
+      listEl.innerHTML = '';
+      checkEl.innerHTML = '<span style="color:var(--text-muted);font-family:var(--mono);font-size:12px;">Add a source above to include it.</span>';
+      return;
+    }
+    listEl.innerHTML = sources.map(s => `
+      <div class="s-custom-source-row">
+        <span>${s.name} ${s.submission_status === 'pending' ? '<span style="color:var(--text-muted);">(pending review)</span>' : ''}</span>
+        <button onclick="deleteCustomSource(${s.id})">Remove</button>
+      </div>
+    `).join('');
+    checkEl.innerHTML = sources.map(s => `
+      <label><input type="checkbox" value="${s.id}" data-name="${s.name}" class="custom-source-cb"> ${s.name}</label>
+    `).join('');
+  } catch (err) {
+    listEl.innerHTML = '';
+  }
+}
+
+async function addCustomSource(){
+  const input = document.getElementById('customSourceUrl');
+  const url = input.value.trim();
+  const msg = document.getElementById('customSourceMsg');
+  if (!url){ msg.textContent = 'Enter a feed URL first.'; return; }
+  msg.textContent = 'Checking feed…';
+  try {
+    const res = await fetch(`${API}/api/my/custom-sources`, {
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({feed_url: url})
+    });
+    const data = await res.json();
+    if (res.ok){
+      msg.style.color = 'green';
+      msg.textContent = '✓ Source added.';
+      input.value = '';
+      loadCustomSources();
+    } else {
+      msg.style.color = 'var(--wire-red)';
+      msg.textContent = data.error || "Couldn't validate that feed.";
+    }
+  } catch (err) {
+    msg.style.color = 'var(--wire-red)';
+    msg.textContent = 'Something went wrong.';
+  }
+}
+
+async function deleteCustomSource(id){
+  await fetch(`${API}/api/my/custom-sources/${id}`, {method: 'DELETE'});
+  loadCustomSources();
+}
+
+// ---------- create a follow ----------
+async function loadOutletCheckboxes(){
+  const el = document.getElementById('outletCheckboxes');
+  try {
+    const res = await fetch(`${API}/api/sources`);
+    const sources = await res.json();
+    el.innerHTML = sources.map(s =>
+      `<label><input type="checkbox" value="${s.outlet}" class="outlet-cb"> ${s.outlet}</label>`
+    ).join('') || 'No sources configured yet.';
+  } catch (err) {
+    el.innerHTML = 'Could not load sources.';
+  }
+}
+
+async function submitMix(e){
+  e.preventDefault();
+  const msg = document.getElementById('mixCreateMsg');
+  const name = document.getElementById('mixName').value.trim();
+  const topicId = document.getElementById('mixTopic').value || null;
+  const location = document.getElementById('mixLocation').value.trim() || null;
+  const isPublic = document.getElementById('mixPublic').checked;
+
+  const outletSources = Array.from(document.querySelectorAll('.outlet-cb:checked')).map(cb => ({source_type: 'admin_outlet', outlet: cb.value}));
+  const customSources = Array.from(document.querySelectorAll('.custom-source-cb:checked')).map(cb => ({source_type: 'custom', custom_source_id: Number(cb.value)}));
+  const sources = [...outletSources, ...customSources];
+
+  if (!sources.length){ msg.style.color = 'var(--wire-red)'; msg.textContent = 'Pick at least one source.'; return false; }
+
+  msg.textContent = 'Saving…';
+  try {
+    const res = await fetch(`${API}/api/mixes`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name, topic_id: topicId, location_label: location, is_public: isPublic, sources})
+    });
+    const data = await res.json();
+    if (res.ok){
+      msg.style.color = 'green';
+      msg.innerHTML = `✓ Saved. <a href="/spray.html#" onclick="openMixDetail('${data.slug}');return false;">View your Follow →</a>`;
+      document.getElementById('mixName').value = '';
+      loadTopics();
+    } else {
+      msg.style.color = 'var(--wire-red)';
+      msg.textContent = data.error || 'Something went wrong.';
+    }
+  } catch (err) {
+    msg.style.color = 'var(--wire-red)';
+    msg.textContent = 'Something went wrong.';
+  }
+  return false;
+}
+
+checkSession();
+loadTopics();
+</script>
+
+</body>
+</html>

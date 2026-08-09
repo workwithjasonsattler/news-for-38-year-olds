@@ -207,6 +207,20 @@ async function initSchema() {
       custom_source_id INTEGER,
       sort_order INTEGER NOT NULL DEFAULT 0
     )`,
+    // ---------- Follows: curated Topics taxonomy ----------
+    // A real, growing, named taxonomy (like Indie Media/Data Centers/People
+    // Power) — NOT a free-text tag. Readers can propose new topics; proposals
+    // land as 'pending' and aren't selectable/browsable until an admin
+    // approves, same queue-and-approve pattern as YouTube channels and
+    // custom RSS sources.
+    `CREATE TABLE IF NOT EXISTS topics (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL UNIQUE,
+      status TEXT NOT NULL DEFAULT 'pending',
+      suggested_by_user_id INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
   ];
   for (const sql of statements) await dbRun(sql);
 
@@ -220,6 +234,8 @@ async function initSchema() {
     `ALTER TABLE feeds ADD COLUMN youtube_channel_id TEXT`,
     `ALTER TABLE feeds ADD COLUMN submission_status TEXT NOT NULL DEFAULT 'approved'`,
     `ALTER TABLE headlines ADD COLUMN subhead TEXT`,
+    `ALTER TABLE feed_mixes ADD COLUMN topic_id INTEGER`,
+    `ALTER TABLE feed_mixes ADD COLUMN clone_count INTEGER NOT NULL DEFAULT 0`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
   }
@@ -771,6 +787,16 @@ app.post("/api/mixes", async (req, res) => {
   if (sources.length === 0) return res.status(400).json({ error: "a mix needs at least one source" });
   if (sources.length > MIX_SOURCE_CAP) return res.status(400).json({ error: `mixes are capped at ${MIX_SOURCE_CAP} sources` });
 
+  // Topic is optional (a mix can be Local, Topical, or neither), but if
+  // given, must reference an APPROVED topic — a pending/proposed topic
+  // can't be tagged onto a mix until an admin has signed off on it.
+  let topicId = null;
+  if (req.body?.topic_id !== undefined && req.body.topic_id !== null) {
+    const topic = await dbGet(`SELECT id FROM topics WHERE id = ? AND status = 'approved'`, [req.body.topic_id]);
+    if (!topic) return res.status(400).json({ error: "Unknown or unapproved topic" });
+    topicId = topic.id;
+  }
+
   // Validate every source up front so a mix never half-saves.
   const validated = [];
   for (const s of sources) {
@@ -793,8 +819,8 @@ app.post("/api/mixes", async (req, res) => {
 
   const slug = await generateUniqueMixSlug(name);
   const info = await dbRun(
-    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public) VALUES (?, ?, ?, ?, ?)`,
-    [slug, name, user.id, locationLabel, isPublic]
+    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, topic_id) VALUES (?, ?, ?, ?, ?, ?)`,
+    [slug, name, user.id, locationLabel, isPublic, topicId]
   );
   for (let i = 0; i < validated.length; i++) {
     const v = validated[i];
@@ -803,7 +829,7 @@ app.post("/api/mixes", async (req, res) => {
       [info.lastInsertRowid, v.source_type, v.outlet, v.custom_source_id, i]
     );
   }
-  res.json({ id: info.lastInsertRowid, slug, name, location_label: locationLabel, is_public: !!isPublic });
+  res.json({ id: info.lastInsertRowid, slug, name, location_label: locationLabel, is_public: !!isPublic, topic_id: topicId });
 });
 
 app.put("/api/mixes/:slug", async (req, res) => {
@@ -821,9 +847,20 @@ app.put("/api/mixes/:slug", async (req, res) => {
   const isPublic = req.body?.is_public !== undefined ? (req.body.is_public ? 1 : 0) : mix.is_public;
   if (!name) return res.status(400).json({ error: "name is required" });
 
+  let topicId = mix.topic_id;
+  if (req.body?.topic_id !== undefined) {
+    if (req.body.topic_id === null) {
+      topicId = null;
+    } else {
+      const topic = await dbGet(`SELECT id FROM topics WHERE id = ? AND status = 'approved'`, [req.body.topic_id]);
+      if (!topic) return res.status(400).json({ error: "Unknown or unapproved topic" });
+      topicId = topic.id;
+    }
+  }
+
   await dbRun(
-    `UPDATE feed_mixes SET name = ?, location_label = ?, is_public = ?, updated_at = datetime('now') WHERE id = ?`,
-    [name, locationLabel, isPublic, mix.id]
+    `UPDATE feed_mixes SET name = ?, location_label = ?, is_public = ?, topic_id = ?, updated_at = datetime('now') WHERE id = ?`,
+    [name, locationLabel, isPublic, topicId, mix.id]
   );
 
   // Sources are optional on edit — only replace them if the caller sent a
@@ -870,6 +907,7 @@ app.get("/api/mixes/:slug", async (req, res) => {
   const isOwner = !!(user && user.id === mix.creator_user_id);
   if (!mix.is_public && !isOwner) return res.status(404).json({ error: "mix not found" });
 
+  const topic = mix.topic_id ? await dbGet(`SELECT name, slug FROM topics WHERE id = ?`, [mix.topic_id]) : null;
   const { sources, items } = await resolveMixSources(mix.id, { includePending: isOwner });
   res.json({
     slug: mix.slug,
@@ -878,6 +916,8 @@ app.get("/api/mixes/:slug", async (req, res) => {
     is_public: !!mix.is_public,
     is_owner: isOwner,
     created_at: mix.created_at,
+    clone_count: mix.clone_count,
+    topic: topic ? { name: topic.name, slug: topic.slug } : null,
     sources,
     items,
   });
@@ -929,6 +969,7 @@ app.post("/api/mixes/:slug/clone", async (req, res) => {
     }
   }
 
+  await dbRun(`UPDATE feed_mixes SET clone_count = clone_count + 1 WHERE id = ?`, [mix.id]);
   res.json({ ok: true, outlets_added: outletsAdded, custom_added: customAdded, custom_skipped: customSkipped });
 });
 
@@ -938,6 +979,93 @@ app.get("/api/my/mixes", async (req, res) => {
   const rows = await dbAll(
     `SELECT slug, name, location_label, is_public, created_at FROM feed_mixes WHERE creator_user_id = ? ORDER BY created_at DESC`,
     [user.id]
+  );
+  res.json(rows);
+});
+
+// ---------- Follows: Topics taxonomy ----------
+// Topics are a real curated list (approved by an admin), not free-text tags.
+// Readers can propose new ones; a proposal is 'pending' until approved —
+// same visibility rule as everywhere else in this codebase: not selectable
+// when creating/editing a Mix, and not shown in the public browse list,
+// until approved.
+app.get("/api/topics", async (req, res) => {
+  const rows = await dbAll(
+    `SELECT t.id, t.name, t.slug, COUNT(fm.id) AS mix_count
+     FROM topics t LEFT JOIN feed_mixes fm ON fm.topic_id = t.id AND fm.is_public = 1
+     WHERE t.status = 'approved'
+     GROUP BY t.id
+     ORDER BY mix_count DESC, t.name ASC`
+  );
+  res.json(rows);
+});
+
+app.post("/api/topics", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  const name = String(req.body?.name || "").trim().slice(0, 60);
+  if (!name) return res.status(400).json({ error: "name is required" });
+
+  const slug = slugify(name);
+  const existing = await dbGet(`SELECT id, status FROM topics WHERE slug = ?`, [slug]);
+  if (existing) {
+    return res.status(409).json({ error: existing.status === "approved" ? "That topic already exists." : "That topic has already been suggested." });
+  }
+
+  await dbRun(
+    `INSERT INTO topics (name, slug, status, suggested_by_user_id) VALUES (?, ?, 'pending', ?)`,
+    [name, slug, user.id]
+  );
+  res.json({ ok: true, slug, status: "pending" });
+});
+
+app.get("/api/admin/pending-topics", requireAdmin, async (req, res) => {
+  const rows = await dbAll(
+    `SELECT t.id, t.name, t.slug, t.created_at, u.email AS suggested_by
+     FROM topics t LEFT JOIN users u ON u.id = t.suggested_by_user_id
+     WHERE t.status = 'pending' ORDER BY t.created_at ASC`
+  );
+  res.json(rows);
+});
+
+app.post("/api/admin/topics/:id/approve", requireAdmin, async (req, res) => {
+  await dbRun(`UPDATE topics SET status = 'approved' WHERE id = ?`, [req.params.id]);
+  res.json({ ok: true });
+});
+
+app.delete("/api/admin/topics/:id", requireAdmin, async (req, res) => {
+  await dbRun(`DELETE FROM topics WHERE id = ?`, [req.params.id]);
+  res.json({ ok: true });
+});
+
+// Directory: browse public mixes, filtered by topic slug or free-text
+// location, ranked by clone count (cheap "eventually ranked" proxy per the
+// locked scoping doc — no new tracking infra, just COUNT() at query time),
+// tie-broken by most recent.
+app.get("/api/mixes", async (req, res) => {
+  const { topic, location } = req.query;
+  const conditions = [`fm.is_public = 1`];
+  const params = [];
+
+  if (topic) {
+    conditions.push(`t.slug = ?`);
+    params.push(String(topic));
+  }
+  if (location) {
+    conditions.push(`fm.location_label LIKE ?`);
+    params.push(`%${String(location).trim()}%`);
+  }
+
+  const rows = await dbAll(
+    `SELECT fm.slug, fm.name, fm.location_label, fm.created_at, fm.clone_count,
+            t.name AS topic_name, t.slug AS topic_slug
+     FROM feed_mixes fm
+     LEFT JOIN topics t ON t.id = fm.topic_id
+     WHERE ${conditions.join(" AND ")}
+     ORDER BY fm.clone_count DESC, fm.created_at DESC
+     LIMIT 60`,
+    params
   );
   res.json(rows);
 });

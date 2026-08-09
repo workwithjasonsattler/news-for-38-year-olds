@@ -108,6 +108,15 @@
       </table>
     </div>
 
+    <div id="pendingTopicsPanel" style="display:none;margin-bottom:20px;padding:14px;border:1px solid #e0b84b;background:#fffaf0;">
+      <h3 style="font-family:var(--mono);font-size:12px;margin:0 0 10px;">PENDING TOPIC SUGGESTIONS (Follows)</h3>
+      <p style="font-size:12px;color:#666;margin:0 0 10px;">A reader proposed this as a new Topic. Approving makes it selectable when creating a Mix and visible in the public Topic directory.</p>
+      <table style="margin:0;">
+        <thead><tr><th>Name</th><th>Suggested by</th><th></th></tr></thead>
+        <tbody id="pendingTopicRows"></tbody>
+      </table>
+    </div>
+
     <table id="feedTable" style="margin-bottom:16px;">
       <thead><tr><th>Outlet</th><th>Type</th><th>Feed URL</th><th>Default section</th><th>Bluesky</th><th>YouTube</th><th></th></tr></thead>
       <tbody id="feedRows"></tbody>
@@ -374,6 +383,39 @@ async function loadFeeds(){
 
   renderPendingChannels(pending);
   loadPendingCustomSources();
+  loadPendingTopics();
+}
+
+async function loadPendingTopics(){
+  const panel = document.getElementById('pendingTopicsPanel');
+  const rows = document.getElementById('pendingTopicRows');
+  if (!panel || !rows) return;
+  const res = await fetch('/api/admin/pending-topics', {headers: authHeaders()});
+  if (!res.ok) return; // stay silent — this panel is a nice-to-have, not core feed management
+  const pending = await res.json();
+  if (!pending.length){ panel.style.display = 'none'; return; }
+  panel.style.display = 'block';
+  rows.innerHTML = pending.map(t => `
+    <tr>
+      <td>${t.name}</td>
+      <td style="color:#666;">${t.suggested_by || '—'}</td>
+      <td>
+        <button class="btn-primary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="approveTopic(${t.id})">Approve</button>
+        <button class="btn-danger" onclick="rejectTopic(${t.id})">Reject</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+async function approveTopic(id){
+  await fetch(`/api/admin/topics/${id}/approve`, {method:'POST', headers: authHeaders()});
+  await loadPendingTopics();
+}
+
+async function rejectTopic(id){
+  if (!confirm('Reject and remove this suggested topic?')) return;
+  await fetch(`/api/admin/topics/${id}`, {method:'DELETE', headers: authHeaders()});
+  await loadPendingTopics();
 }
 
 async function loadPendingCustomSources(){
