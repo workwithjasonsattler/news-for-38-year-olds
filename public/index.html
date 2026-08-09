@@ -65,8 +65,21 @@
 
   .wire-feed-box h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 6px;}
 
-  .wire-sources{max-height:340px;overflow-y:auto;}
-  .wire-sources h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 10px;}
+  .wire-sources{display:flex;flex-direction:column;max-height:460px;}
+  .wire-sources h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;flex:none;}
+  .sources-search-wrap{position:relative;flex:none;margin-bottom:10px;}
+  .sources-search{width:100%;padding:6px 26px 6px 8px;font-family:var(--mono);font-size:11px;color:var(--text);
+    background:var(--paper);border:1.5px solid var(--paper-hairline);border-radius:3px;box-sizing:border-box;}
+  .sources-search:focus{outline:none;border-color:var(--wire-blue);}
+  .sources-search-wrap::after{content:"⌕";position:absolute;right:8px;top:50%;transform:translateY(-50%);
+    font-size:13px;color:#999;pointer-events:none;}
+  .sources-scroll{flex:1 1 auto;overflow-y:auto;min-height:0;}
+  .sources-group{margin-bottom:4px;}
+  .sources-group-label{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;
+    color:var(--text-muted);border-bottom:1px solid var(--paper-hairline);padding:6px 0 3px;margin:6px 0 2px;
+    display:flex;justify-content:space-between;}
+  .sources-group:first-child .sources-group-label{margin-top:0;}
+  .sources-group-label .count{color:#aaa;}
   .sources-columns{display:grid;grid-template-columns:1fr;}
   .source-item{display:block;padding:4px 0;border-bottom:1px solid #eee;}
   .source-item .source-name{display:block;font-family:var(--mono);font-size:10px;color:#111;border-bottom:none;padding:0 0 1px;white-space:normal;}
@@ -74,6 +87,25 @@
   .source-item .source-name a:hover{color:var(--wire-blue);text-decoration:underline;}
   .source-item .source-link{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--wire-blue);border-bottom:none;padding:0;min-width:0;text-align:left;}
   .source-item .source-link + .source-link{margin-left:10px;}
+  .sources-empty{font-family:var(--mono);font-size:11px;color:var(--text-muted);padding:12px 0;}
+  .sources-filter-cta{flex:none;display:block;text-align:center;margin-top:10px;padding:9px 8px;
+    border-top:1px solid var(--paper-hairline);font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--wire-blue);cursor:pointer;background:none;}
+  .sources-filter-cta:hover{color:var(--wire-red);}
+  .sources-filter-cta .sub{display:block;font-family:Georgia,'Times New Roman',serif;font-size:11.5px;
+    letter-spacing:0;text-transform:none;color:var(--text-muted);margin-top:2px;font-style:italic;}
+
+  .customize-choice-card{display:block;width:100%;text-align:left;background:var(--paper-card);
+    border:1.5px solid var(--paper-hairline);border-radius:4px;padding:14px 16px;margin-bottom:10px;
+    cursor:pointer;transition:border-color .15s ease;}
+  .customize-choice-card:last-child{margin-bottom:0;}
+  .customize-choice-card:hover{border-color:var(--wire-blue);}
+  .customize-choice-card .cc-eyebrow{display:block;font-family:var(--mono);font-size:10px;letter-spacing:.09em;
+    text-transform:uppercase;color:var(--wire-red);margin-bottom:4px;}
+  .customize-choice-card .cc-headline{display:block;font-family:var(--display);font-style:italic;
+    font-weight:700;font-size:18px;color:var(--text);margin-bottom:4px;}
+  .customize-choice-card .cc-sub{display:block;font-family:Georgia,'Times New Roman',serif;font-size:12.5px;
+    line-height:1.4;color:var(--text-muted);}
 
   .wire-bluesky-box h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;}
   .bsky-filter-toggle{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
@@ -327,10 +359,27 @@
 
     <div id="customizeSignedIn" style="display:none;">
       <p style="font-family:var(--mono);font-size:11.5px;color:var(--text-muted);margin:0 0 14px;">Signed in as <span id="customizeEmail" style="color:var(--text);"></span> · <a href="javascript:void(0)" onclick="signOut()" style="color:var(--wire-blue);">Sign out</a></p>
-      <p style="font-family:Georgia,serif;font-size:12.5px;color:var(--text-muted);margin:0 0 12px;">Conscious filtering, not an algorithm — you set the dial per source, we don't infer it from your clicks.</p>
-      <div id="customizeSourceList" style="margin-bottom:16px;"></div>
-      <button onclick="saveSourceTiers()" style="width:100%;padding:12px 0;font-weight:700;font-size:14.5px;background:var(--support-teal);color:#F3EFE4;border:none;border-radius:3px;cursor:pointer;">Save</button>
-      <p id="customizeSaveMsg" style="text-align:center;font-family:var(--mono);font-size:12px;color:var(--support-teal-dark);margin-top:12px;"></p>
+
+      <div id="customizeChooser">
+        <button type="button" onclick="showCustomizePicker()" class="customize-choice-card">
+          <span class="cc-eyebrow">Select from these</span>
+          <span class="cc-headline">Artisanally selected.</span>
+          <span class="cc-sub">Pin, mute, or hide any source in our curated wire — you set the dial per outlet.</span>
+        </button>
+        <button type="button" onclick="window.location.href='/spray.html'" class="customize-choice-card">
+          <span class="cc-eyebrow">Add some</span>
+          <span class="cc-headline">Close to you or your heart.</span>
+          <span class="cc-sub">Bring your own RSS feeds, or adopt a ready-made Follow — a topic, a town, whatever's yours.</span>
+        </button>
+      </div>
+
+      <div id="customizePicker" style="display:none;">
+        <p><a href="javascript:void(0)" onclick="showCustomizeChooser()" style="font-family:var(--mono);font-size:11px;color:var(--wire-blue);text-decoration:underline;">&larr; Back</a></p>
+        <p style="font-family:Georgia,serif;font-size:12.5px;color:var(--text-muted);margin:0 0 12px;">Conscious filtering, not an algorithm — you set the dial per source, we don't infer it from your clicks.</p>
+        <div id="customizeSourceList" style="margin-bottom:16px;"></div>
+        <button onclick="saveSourceTiers()" style="width:100%;padding:12px 0;font-weight:700;font-size:14.5px;background:var(--support-teal);color:#F3EFE4;border:none;border-radius:3px;cursor:pointer;">Save</button>
+        <p id="customizeSaveMsg" style="text-align:center;font-family:var(--mono);font-size:12px;color:var(--support-teal-dark);margin-top:12px;"></p>
+      </div>
     </div>
   </div>
 </div>
@@ -374,28 +423,69 @@ function siteRootFromUrl(url){
   } catch { return null; }
 }
 
+let ALL_SOURCES = [];
+
+function renderSourceItem(s){
+  const blueskyUrl = s.bluesky_handle ? `https://bsky.app/profile/${s.bluesky_handle}` : null;
+  const siteUrl = s.subscribe_url || siteRootFromUrl(s.feed_url) || s.tip_url || blueskyUrl;
+  const name = siteUrl ? `<a href="${siteUrl}" target="_blank" rel="noopener">${s.outlet}</a>` : s.outlet;
+  const isPub = !!s.feed_url;
+  return `
+    <div class="source-item">
+      <span class="source-name">${name}</span>
+      ${isPub && s.subscribe_url ? `<span class="source-link"><a href="${s.subscribe_url}" target="_blank" rel="noopener">Subscribe</a></span>` : ''}
+      ${!isPub && blueskyUrl ? `<span class="source-link"><a href="${blueskyUrl}" target="_blank" rel="noopener">Bluesky</a></span>` : ''}
+      ${s.tip_url ? `<span class="source-link"><a href="${s.tip_url}" target="_blank" rel="noopener">Tip</a></span>` : ''}
+    </div>
+  `;
+}
+
+function renderSourcesList(filterText){
+  const scrollEl = document.getElementById('sourcesScroll');
+  if (!scrollEl) return;
+  const q = (filterText || '').trim().toLowerCase();
+  const matches = q ? ALL_SOURCES.filter(s => s.outlet.toLowerCase().includes(q)) : ALL_SOURCES;
+  const publications = matches.filter(s => !!s.feed_url);
+  const people = matches.filter(s => !s.feed_url && s.bluesky_handle);
+
+  if (!matches.length){
+    scrollEl.innerHTML = `<div class="sources-empty">No sources match &ldquo;${filterText}&rdquo;.</div>`;
+    return;
+  }
+
+  scrollEl.innerHTML = `
+    ${publications.length ? `
+      <div class="sources-group">
+        <div class="sources-group-label"><span>Publications</span><span class="count">${publications.length}</span></div>
+        <div class="sources-columns">${publications.map(renderSourceItem).join('')}</div>
+      </div>` : ''}
+    ${people.length ? `
+      <div class="sources-group">
+        <div class="sources-group-label"><span>People</span><span class="count">${people.length}</span></div>
+        <div class="sources-columns">${people.map(renderSourceItem).join('')}</div>
+      </div>` : ''}
+  `;
+}
+
 async function loadSources(){
   const el = document.getElementById('sourcesSection');
   if (!el) return;
   const res = await fetch(`${API}/api/sources`);
   const sources = await res.json();
+  ALL_SOURCES = sources;
   if (!sources.length){ el.innerHTML = ''; return; }
   el.innerHTML = `
     <h4>Sources</h4>
-    <div class="sources-columns">
-      ${sources.map(s => {
-        const blueskyUrl = s.bluesky_handle ? `https://bsky.app/profile/${s.bluesky_handle}` : null;
-        const siteUrl = s.subscribe_url || siteRootFromUrl(s.feed_url) || s.tip_url || blueskyUrl;
-        const name = siteUrl ? `<a href="${siteUrl}" target="_blank" rel="noopener">${s.outlet}</a>` : s.outlet;
-        return `
-        <div class="source-item">
-          <span class="source-name">${name}</span>
-          <span class="source-link">${s.subscribe_url ? `<a href="${s.subscribe_url}" target="_blank" rel="noopener">Subscribe</a>` : ''}</span>
-          <span class="source-link">${s.tip_url ? `<a href="${s.tip_url}" target="_blank" rel="noopener">Tip</a>` : ''}</span>
-        </div>
-      `;}).join('')}
+    <div class="sources-search-wrap">
+      <input type="text" class="sources-search" id="sourcesSearchInput" placeholder="Search publications &amp; people…">
     </div>
+    <div class="sources-scroll" id="sourcesScroll"></div>
+    <button type="button" class="sources-filter-cta" onclick="openCustomizeModal()">Filter sources
+      <span class="sub">Build your own bubble — pick exactly who's in your wire</span>
+    </button>
   `;
+  renderSourcesList('');
+  document.getElementById('sourcesSearchInput').addEventListener('input', e => renderSourcesList(e.target.value));
 }
 
 async function loadFrontpageFeed(){
@@ -723,7 +813,7 @@ async function openCustomizeModal(){
     document.getElementById('customizeSignedOut').style.display = 'none';
     document.getElementById('customizeSignedIn').style.display = 'block';
     document.getElementById('customizeEmail').textContent = CURRENT_USER.email;
-    await renderSourceCheckboxes();
+    showCustomizeChooser();
   } else {
     document.getElementById('customizeSignedOut').style.display = 'block';
     document.getElementById('customizeSignedIn').style.display = 'none';
@@ -731,6 +821,16 @@ async function openCustomizeModal(){
 }
 function closeCustomizeModal(){ customizeOverlay.style.display = 'none'; }
 customizeOverlay.addEventListener('click', e => { if(e.target===customizeOverlay) closeCustomizeModal(); });
+
+function showCustomizeChooser(){
+  document.getElementById('customizeChooser').style.display = 'block';
+  document.getElementById('customizePicker').style.display = 'none';
+}
+async function showCustomizePicker(){
+  document.getElementById('customizeChooser').style.display = 'none';
+  document.getElementById('customizePicker').style.display = 'block';
+  await renderSourceCheckboxes();
+}
 
 async function requestMagicLink(){
   const email = document.getElementById('customizeEmailInput').value.trim();
