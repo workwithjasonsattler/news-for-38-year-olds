@@ -50,7 +50,7 @@
   /* ---- Wire (Drudge-style) view ---- */
   .wire{max-width:1180px;margin:20px auto 70px;padding:0 24px;display:block;}
 
-  .wire-new-grid{display:grid;grid-template-columns:repeat(3, 1fr);row-gap:24px;align-items:start;padding-top:10px;margin-bottom:24px;}
+  .wire-new-grid{display:grid;grid-template-columns:repeat(3, 1fr);row-gap:16px;align-items:start;padding-top:10px;margin-bottom:20px;}
   .wire-new-grid > *{padding:0 22px;margin:0;}
   .wire-new-grid > *:nth-child(3n+1){padding-left:0;}
   .wire-new-grid > *:nth-child(3n){padding-right:0;}
@@ -124,6 +124,8 @@
   .wire-bluesky-list a{color:var(--wire-blue);font-weight:700;}
   .wire-bluesky-list a:hover{text-decoration:underline;}
   .wire-bluesky-list .bsky-meta{display:block;font-family:var(--mono, monospace);font-size:10px;color:#888;margin-top:2px;}
+  .wire-bluesky-list li.bsky-more{border-bottom:none;padding:6px 0 0;text-align:center;}
+  .wire-bluesky-list li.bsky-more a{font-family:var(--mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:400;color:var(--wire-blue);}
 
   .wire-resources-box h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;}
   .wire-resources-box ul{list-style:none;margin:0;padding:0;}
@@ -570,7 +572,7 @@ async function loadActionsFeed(){
     const res = await fetch(`${API}/api/actions-feed`);
     const items = await res.json();
     if (!items || !items.length){ box.style.display = 'none'; return; }
-    list.innerHTML = items.map((item, i) => `
+    list.innerHTML = items.slice(0, 15).map((item, i) => `
       <li>
         <a href="${item.link}" target="_blank" rel="noopener">${item.title}</a>
         ${i === 0 && (item.excerpt || item.image) ? `
@@ -624,12 +626,12 @@ async function loadBlueskyPopular(filter){
       const lastSpace = cut.lastIndexOf(' ');
       return (lastSpace > 40 ? cut.slice(0, lastSpace) : cut).trim() + '…';
     };
-    list.innerHTML = items.slice(0, 25).map(item => `
+    list.innerHTML = items.slice(0, 12).map(item => `
       <li>
         <a href="${item.link}" target="_blank" rel="noopener">${trim(stripUrls(item.text), 110) || item.outlet}</a>
         <span class="bsky-meta">${item.outlet} · ${item.likeCount} likes · ${item.repostCount} reposts · <a href="${item.blueskyUrl}" target="_blank" rel="noopener">view on Bluesky</a></span>
       </li>
-    `).join('');
+    `).join('') + (items.length > 12 ? `<li class="bsky-more"><a href="/nerve-center.html">More on Nerve Center &rarr;</a></li>` : '');
     box.style.display = '';
   } catch (err) {
     box.style.display = 'none'; // fail quietly — this module is a nice-to-have, never block the wire
@@ -671,7 +673,7 @@ function renderWire(){
   const rest = DISPATCHES.filter(d => !d.pinned);
   if (rest.length === 0){ wire.innerHTML = `<p class="wire-empty">No dispatches yet — add one in the CMS.</p>`; return; }
 
-  const alsoBig = rest.slice(0, 20);
+  const alsoBig = rest.slice(0, 15);
 
   const sectionOrder = ["Indie Media", "Data Centers", "People Power"];
   const bySection = { "Indie Media": [], "Data Centers": [], "People Power": [] };
