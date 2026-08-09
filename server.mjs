@@ -221,6 +221,17 @@ async function initSchema() {
       suggested_by_user_id INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`,
+    // ---------- View & layout preferences ----------
+    // Which visual skin (Drudge-ish/BBS/RSS Reader/Right Wing) and which
+    // homepage sections a signed-in reader wants to see. Anonymous readers
+    // still get this via localStorage only (frontend-only, no row here) —
+    // this table is just the cross-device save for registered readers.
+    `CREATE TABLE IF NOT EXISTS user_layout_prefs (
+      user_id INTEGER PRIMARY KEY,
+      view TEXT NOT NULL DEFAULT 'drudge',
+      hidden_components TEXT NOT NULL DEFAULT '[]',
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
   ];
   for (const sql of statements) await dbRun(sql);
 
@@ -593,6 +604,40 @@ app.post("/api/my/source-tiers", async (req, res) => {
       [user.id, t.outlet, t.tier]
     );
   }
+  res.json({ ok: true });
+});
+
+// ---------- View & layout preferences ----------
+// Lets a signed-in reader save which visual skin + which homepage sections
+// they want, so it follows them across devices. Anonymous readers get the
+// same picker but it only persists to localStorage on their own browser
+// (handled entirely client-side — nothing hits these routes when signed out).
+const VALID_VIEWS = new Set(["drudge", "bbs", "rss", "rightwing"]);
+
+app.get("/api/my/layout-prefs", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const row = await dbGet(`SELECT view, hidden_components FROM user_layout_prefs WHERE user_id = ?`, [user.id]);
+  if (!row) return res.json({ saved: false });
+  let hiddenComponents = [];
+  try { hiddenComponents = JSON.parse(row.hidden_components || "[]"); } catch { /* ignore */ }
+  res.json({ saved: true, view: row.view || "drudge", hiddenComponents });
+});
+
+app.post("/api/my/layout-prefs", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  let { view, hiddenComponents } = req.body || {};
+  if (!VALID_VIEWS.has(view)) view = "drudge";
+  if (!Array.isArray(hiddenComponents)) hiddenComponents = [];
+  hiddenComponents = hiddenComponents
+    .filter(c => typeof c === "string" && c.length <= 50)
+    .slice(0, 20);
+  await dbRun(
+    `INSERT INTO user_layout_prefs (user_id, view, hidden_components, updated_at) VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(user_id) DO UPDATE SET view = excluded.view, hidden_components = excluded.hidden_components, updated_at = excluded.updated_at`,
+    [user.id, view, JSON.stringify(hiddenComponents)]
+  );
   res.json({ ok: true });
 });
 

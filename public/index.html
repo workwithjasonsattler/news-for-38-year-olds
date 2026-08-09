@@ -289,6 +289,9 @@
   body[data-view="rightwing"] .source-item .source-link{color:#ffd700;}
   body[data-view="rightwing"] footer.colophon{background:#b31942; color:#ffd700; border-top:4px solid #ffd700;}
 
+  /* ===== Reader-chosen section visibility (View & Layout picker) ===== */
+  .component-hidden{display:none !important;}
+
 
 </style>
 </head>
@@ -299,15 +302,7 @@
     <span id="datelineLeft">EDITION — LOADING</span>
     <span id="datelineRight"></span>
     <span style="margin-left:14px;"><a href="javascript:void(0)" onclick="openCustomizeModal()" id="customizeLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;">CUSTOMIZE FEED</a></span>
-    <span style="margin-left:14px;">
-      <label for="viewSelect" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;">VIEW:</label>
-      <select id="viewSelect" onchange="applyView(this.value)" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;background:transparent;border:1px solid #999;color:inherit;padding:1px 4px;">
-        <option value="drudge">Drudge-ish</option>
-        <option value="bbs">8-bit BBS</option>
-        <option value="rss">RSS Reader</option>
-        <option value="rightwing">Right Wing</option>
-      </select>
-    </span>
+    <span style="margin-left:14px;"><a href="javascript:void(0)" onclick="openViewModal()" id="viewLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;">VIEW &amp; LAYOUT</a></span>
   </div>
   <div class="top-headlines" id="topHeadlines"></div>
   <img src="/logo.png" alt="News for 38 Year Olds" class="logo-img">
@@ -318,7 +313,7 @@
 
 
 
-<section class="wire-resources-bottom">
+<section class="wire-resources-bottom" id="resourcesBottomBox">
   <aside class="wire-resources-box">
     <h4>Resources</h4>
     <ul>
@@ -391,6 +386,29 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="viewOverlay" style="position:fixed;inset:0;background:rgba(20,23,31,.72);display:none;align-items:center;justify-content:center;z-index:50;padding:20px;">
+  <div style="background:var(--paper);color:var(--text);width:100%;max-width:440px;max-height:82vh;overflow-y:auto;padding:26px;border-radius:4px;position:relative;">
+    <button onclick="closeViewModal()" style="position:absolute;top:14px;right:16px;font-family:var(--mono);font-size:13px;background:none;border:none;color:var(--text-muted);cursor:pointer;">CLOSE ✕</button>
+    <p style="font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--wire-red);margin:0 0 6px;">Your layout, your call</p>
+    <h3 style="font-family:var(--display);font-size:20px;margin:0 0 16px;">View &amp; layout</h3>
+
+    <p style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;margin:0 0 6px;">SKIN</p>
+    <select id="viewSelectModal" onchange="applyView(this.value)" style="width:100%;padding:9px 10px;font-family:var(--mono);font-size:13px;border:1.5px solid var(--paper-hairline);border-radius:3px;margin-bottom:18px;box-sizing:border-box;background:#fff;">
+      <option value="drudge">Drudge-ish</option>
+      <option value="bbs">8-bit BBS</option>
+      <option value="rss">RSS Reader</option>
+      <option value="rightwing">Right Wing</option>
+    </select>
+
+    <p style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;margin:0 0 6px;">SHOW THESE SECTIONS</p>
+    <div id="componentToggleList" style="margin-bottom:16px;"></div>
+
+    <button onclick="saveViewPrefs()" style="width:100%;padding:12px 0;font-weight:700;font-size:14.5px;background:var(--support-teal);color:#F3EFE4;border:none;border-radius:3px;cursor:pointer;">Save</button>
+    <p id="viewSaveMsg" style="text-align:center;font-family:var(--mono);font-size:12px;color:var(--support-teal-dark);margin-top:12px;"></p>
+    <p id="viewSignedOutNote" style="text-align:center;font-family:Georgia,serif;font-size:12px;color:var(--text-muted);margin-top:8px;">Saved on this browser only. <a href="javascript:void(0)" onclick="closeViewModal();openCustomizeModal();" style="color:var(--wire-blue);">Sign in</a> to carry these settings across devices.</p>
+  </div>
+</div>
+
 <script>
 const API = ""; // same-origin
 
@@ -399,7 +417,7 @@ const VIEW_KEY = "n38-view";
 function applyView(view){
   document.body.dataset.view = view === "drudge" ? "" : view;
   try { localStorage.setItem(VIEW_KEY, view); } catch {}
-  const sel = document.getElementById("viewSelect");
+  const sel = document.getElementById("viewSelectModal");
   if (sel) sel.value = view;
 }
 (function initView(){
@@ -407,6 +425,74 @@ function applyView(view){
   try { saved = localStorage.getItem(VIEW_KEY) || "drudge"; } catch {}
   applyView(saved);
 })();
+
+// ---- Page-component picker: which homepage sections a reader wants ----
+// Each entry maps a checkbox to the selector(s) it should show/hide. Kept
+// as a plain list (not derived from the DOM) so the picker UI, the CSS
+// class toggle, and a future mobile client can all share the same source
+// of truth for "what sections exist."
+const COMPONENT_DEFS = [
+  { key: "headlines",  label: "Headlines",                                   selector: "#headlinesCol" },
+  { key: "actions",    label: "What You Can Do About It",                    selector: "#actionsBox" },
+  { key: "bluesky",    label: "Most Popular on Bluesky",                     selector: "#blueskyPopularBox" },
+  { key: "climate",    label: "Climate Watch",                               selector: "#climateBox" },
+  { key: "frontpage",  label: "Frontpage",                                   selector: "#frontpageBox" },
+  { key: "sources",    label: "Sources",                                     selector: "#sourcesSection" },
+  { key: "videos",     label: "Videos",                                      selector: "#videosBox" },
+  { key: "columns",    label: "Indie Media / Data Centers / People Power",   selector: ".wire-columns" },
+  { key: "resources",  label: "Resources",                                   selector: "#resourcesBottomBox" },
+];
+const HIDDEN_KEY = "n38-hidden-components";
+let HIDDEN_COMPONENTS = [];
+try { HIDDEN_COMPONENTS = JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]"); } catch { HIDDEN_COMPONENTS = []; }
+
+function applyHiddenComponents(){
+  COMPONENT_DEFS.forEach(c => {
+    document.querySelectorAll(c.selector).forEach(el => {
+      el.classList.toggle("component-hidden", HIDDEN_COMPONENTS.includes(c.key));
+    });
+  });
+}
+applyHiddenComponents();
+
+function openViewModal(){
+  document.getElementById("viewOverlay").style.display = "flex";
+  document.getElementById("viewSaveMsg").textContent = "";
+  const sel = document.getElementById("viewSelectModal");
+  let saved = "drudge";
+  try { saved = localStorage.getItem(VIEW_KEY) || "drudge"; } catch {}
+  sel.value = saved;
+  document.getElementById("componentToggleList").innerHTML = COMPONENT_DEFS.map(c => `
+    <label style="display:flex;align-items:center;gap:9px;padding:6px 0;font-family:var(--mono);font-size:12.5px;">
+      <input type="checkbox" data-comp="${c.key}" ${HIDDEN_COMPONENTS.includes(c.key) ? "" : "checked"}>
+      ${c.label}
+    </label>
+  `).join("");
+  document.getElementById("viewSignedOutNote").style.display = CURRENT_USER ? "none" : "block";
+}
+function closeViewModal(){ document.getElementById("viewOverlay").style.display = "none"; }
+document.getElementById("viewOverlay").addEventListener("click", e => { if (e.target.id === "viewOverlay") closeViewModal(); });
+
+async function saveViewPrefs(){
+  const view = document.getElementById("viewSelectModal").value;
+  const checks = document.querySelectorAll('#componentToggleList input[data-comp]');
+  HIDDEN_COMPONENTS = Array.from(checks).filter(c => !c.checked).map(c => c.dataset.comp);
+  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(HIDDEN_COMPONENTS)); } catch {}
+  applyView(view);
+  applyHiddenComponents();
+  const msgEl = document.getElementById("viewSaveMsg");
+  if (CURRENT_USER){
+    msgEl.textContent = "Saving...";
+    await fetch(`${API}/api/my/layout-prefs`, {
+      method: "POST", headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ view, hiddenComponents: HIDDEN_COMPONENTS })
+    });
+    msgEl.textContent = "✓ Saved — synced to your account.";
+  } else {
+    msgEl.textContent = "✓ Saved on this browser.";
+  }
+}
+
 let DISPATCHES = [];
 
 function formatDisplayDate(iso){
@@ -691,7 +777,7 @@ function renderWire(){
       </div>
 
       <aside class="wire-resources-box" id="actionsBox" style="display:none;">
-        <h4>Actions</h4>
+        <h4>What You Can Do About It</h4>
         <ul id="actionsList"></ul>
         <div class="wire-cross-promo">
           <div class="wire-cross-promo-label">From Stop the Trillionaires</div>
@@ -762,6 +848,7 @@ function renderWire(){
   loadFrontpageFeed();
   loadClimateFeed();
   loadVideoFeed();
+  applyHiddenComponents();
 }
 
 // dateline counters — recalculated every minute so they never go stale mid-session
@@ -822,6 +909,22 @@ async function checkSession(){
   document.getElementById('customizeLink').textContent = CURRENT_USER
     ? `CUSTOMIZE FEED (${CURRENT_USER.email})`
     : 'CUSTOMIZE FEED';
+  if (CURRENT_USER){
+    try {
+      const lpRes = await fetch(`${API}/api/my/layout-prefs`);
+      if (lpRes.ok){
+        const prefs = await lpRes.json();
+        if (prefs && prefs.saved){
+          if (prefs.view) applyView(prefs.view);
+          if (Array.isArray(prefs.hiddenComponents)){
+            HIDDEN_COMPONENTS = prefs.hiddenComponents;
+            try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(HIDDEN_COMPONENTS)); } catch {}
+            applyHiddenComponents();
+          }
+        }
+      }
+    } catch { /* fall back to whatever localStorage already applied */ }
+  }
 }
 
 async function openCustomizeModal(){
