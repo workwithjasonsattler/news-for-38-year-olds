@@ -74,13 +74,18 @@
   .sources-search-wrap::after{content:"⌕";position:absolute;right:8px;top:50%;transform:translateY(-50%);
     font-size:13px;color:#999;pointer-events:none;}
   .sources-scroll{flex:1 1 auto;overflow-y:auto;min-height:0;}
-  .sources-group{margin-bottom:4px;}
-  .sources-group-label{font-family:var(--mono);font-size:10px;letter-spacing:.09em;text-transform:uppercase;
-    color:var(--text-muted);border-bottom:1px solid var(--paper-hairline);padding:6px 0 3px;margin:6px 0 2px;
-    display:flex;justify-content:space-between;}
-  .sources-group:first-child .sources-group-label{margin-top:0;}
+  .sources-group{margin-bottom:2px;border-bottom:1px solid var(--paper-hairline);}
+  .sources-group:last-child{border-bottom:none;}
+  .sources-group summary{list-style:none;cursor:pointer;font-family:var(--mono);font-size:10.5px;
+    letter-spacing:.09em;text-transform:uppercase;color:var(--text-muted);padding:8px 2px;
+    display:flex;justify-content:space-between;align-items:center;}
+  .sources-group summary::-webkit-details-marker{display:none;}
+  .sources-group summary::after{content:"+";font-family:var(--mono);font-size:13px;color:#aaa;margin-left:8px;}
+  .sources-group[open] summary::after{content:"–";}
+  .sources-group summary:hover{color:var(--wire-blue);}
+  .sources-group-name{display:flex;align-items:baseline;gap:6px;}
   .sources-group-label .count{color:#aaa;}
-  .sources-columns{display:grid;grid-template-columns:1fr;}
+  .sources-columns{display:grid;grid-template-columns:1fr;padding:0 0 6px;}
   .source-item{display:block;padding:4px 0;border-bottom:1px solid #eee;}
   .source-item .source-name{display:block;font-family:var(--mono);font-size:10px;color:#111;border-bottom:none;padding:0 0 1px;white-space:normal;}
   .source-item .source-name a{color:#111;text-decoration:none;}
@@ -424,6 +429,7 @@ function siteRootFromUrl(url){
 }
 
 let ALL_SOURCES = [];
+const SOURCES_OPEN = { publications: false, people: false };
 
 function renderSourceItem(s){
   const blueskyUrl = s.bluesky_handle ? `https://bsky.app/profile/${s.bluesky_handle}` : null;
@@ -440,6 +446,19 @@ function renderSourceItem(s){
   `;
 }
 
+function renderSourceGroup(key, label, items, forceOpen){
+  if (!items.length) return '';
+  const open = forceOpen || SOURCES_OPEN[key];
+  return `
+    <details class="sources-group" data-group="${key}" ${open ? 'open' : ''}>
+      <summary>
+        <span class="sources-group-name"><span>${label}</span><span class="count">${items.length}</span></span>
+      </summary>
+      <div class="sources-columns">${items.map(renderSourceItem).join('')}</div>
+    </details>
+  `;
+}
+
 function renderSourcesList(filterText){
   const scrollEl = document.getElementById('sourcesScroll');
   if (!scrollEl) return;
@@ -453,18 +472,16 @@ function renderSourcesList(filterText){
     return;
   }
 
-  scrollEl.innerHTML = `
-    ${publications.length ? `
-      <div class="sources-group">
-        <div class="sources-group-label"><span>Publications</span><span class="count">${publications.length}</span></div>
-        <div class="sources-columns">${publications.map(renderSourceItem).join('')}</div>
-      </div>` : ''}
-    ${people.length ? `
-      <div class="sources-group">
-        <div class="sources-group-label"><span>People</span><span class="count">${people.length}</span></div>
-        <div class="sources-columns">${people.map(renderSourceItem).join('')}</div>
-      </div>` : ''}
-  `;
+  // While actively searching, force-open any group with a match so results
+  // are visible without an extra click — but don't touch SOURCES_OPEN itself,
+  // so clearing the search restores whatever the reader had manually set.
+  scrollEl.innerHTML =
+    renderSourceGroup('publications', 'Publications', publications, !!q) +
+    renderSourceGroup('people', 'People', people, !!q);
+
+  scrollEl.querySelectorAll('details.sources-group').forEach(d => {
+    d.addEventListener('toggle', () => { SOURCES_OPEN[d.dataset.group] = d.open; });
+  });
 }
 
 async function loadSources(){
