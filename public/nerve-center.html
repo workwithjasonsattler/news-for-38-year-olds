@@ -5,6 +5,15 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NERVE CENTER — News for 38 Year Olds</title>
 <meta name="description" content="What's trending across our independent journalists on Bluesky and on the site itself.">
+<meta property="og:title" content="You are now entering the liberal bubble — Nerve Center">
+<meta property="og:description" content="What's trending across our independent journalists on Bluesky and on the site itself.">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://news-for-38-year-olds.onrender.com/nerve-center.html">
+<meta property="og:image" content="https://news-for-38-year-olds.onrender.com/nerve-center-og.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="You are now entering the liberal bubble — Nerve Center">
+<meta name="twitter:description" content="What's trending across our independent journalists on Bluesky and on the site itself.">
+<meta name="twitter:image" content="https://news-for-38-year-olds.onrender.com/nerve-center-og.png">
 <style>
   :root{
     --bf-red:#ee0000;
@@ -156,6 +165,29 @@
     letter-spacing:.05em;
     margin:0;
   }
+  .nc-bsky-filter-toggle{
+    display:flex;
+    gap:6px;
+    padding:10px 0 0;
+  }
+  .nc-bsky-filter-btn{
+    display:inline-flex;
+    align-items:center;
+    gap:4px;
+    font-family:var(--mono);
+    font-size:10px;
+    font-weight:700;
+    text-transform:uppercase;
+    letter-spacing:.03em;
+    border:2px solid #ddd;
+    border-radius:3px;
+    padding:4px 9px;
+    cursor:pointer;
+    background:#fff;
+  }
+  .nc-bsky-filter-btn:hover{background:#f4f4f4;}
+  .nc-bsky-filter-btn input[type="radio"]{margin:0;accent-color:var(--bf-red);cursor:pointer;}
+  .nc-bsky-filter-btn:has(input:checked){background:var(--bf-red);border-color:var(--bf-red);color:#fff;}
 
   /* ===== BLUESKY ITEMS — BIG BUZZFEED LIST ===== */
   #blueskyPanel .nc-item{
@@ -408,6 +440,11 @@
       <h2><span class="panel-emoji">🦋</span>Popular on Bluesky</h2>
       <span class="nc-panel-sub">Last 16 hours</span>
     </div>
+    <div class="nc-bsky-filter-toggle" id="ncBlueskyFilterToggle">
+      <label class="nc-bsky-filter-btn"><input type="radio" name="ncBskyFilter" value="all" checked> All</label>
+      <label class="nc-bsky-filter-btn"><input type="radio" name="ncBskyFilter" value="links"> Links</label>
+      <label class="nc-bsky-filter-btn"><input type="radio" name="ncBskyFilter" value="quotes"> Quote posts</label>
+    </div>
     <div id="blueskyPanel"><p class="nc-loading">Loading…</p></div>
   </section>
 
@@ -454,10 +491,14 @@ function timeAgo(ts){
   return `${Math.floor(hrs/24)}d ago`;
 }
 
-async function loadBluesky(section){
+async function loadBluesky(section, filter){
   const panel = document.getElementById('blueskyPanel');
   try {
-    const url = `${API}/api/nerve-center/bluesky` + (section ? `?section=${encodeURIComponent(section)}` : '');
+    const params = new URLSearchParams();
+    if (section) params.set('section', section);
+    if (filter && filter !== 'all') params.set('filter', filter);
+    const qs = params.toString();
+    const url = `${API}/api/nerve-center/bluesky` + (qs ? `?${qs}` : '');
     const res = await fetch(url);
     const items = await res.json();
     if (!items.length){ panel.innerHTML = '<p class="nc-empty">Nothing trending on Bluesky right now — check back soon.</p>'; return; }
@@ -573,12 +614,24 @@ async function loadDiscover(){
   }
 }
 
+function getBskyFilter(){
+  const checked = document.querySelector('input[name="ncBskyFilter"]:checked');
+  return checked ? checked.value : 'all';
+}
+
 function loadAll(){
   const section = document.getElementById('sectionFilter').value;
-  loadBluesky(section);
+  loadBluesky(section, getBskyFilter());
   loadChatter(section);
   loadDiscover();
 }
+
+document.querySelectorAll('input[name="ncBskyFilter"]').forEach(input => {
+  input.addEventListener('change', () => {
+    const section = document.getElementById('sectionFilter').value;
+    loadBluesky(section, getBskyFilter());
+  });
+});
 
 loadAll();
 </script>

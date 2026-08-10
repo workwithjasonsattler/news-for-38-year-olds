@@ -1301,7 +1301,19 @@ async function fetchBlueskyPopular() {
     const existing = byLink.get(item.link);
     if (!existing || item.score > existing.score) byLink.set(item.link, item);
   }
-  return [...byLink.values()].sort((a, b) => b.score - a.score); // full ranked list; callers slice as needed
+  const dedupedByLink = [...byLink.values()];
+
+  // Also cap to ONE post per outlet/journalist (their single highest-scoring post survives) —
+  // a prolific poster (e.g. someone who posts many times a day) would otherwise flood the
+  // Popular list with several of their own posts and crowd everyone else out. This cap is
+  // applied here, before any section/Focus filtering downstream, so it holds no matter which
+  // Focus category a reader picks.
+  const byOutlet = new Map();
+  for (const item of dedupedByLink) {
+    const existing = byOutlet.get(item.outlet);
+    if (!existing || item.score > existing.score) byOutlet.set(item.outlet, item);
+  }
+  return [...byOutlet.values()].sort((a, b) => b.score - a.score); // full ranked list; callers slice as needed
 }
 
 app.get("/api/bluesky-popular", async (req, res) => {
@@ -1409,9 +1421,11 @@ app.get("/api/nerve-center/bluesky", async (req, res) => {
       const data = await fetchBlueskyPopular();
       blueskyCache = { data, fetchedAt: now };
     }
-    const { section } = req.query;
+    const { section, filter } = req.query;
     let data = blueskyCache.data;
     if (section && VALID_NERVE_SECTIONS.includes(section)) data = data.filter(i => i.section === section);
+    if (filter === "links") data = data.filter(i => i.hasLink);
+    else if (filter === "quotes") data = data.filter(i => i.hasQuote);
     res.json(data.slice(0, 40));
   } catch (err) {
     console.error("Nerve center Bluesky error:", err);
