@@ -492,13 +492,26 @@ async function sendMagicLink(email, link) {
   }
 }
 
-async function getCurrentUser(req) {
+// Resolves a session token from EITHER the existing cookie OR an
+// `Authorization: Bearer <token>` header — both paths point at the same
+// `sessions` table row, this is not a second auth system, just a second
+// way to present the same session token (for the future mobile app shell,
+// which can't reliably carry cookie sessions in a native webview).
+function getAuthToken(req) {
   const { n38_session } = parseCookies(req);
-  if (!n38_session) return null;
+  if (n38_session) return n38_session;
+  const authHeader = req.headers.authorization || "";
+  const match = authHeader.match(/^Bearer\s+(.+)$/i);
+  return match ? match[1].trim() : null;
+}
+
+async function getCurrentUser(req) {
+  const token = getAuthToken(req);
+  if (!token) return null;
   const row = await dbGet(
     `SELECT u.id, u.email FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token = ? AND s.expires_at > datetime('now')`,
-    [n38_session]
+    [token]
   );
   return row || null;
 }
@@ -537,12 +550,22 @@ app.get("/api/auth/verify", async (req, res) => {
   await dbRun(`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`, [sessionToken, user.id, sessionExpires]);
 
   setSessionCookie(res, sessionToken);
+
+  // Mobile/app-shell clients ask for JSON explicitly via ?format=json (more
+  // robust than relying on an Accept header, which some webviews mangle).
+  // The cookie above is still set either way (harmless for a bearer client),
+  // but a JSON caller gets the raw token back to store and send as
+  // `Authorization: Bearer <token>` on subsequent requests.
+  const wantsJson = req.query.format === "json" || (req.headers.accept || "").includes("application/json");
+  if (wantsJson) {
+    return res.json({ ok: true, token: sessionToken, user: { email: user.email } });
+  }
   res.redirect(302, "/");
 });
 
 app.post("/api/auth/logout", async (req, res) => {
-  const { n38_session } = parseCookies(req);
-  if (n38_session) await dbRun(`DELETE FROM sessions WHERE token = ?`, [n38_session]);
+  const token = getAuthToken(req);
+  if (token) await dbRun(`DELETE FROM sessions WHERE token = ?`, [token]);
   clearSessionCookie(res);
   res.json({ ok: true });
 });
