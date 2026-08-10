@@ -1235,10 +1235,16 @@ app.get("/api/sources", async (req, res) => {
 // page views doesn't hammer Bluesky's public API on every request.
 const BLUESKY_CACHE_TTL_MS = 20 * 60 * 1000; // 20 minutes
 let blueskyCache = { data: [], fetchedAt: 0 };
+// Raw, pre-dedup post list from the same fetch — every individual's post survives here,
+// even when their post links the same article as another outlet/journalist's post (which
+// the deduped `blueskyCache.data` above would otherwise collapse down to just one winner).
+// On Trend / chatter matching needs this so a journalist's own take on a story doesn't get
+// silently dropped just because an outlet also posted about the same link.
+let blueskyAllPostsCache = { data: [], fetchedAt: 0 };
 
 async function fetchBlueskyPopular() {
   const feeds = await dbAll(
-    `SELECT outlet, bluesky_handle, fallback_beat FROM feeds WHERE bluesky_handle IS NOT NULL AND bluesky_handle != ''`
+    `SELECT outlet, bluesky_handle, fallback_beat, feed_type FROM feeds WHERE bluesky_handle IS NOT NULL AND bluesky_handle != ''`
   );
   const cutoff = Date.now() - 16 * 60 * 60 * 1000; // last 16h — wide enough to stay populated, tight enough to feel current
 
@@ -1263,6 +1269,7 @@ async function fetchBlueskyPopular() {
         const replyCount = post.replyCount || 0;
         items.push({
           outlet: f.outlet,
+          feedType: f.feed_type === "journalist" ? "journalist" : "outlet",
           section: f.fallback_beat || "Indie Media",
           text: (post.record?.text || "").slice(0, 260),
           link: link || blueskyUrl, // fall back to the Bluesky post itself when there's no external link
@@ -1281,7 +1288,14 @@ async function fetchBlueskyPopular() {
   const all = perOutlet.filter(r => r.status === "fulfilled").flatMap(r => r.value);
   perOutlet.filter(r => r.status === "rejected").forEach(r => console.error("Bluesky fetch failed:", r.reason?.message || r.reason));
 
-  // de-dupe by link (multiple mentions of the same article), keep the highest-scoring post
+  // Stash the raw, undeduped list (every individual's post) for chatter matching to use —
+  // done here, as a side effect of the fetch we're already making, so it doesn't cost a
+  // second round of API calls just to keep the two caches in sync.
+  blueskyAllPostsCache = { data: all.sort((a, b) => b.score - a.score), fetchedAt: Date.now() };
+
+  // de-dupe by link (multiple mentions of the same article), keep the highest-scoring post —
+  // this is what keeps the homepage "Popular on Bluesky" box from showing the same story
+  // over and over just because several outlets/journalists all posted about it.
   const byLink = new Map();
   for (const item of all) {
     const existing = byLink.get(item.link);
@@ -1499,13 +1513,18 @@ app.get("/api/nerve-center/chatter", async (req, res) => {
     const stories = await getSimpleFeed("frontpage");
     if (!stories.length) return res.json([]);
 
-    // 2. Get our journalists' Bluesky posts (already cached from the homepage box)
+    // 2. Get our journalists'/outlets' Bluesky posts. Uses the UNDEDUPED list
+    // (blueskyAllPostsCache), not the homepage's link-deduped blueskyCache — the homepage
+    // box intentionally collapses multiple posts about the same article down to one, but
+    // that would silently drop a journalist's own commentary whenever it links the same
+    // article an outlet already posted, which is exactly the content this panel exists to
+    // surface. fetchBlueskyPopular() populates both caches in the same fetch.
     const now = Date.now();
-    if (now - blueskyCache.fetchedAt > BLUESKY_CACHE_TTL_MS) {
-      const data = await fetchBlueskyPopular();
+    if (now - blueskyAllPostsCache.fetchedAt > BLUESKY_CACHE_TTL_MS) {
+      const data = await fetchBlueskyPopular(); // side effect: also refreshes blueskyAllPostsCache
       blueskyCache = { data, fetchedAt: now };
     }
-    const posts = blueskyCache.data;
+    const posts = blueskyAllPostsCache.data;
 
     // 3. For each story, find any Bluesky posts from our journalists that match
     const result = stories.map(story => {
@@ -1517,6 +1536,7 @@ app.get("/api/nerve-center/chatter", async (req, res) => {
         keywords: keywords.map(k => k.word),
         chatter: matches.map(p => ({
           outlet: p.outlet,
+          feedType: p.feedType,
           text: p.text,
           blueskyUrl: p.blueskyUrl,
           likeCount: p.likeCount,

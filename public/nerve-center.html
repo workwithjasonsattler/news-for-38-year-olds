@@ -324,6 +324,9 @@
     border-radius:2px;
     margin-bottom:7px;
   }
+  .nc-chatter-outlet.nc-chatter-journalist{
+    background:var(--bf-navy);
+  }
   .nc-chatter-text{
     font-size:13px;
     line-height:1.45;
@@ -488,7 +491,7 @@ function renderChatter(stories){
       <div class="nc-chatter-posts">
         ${s.chatter.map(p => `
           <div class="nc-chatter-post">
-            <span class="nc-chatter-outlet">${p.outlet}</span>
+            <span class="nc-chatter-outlet${p.feedType === 'journalist' ? ' nc-chatter-journalist' : ''}">${p.outlet}</span>
             <div class="nc-chatter-text">${p.text || '(no text preview)'}</div>
             <div class="nc-chatter-stats">
               <span>♥ ${p.likeCount}</span>
