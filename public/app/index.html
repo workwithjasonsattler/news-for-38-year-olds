@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Burst Their Bubble</title>
+<meta name="description" content="A super RSS reader with curated content and the power to filter everything.">
+<meta name="theme-color" content="#14161B">
+<link rel="manifest" href="/app/manifest.json">
+<link rel="icon" href="/app/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/app/icons/icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Burst">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Inter:wght@400;500;600;700&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/app/app.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <svg class="brand-mark" viewBox="0 0 100 100" aria-hidden="true">
+      <circle cx="50" cy="50" r="15" fill="var(--wire-red)"/>
+      <g stroke="var(--paper)" stroke-width="6" stroke-linecap="round">
+        <line x1="50" y1="10" x2="50" y2="26"/>
+        <line x1="50" y1="74" x2="50" y2="90"/>
+        <line x1="10" y1="50" x2="26" y2="50"/>
+        <line x1="74" y1="50" x2="90" y2="50"/>
+        <line x1="21.7" y1="21.7" x2="32.5" y2="32.5"/>
+        <line x1="67.5" y1="67.5" x2="78.3" y2="78.3"/>
+        <line x1="78.3" y1="21.7" x2="67.5" y2="32.5"/>
+        <line x1="32.5" y1="67.5" x2="21.7" y2="78.3"/>
+      </g>
+    </svg>
+    <span class="brand-name">Burst Their Bubble</span>
+  </div>
+  <button class="refresh-btn" id="refreshBtn" aria-label="Refresh">
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="M4 4v6h6M20 20v-6h-6M4.5 15a8 8 0 0014.8 2.3M19.5 9A8 8 0 004.7 6.7" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+</header>
+
+<main id="viewRoot" class="view-root">
+  <!-- rendered by app.js -->
+</main>
+
+<nav class="tab-bar" id="tabBar">
+  <button class="tab-btn" data-tab="wire" aria-label="Wire">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 4h16v16H4z M4 9h16 M9 9v11" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    <span>Wire</span>
+  </button>
+  <button class="tab-btn" data-tab="follows" aria-label="Follows">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M12 3l2.6 5.9L21 9.6l-4.6 4.2L17.6 21 12 17.6 6.4 21l1.2-7.2L3 9.6l6.4-.7z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    <span>Follows</span>
+  </button>
+  <button class="tab-btn" data-tab="videos" aria-label="Videos">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path d="M4 6h16v12H4z M10 9.5l5 2.5-5 2.5z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+    <span>Videos</span>
+  </button>
+  <button class="tab-btn" data-tab="account" aria-label="Account">
+    <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><circle cx="12" cy="8" r="3.4" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M4.5 20c1.6-4 5-5.6 7.5-5.6s5.9 1.6 7.5 5.6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+    <span>Account</span>
+  </button>
+</nav>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="/app/app.js"></script>
+</body>
+</html>
