@@ -1766,6 +1766,41 @@ app.get("/api/actions-feed", async (req, res) => res.json(await getSimpleFeed("a
 app.get("/api/frontpage-feed", async (req, res) => res.json(await getSimpleFeed("frontpage")));
 app.get("/api/climate-feed", async (req, res) => res.json(await getSimpleFeed("climate")));
 
+// ---------- National average gas price (eyebrow-bar stat) ----------
+// AAA's Fuel Gauge Report page has no public JSON API, so this scrapes the
+// "Today's AAA National Average $X.XXX" text off their public HTML page —
+// same fail-soft, cached philosophy as SIMPLE_FEEDS above, just a regex
+// pull instead of an RSS parse. Updates once a day on AAA's end, so a long
+// cache TTL is fine.
+const GAS_PRICE_URL = "https://gasprices.aaa.com/";
+const GAS_PRICE_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+let gasPriceCache = { price: null, fetchedAt: 0 };
+
+async function fetchNationalGasPrice() {
+  const r = await fetch(GAS_PRICE_URL, { headers: { "User-Agent": "Mozilla/5.0 (compatible; n38-cms/1.0; +https://news-for-38-year-olds.onrender.com)" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const html = await r.text();
+  const m = html.match(/Today['’]s AAA\s*National Average[\s\S]{0,80}?\$(\d\.\d{2,3})/i);
+  if (!m) throw new Error("Could not find national average in page");
+  return Number(m[1]);
+}
+
+async function getNationalGasPrice() {
+  const now = Date.now();
+  if (now - gasPriceCache.fetchedAt > GAS_PRICE_CACHE_TTL_MS) {
+    try {
+      const price = await fetchNationalGasPrice();
+      gasPriceCache = { price, fetchedAt: now };
+    } catch (err) {
+      console.error("gas price fetch error:", err.message);
+      // leave stale cache (or null) in place, try again next request
+    }
+  }
+  return gasPriceCache.price;
+}
+
+app.get("/api/gas-price", async (req, res) => res.json({ price: await getNationalGasPrice() }));
+
 // ---------- YouTube video feed (curated, not algorithmic) ----------
 // Pulls each curated channel's "uploads" playlist via playlistItems.list
 // (~1 quota unit/call, vs. 100 for search.list). Thumbnail+link-out only,

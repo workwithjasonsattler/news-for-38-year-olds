@@ -311,15 +311,16 @@
 <body>
 
 <header class="masthead">
-  <a class="top-banner-ad" href="https://stopthetrillionaires.com/" target="_blank" rel="noopener" aria-label="Stop the Trillionaires">
-    <img src="/stop-trillionaires-banner.png" alt="How do you take a trillion dollars? Stop the Trillionaires">
-  </a>
   <div class="eyebrow-row">
     <span id="datelineLeft">EDITION — LOADING</span>
     <span id="datelineRight"></span>
+    <span id="datelineGas" style="display:none;"></span>
     <span style="margin-left:14px;"><a href="javascript:void(0)" onclick="openCustomizeModal()" id="customizeLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;">CUSTOMIZE FEED</a></span>
     <span style="margin-left:14px;"><a href="javascript:void(0)" onclick="openViewModal()" id="viewLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;">Edit Layout</a></span>
   </div>
+  <a class="top-banner-ad" href="https://stopthetrillionaires.com/" target="_blank" rel="noopener" aria-label="Stop the Trillionaires">
+    <img src="/stop-trillionaires-banner.png" alt="How do you take a trillion dollars? Stop the Trillionaires">
+  </a>
   <div class="top-headlines" id="topHeadlines"></div>
   <img src="/logo.png" alt="News for 38 Year Olds" class="logo-img">
   <p class="subtext">TIP YOUR REPORTER — PEOPLE OVER DATA</p>
@@ -984,6 +985,30 @@ function updateDateline(){
 }
 updateDateline();
 setInterval(updateDateline, 60000);
+
+// national average gas price — fetched/cached server-side (AAA data),
+// so this just polls occasionally rather than every minute like the
+// pure date-math counters above.
+function loadGasPrice(){
+  fetch('/api/gas-price')
+    .then(r => r.json())
+    .then(d => {
+      const el = document.getElementById('datelineGas');
+      if (!el) return;
+      if (d && typeof d.price === 'number') {
+        el.textContent = `$${d.price.toFixed(2)}/GAL NATL AVG GAS PRICE`;
+        el.style.display = '';
+      } else {
+        el.style.display = 'none';
+      }
+    })
+    .catch(() => {
+      const el = document.getElementById('datelineGas');
+      if (el) el.style.display = 'none';
+    });
+}
+loadGasPrice();
+setInterval(loadGasPrice, 30 * 60000);
 
 // tip modal
 const tipOverlay = document.getElementById('tipOverlay');
