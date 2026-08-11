@@ -232,6 +232,19 @@ async function initSchema() {
       hidden_components TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`,
+    // ---------- Thumbs-up (personal ranking, Feature B) ----------
+    // A reader thumbs-up a source; togglable (thumbs again = remove). Only
+    // ever affects THAT reader's own wire ordering (as a same-day tiebreak
+    // ahead of recency, never a full re-sort) — the shared/default Wire for
+    // everyone else is completely untouched. Aggregate counts across all
+    // readers are surfaced as a transparent, read-only leaderboard in the
+    // Sources box; seeing the leaderboard never changes anyone's own order.
+    `CREATE TABLE IF NOT EXISTS feed_thumbs (
+      user_id INTEGER NOT NULL,
+      outlet TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (user_id, outlet)
+    )`,
   ];
   for (const sql of statements) await dbRun(sql);
 
@@ -1261,20 +1274,38 @@ app.get("/api/dispatches", async (req, res) => {
 
   if (user) {
     const tierRows = await dbAll(`SELECT outlet, rating AS tier FROM user_source_ratings WHERE user_id = ?`, [user.id]);
+    // Thumbs-up personal ranking (Feature B): opt-in only, and only ever
+    // reorders THIS reader's own wire. Recency stays primary — thumbs-up is
+    // a same-day tiebreak, not a full re-sort, and sits INSIDE tier order
+    // (a thumbed "less"-tier source still can't jump ahead of a "normal"-
+    // tier source — thumbs only break ties among items that already sort
+    // together). An item from a thumbed source never jumps ahead of a
+    // genuinely more recent item from a different day. Un-thumbed sources
+    // get no penalty (neutral default).
+    const thumbRows = await dbAll(`SELECT outlet FROM feed_thumbs WHERE user_id = ?`, [user.id]);
+    const thumbed = new Set(thumbRows.map(r => r.outlet));
+
     if (tierRows.length > 0) {
       const tierMap = new Map(tierRows.map(r => [r.outlet, r.tier]));
       const tierRank = { pinned: 0, normal: 1, less: 2, hidden: 3 };
       rows = rows
         .filter(r => (tierMap.get(r.outlet) || "normal") !== "hidden")
-        .map(r => ({ ...r, _tier: tierRank[tierMap.get(r.outlet)] ?? 1 }))
+        .map(r => ({
+          ...r,
+          _tier: tierRank[tierMap.get(r.outlet)] ?? 1,
+          _dayBucket: (r.date || "").slice(0, 10),
+          _thumbed: thumbed.has(r.outlet) ? 0 : 1,
+        }))
         .sort((a, b) => {
           // editorial breaking-news pin (admin-set) always wins first
           if (a.pinned !== b.pinned) return b.pinned - a.pinned;
           if (a._tier !== b._tier) return a._tier - b._tier;
+          if (a._dayBucket !== b._dayBucket) return a._dayBucket < b._dayBucket ? 1 : -1;
+          if (a._thumbed !== b._thumbed) return a._thumbed - b._thumbed;
           if (a.date !== b.date) return a.date < b.date ? 1 : -1;
           return b.id - a.id;
         })
-        .map(({ _tier, ...rest }) => rest);
+        .map(({ _tier, _dayBucket, _thumbed, ...rest }) => rest);
     } else {
       // fall back to the old on/off feed-prefs for readers who customized
       // their wire before this feature existed, but haven't re-saved yet
@@ -1282,6 +1313,18 @@ app.get("/api/dispatches", async (req, res) => {
       if (prefRows.length > 0) {
         const allowed = new Set(prefRows.filter(r => r.enabled).map(r => r.outlet));
         rows = rows.filter(r => allowed.has(r.outlet));
+      }
+      if (thumbed.size > 0) {
+        rows = rows
+          .map(r => ({ ...r, _dayBucket: (r.date || "").slice(0, 10), _thumbed: thumbed.has(r.outlet) ? 0 : 1 }))
+          .sort((a, b) => {
+            if (a.pinned !== b.pinned) return b.pinned - a.pinned;
+            if (a._dayBucket !== b._dayBucket) return a._dayBucket < b._dayBucket ? 1 : -1;
+            if (a._thumbed !== b._thumbed) return a._thumbed - b._thumbed;
+            if (a.date !== b.date) return a.date < b.date ? 1 : -1;
+            return b.id - a.id;
+          })
+          .map(({ _dayBucket, _thumbed, ...rest }) => rest);
       }
     }
   }
@@ -1294,6 +1337,39 @@ app.get("/api/sources", async (req, res) => {
     `SELECT outlet, default_author, subscribe_url, tip_url, feed_url, bluesky_handle, feed_type FROM feeds WHERE submission_status = 'approved' ORDER BY outlet ASC`
   );
   res.json(rows);
+});
+
+// ---------- Thumbs-up (Feature B) ----------
+app.post("/api/my/thumbs/:outlet", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const outlet = (req.params.outlet || "").trim();
+  if (!outlet) return res.status(400).json({ error: "outlet required" });
+  const existing = await dbGet(`SELECT 1 FROM feed_thumbs WHERE user_id = ? AND outlet = ?`, [user.id, outlet]);
+  if (existing) {
+    await dbRun(`DELETE FROM feed_thumbs WHERE user_id = ? AND outlet = ?`, [user.id, outlet]);
+    return res.json({ ok: true, thumbed: false });
+  }
+  await dbRun(`INSERT INTO feed_thumbs (user_id, outlet) VALUES (?, ?)`, [user.id, outlet]);
+  res.json({ ok: true, thumbed: true });
+});
+
+app.get("/api/my/thumbs", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const rows = await dbAll(`SELECT outlet FROM feed_thumbs WHERE user_id = ?`, [user.id]);
+  res.json(rows.map(r => r.outlet));
+});
+
+// Transparent, read-only leaderboard — every reader sees the same aggregate
+// counts. Seeing this never changes anyone's own Wire order; only a
+// reader's own thumbs-ups (via POST /api/my/thumbs/:outlet above) affect
+// their own /api/dispatches ordering.
+app.get("/api/feeds/favorites", async (req, res) => {
+  const rows = await dbAll(
+    `SELECT outlet, COUNT(*) AS count FROM feed_thumbs GROUP BY outlet HAVING count > 0 ORDER BY count DESC, outlet ASC`
+  );
+  res.json(rows.map(r => ({ outlet: r.outlet, count: Number(r.count) })));
 });
 
 // ---------- "Most Popular on Bluesky" ----------

@@ -92,6 +92,11 @@
   .source-item .source-name a:hover{color:var(--wire-blue);text-decoration:underline;}
   .source-item .source-link{display:inline-block;font-family:var(--mono);font-size:10px;color:var(--wire-blue);border-bottom:none;padding:0;min-width:0;text-align:left;}
   .source-item .source-link + .source-link{margin-left:10px;}
+  .source-thumb{display:inline-flex;align-items:center;gap:3px;margin-left:10px;padding:0;border:none;background:none;cursor:pointer;font-size:11px;line-height:1;opacity:.45;filter:grayscale(1);vertical-align:middle;}
+  .source-thumb:hover{opacity:.8;}
+  .source-thumb.thumbed{opacity:1;filter:none;}
+  .source-thumb .thumb-count{font-family:var(--mono);font-size:9px;color:#999;}
+  .source-thumb.thumbed .thumb-count{color:var(--wire-red,#c1442c);}
   .sources-empty{font-family:var(--mono);font-size:11px;color:var(--text-muted);padding:12px 0;}
   .sources-filter-cta{flex:none;display:block;text-align:center;margin-top:10px;padding:9px 8px;
     border-top:1px solid var(--paper-hairline);font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
@@ -568,18 +573,23 @@ function siteRootFromUrl(url){
 
 let ALL_SOURCES = [];
 const SOURCES_OPEN = { publications: false, people: false };
+let FAVORITES_MAP = new Map(); // outlet -> aggregate thumbs count, everyone sees the same numbers
+let MY_THUMBS = new Set();     // outlets THIS reader has thumbed — only this affects their own wire order
 
 function renderSourceItem(s){
   const blueskyUrl = s.bluesky_handle ? `https://bsky.app/profile/${s.bluesky_handle}` : null;
   const siteUrl = s.subscribe_url || siteRootFromUrl(s.feed_url) || s.tip_url || blueskyUrl;
   const name = siteUrl ? `<a href="${siteUrl}" target="_blank" rel="noopener">${s.outlet}</a>` : s.outlet;
   const isPub = !!s.feed_url;
+  const thumbed = MY_THUMBS.has(s.outlet);
+  const count = FAVORITES_MAP.get(s.outlet) || 0;
   return `
     <div class="source-item">
       <span class="source-name">${name}</span>
       ${isPub && s.subscribe_url ? `<span class="source-link"><a href="${s.subscribe_url}" target="_blank" rel="noopener">Subscribe</a></span>` : ''}
       ${!isPub && blueskyUrl ? `<span class="source-link"><a href="${blueskyUrl}" target="_blank" rel="noopener">Bluesky</a></span>` : ''}
       ${s.tip_url ? `<span class="source-link"><a href="${s.tip_url}" target="_blank" rel="noopener">Tip</a></span>` : ''}
+      <button type="button" class="source-thumb${thumbed ? ' thumbed' : ''}" data-outlet="${s.outlet.replace(/"/g, '&quot;')}" title="${thumbed ? 'Un-thumb this source' : 'Thumbs up — moves this source up in your own wire, and adds to the reader favorites count everyone sees'}">👍${count > 0 ? `<span class="thumb-count">${count}</span>` : ''}</button>
     </div>
   `;
 }
@@ -620,14 +630,47 @@ function renderSourcesList(filterText){
   scrollEl.querySelectorAll('details.sources-group').forEach(d => {
     d.addEventListener('toggle', () => { SOURCES_OPEN[d.dataset.group] = d.open; });
   });
+  scrollEl.querySelectorAll('button.source-thumb').forEach(btn => {
+    btn.addEventListener('click', () => toggleThumb(btn.dataset.outlet));
+  });
+}
+
+async function loadMyThumbs(){
+  if (!CURRENT_USER){ MY_THUMBS = new Set(); return; }
+  try {
+    const res = await fetch(`${API}/api/my/thumbs`);
+    MY_THUMBS = res.ok ? new Set(await res.json()) : new Set();
+  } catch { MY_THUMBS = new Set(); }
+}
+
+async function toggleThumb(outlet){
+  if (!CURRENT_USER){ openCustomizeModal(); return; }
+  const res = await fetch(`${API}/api/my/thumbs/${encodeURIComponent(outlet)}`, { method: 'POST' });
+  if (!res.ok) return;
+  const data = await res.json();
+  const current = FAVORITES_MAP.get(outlet) || 0;
+  if (data.thumbed){
+    MY_THUMBS.add(outlet);
+    FAVORITES_MAP.set(outlet, current + 1);
+  } else {
+    MY_THUMBS.delete(outlet);
+    FAVORITES_MAP.set(outlet, Math.max(0, current - 1));
+  }
+  renderSourcesList(document.getElementById('sourcesSearchInput')?.value || '');
 }
 
 async function loadSources(){
   const el = document.getElementById('sourcesSection');
   if (!el) return;
-  const res = await fetch(`${API}/api/sources`);
-  const sources = await res.json();
+  const [sourcesRes, favRes] = await Promise.all([
+    fetch(`${API}/api/sources`),
+    fetch(`${API}/api/feeds/favorites`),
+  ]);
+  const sources = await sourcesRes.json();
+  const favorites = favRes.ok ? await favRes.json() : [];
   ALL_SOURCES = sources;
+  FAVORITES_MAP = new Map(favorites.map(f => [f.outlet, f.count]));
+  await loadMyThumbs();
   if (!sources.length){ el.innerHTML = ''; return; }
   el.innerHTML = `
     <h4>Sources</h4>
@@ -980,6 +1023,10 @@ async function checkSession(){
   document.getElementById('customizeLink').textContent = CURRENT_USER
     ? `CUSTOMIZE FEED (${CURRENT_USER.email})`
     : 'CUSTOMIZE FEED';
+  if (ALL_SOURCES.length){
+    await loadMyThumbs();
+    renderSourcesList(document.getElementById('sourcesSearchInput')?.value || '');
+  }
   if (CURRENT_USER){
     try {
       const lpRes = await fetch(`${API}/api/my/layout-prefs`);
@@ -1045,6 +1092,7 @@ async function requestMagicLink(){
 async function signOut(){
   await fetch(`${API}/api/auth/logout`, {method:'POST'});
   CURRENT_USER = null;
+  MY_THUMBS = new Set();
   document.getElementById('customizeLink').textContent = 'CUSTOMIZE FEED';
   closeCustomizeModal();
   loadDispatches();
