@@ -400,7 +400,7 @@
       <option value="rightwing">Right Wing</option>
     </select>
 
-    <p style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;margin:0 0 6px;">SHOW THESE SECTIONS</p>
+    <p style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;margin:0 0 6px;">SECTIONS — SHOW &amp; ORDER</p>
     <div id="componentToggleList" style="margin-bottom:16px;"></div>
 
     <button onclick="saveViewPrefs()" style="width:100%;padding:12px 0;font-weight:700;font-size:14.5px;background:var(--support-teal);color:#F3EFE4;border:none;border-radius:3px;cursor:pointer;">Save</button>
@@ -443,13 +443,34 @@ const COMPONENT_DEFS = [
   { key: "resources",  label: "Resources",                                   selector: "#resourcesBottomBox" },
 ];
 const HIDDEN_KEY = "n38-hidden-components";
+const ORDER_KEY = "n38-component-order";
 let HIDDEN_COMPONENTS = [];
 try { HIDDEN_COMPONENTS = JSON.parse(localStorage.getItem(HIDDEN_KEY) || "[]"); } catch { HIDDEN_COMPONENTS = []; }
+// COMPONENT_ORDER holds keys in the reader's preferred order. Anything not
+// listed (new sections added later, or a fresh reader with nothing saved
+// yet) keeps its default position from COMPONENT_DEFS — orderedComponentDefs()
+// below is the single place that resolves "saved order + defaults" into the
+// actual list to render/apply, so nothing else has to re-derive that logic.
+let COMPONENT_ORDER = [];
+try { COMPONENT_ORDER = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]"); } catch { COMPONENT_ORDER = []; }
+
+function orderedComponentDefs(){
+  const byKey = Object.fromEntries(COMPONENT_DEFS.map(c => [c.key, c]));
+  const seen = new Set();
+  const ordered = [];
+  COMPONENT_ORDER.forEach(key => {
+    if (byKey[key] && !seen.has(key)) { ordered.push(byKey[key]); seen.add(key); }
+  });
+  COMPONENT_DEFS.forEach(c => { if (!seen.has(c.key)) { ordered.push(c); seen.add(c.key); } });
+  return ordered;
+}
 
 function applyHiddenComponents(){
-  COMPONENT_DEFS.forEach(c => {
+  const ordered = orderedComponentDefs();
+  ordered.forEach((c, i) => {
     document.querySelectorAll(c.selector).forEach(el => {
       el.classList.toggle("component-hidden", HIDDEN_COMPONENTS.includes(c.key));
+      el.style.order = i;
     });
   });
 }
@@ -462,13 +483,36 @@ function openViewModal(){
   let saved = "drudge";
   try { saved = localStorage.getItem(VIEW_KEY) || "drudge"; } catch {}
   sel.value = saved;
-  document.getElementById("componentToggleList").innerHTML = COMPONENT_DEFS.map(c => `
-    <label style="display:flex;align-items:center;gap:9px;padding:6px 0;font-family:var(--mono);font-size:12.5px;">
-      <input type="checkbox" data-comp="${c.key}" ${HIDDEN_COMPONENTS.includes(c.key) ? "" : "checked"}>
-      ${c.label}
-    </label>
-  `).join("");
+  renderComponentToggleList();
   document.getElementById("viewSignedOutNote").style.display = CURRENT_USER ? "none" : "block";
+}
+
+function renderComponentToggleList(){
+  const ordered = orderedComponentDefs();
+  document.getElementById("componentToggleList").innerHTML = ordered.map((c, i) => `
+    <div style="display:flex;align-items:center;gap:9px;padding:6px 0;font-family:var(--mono);font-size:12.5px;">
+      <label style="display:flex;align-items:center;gap:9px;flex:1;">
+        <input type="checkbox" data-comp="${c.key}" ${HIDDEN_COMPONENTS.includes(c.key) ? "" : "checked"}>
+        ${c.label}
+      </label>
+      <button type="button" onclick="moveComponent('${c.key}', -1)" ${i === 0 ? "disabled" : ""} aria-label="Move up" style="background:none;border:1px solid var(--paper-hairline);border-radius:3px;width:26px;height:26px;cursor:${i === 0 ? "default" : "pointer"};opacity:${i === 0 ? ".35" : "1"};font-size:12px;">↑</button>
+      <button type="button" onclick="moveComponent('${c.key}', 1)" ${i === ordered.length - 1 ? "disabled" : ""} aria-label="Move down" style="background:none;border:1px solid var(--paper-hairline);border-radius:3px;width:26px;height:26px;cursor:${i === ordered.length - 1 ? "default" : "pointer"};opacity:${i === ordered.length - 1 ? ".35" : "1"};font-size:12px;">↓</button>
+    </div>
+  `).join("");
+}
+
+function moveComponent(key, dir){
+  // Preserve whatever's currently checked in the modal before re-rendering
+  // (reorder shouldn't discard an unsaved show/hide edit mid-modal-session).
+  const checks = document.querySelectorAll('#componentToggleList input[data-comp]');
+  HIDDEN_COMPONENTS = Array.from(checks).filter(c => !c.checked).map(c => c.dataset.comp);
+  const ordered = orderedComponentDefs().map(c => c.key);
+  const idx = ordered.indexOf(key);
+  const swapWith = idx + dir;
+  if (idx < 0 || swapWith < 0 || swapWith >= ordered.length) return;
+  [ordered[idx], ordered[swapWith]] = [ordered[swapWith], ordered[idx]];
+  COMPONENT_ORDER = ordered;
+  renderComponentToggleList();
 }
 function closeViewModal(){ document.getElementById("viewOverlay").style.display = "none"; }
 document.getElementById("viewOverlay").addEventListener("click", e => { if (e.target.id === "viewOverlay") closeViewModal(); });
@@ -477,7 +521,9 @@ async function saveViewPrefs(){
   const view = document.getElementById("viewSelectModal").value;
   const checks = document.querySelectorAll('#componentToggleList input[data-comp]');
   HIDDEN_COMPONENTS = Array.from(checks).filter(c => !c.checked).map(c => c.dataset.comp);
+  COMPONENT_ORDER = orderedComponentDefs().map(c => c.key);
   try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(HIDDEN_COMPONENTS)); } catch {}
+  try { localStorage.setItem(ORDER_KEY, JSON.stringify(COMPONENT_ORDER)); } catch {}
   applyView(view);
   applyHiddenComponents();
   const msgEl = document.getElementById("viewSaveMsg");
@@ -485,7 +531,7 @@ async function saveViewPrefs(){
     msgEl.textContent = "Saving...";
     await fetch(`${API}/api/my/layout-prefs`, {
       method: "POST", headers: {"Content-Type":"application/json"},
-      body: JSON.stringify({ view, hiddenComponents: HIDDEN_COMPONENTS })
+      body: JSON.stringify({ view, hiddenComponents: HIDDEN_COMPONENTS, order: COMPONENT_ORDER })
     });
     msgEl.textContent = "✓ Saved — synced to your account.";
   } else {
@@ -919,8 +965,12 @@ async function checkSession(){
           if (Array.isArray(prefs.hiddenComponents)){
             HIDDEN_COMPONENTS = prefs.hiddenComponents;
             try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(HIDDEN_COMPONENTS)); } catch {}
-            applyHiddenComponents();
           }
+          if (Array.isArray(prefs.order)){
+            COMPONENT_ORDER = prefs.order;
+            try { localStorage.setItem(ORDER_KEY, JSON.stringify(COMPONENT_ORDER)); } catch {}
+          }
+          applyHiddenComponents();
         }
       }
     } catch { /* fall back to whatever localStorage already applied */ }

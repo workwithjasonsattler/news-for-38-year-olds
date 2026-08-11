@@ -637,29 +637,51 @@ app.post("/api/my/source-tiers", async (req, res) => {
 // (handled entirely client-side — nothing hits these routes when signed out).
 const VALID_VIEWS = new Set(["drudge", "bbs", "rss", "rightwing"]);
 
+// hidden_components historically stored a flat array of hidden keys, e.g.
+// ["videos","resources"]. It now stores { hidden: [...], order: [...] } so a
+// reader can also reorder sections, not just hide them. Old rows saved before
+// this feature existed are still a plain array — parseLayoutBlob() normalizes
+// either shape into { hidden, order } so nothing breaks on old saved prefs.
+function parseLayoutBlob(raw){
+  let parsed = [];
+  try { parsed = JSON.parse(raw || "[]"); } catch { /* ignore */ }
+  if (Array.isArray(parsed)) return { hidden: parsed, order: [] };
+  if (parsed && typeof parsed === "object") {
+    return {
+      hidden: Array.isArray(parsed.hidden) ? parsed.hidden : [],
+      order: Array.isArray(parsed.order) ? parsed.order : [],
+    };
+  }
+  return { hidden: [], order: [] };
+}
+
 app.get("/api/my/layout-prefs", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
   const row = await dbGet(`SELECT view, hidden_components FROM user_layout_prefs WHERE user_id = ?`, [user.id]);
   if (!row) return res.json({ saved: false });
-  let hiddenComponents = [];
-  try { hiddenComponents = JSON.parse(row.hidden_components || "[]"); } catch { /* ignore */ }
-  res.json({ saved: true, view: row.view || "drudge", hiddenComponents });
+  const { hidden, order } = parseLayoutBlob(row.hidden_components);
+  res.json({ saved: true, view: row.view || "drudge", hiddenComponents: hidden, order });
 });
 
 app.post("/api/my/layout-prefs", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
-  let { view, hiddenComponents } = req.body || {};
+  let { view, hiddenComponents, order } = req.body || {};
   if (!VALID_VIEWS.has(view)) view = "drudge";
   if (!Array.isArray(hiddenComponents)) hiddenComponents = [];
   hiddenComponents = hiddenComponents
     .filter(c => typeof c === "string" && c.length <= 50)
     .slice(0, 20);
+  if (!Array.isArray(order)) order = [];
+  order = order
+    .filter(c => typeof c === "string" && c.length <= 50)
+    .slice(0, 20);
+  const blob = JSON.stringify({ hidden: hiddenComponents, order });
   await dbRun(
     `INSERT INTO user_layout_prefs (user_id, view, hidden_components, updated_at) VALUES (?, ?, ?, datetime('now'))
      ON CONFLICT(user_id) DO UPDATE SET view = excluded.view, hidden_components = excluded.hidden_components, updated_at = excluded.updated_at`,
-    [user.id, view, JSON.stringify(hiddenComponents)]
+    [user.id, view, blob]
   );
   res.json({ ok: true });
 });
