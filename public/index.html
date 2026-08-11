@@ -160,6 +160,10 @@
   .wire-cross-promo li{padding:2px 0;font-family:Georgia,'Times New Roman',serif;font-size:12.5px;border-bottom:none;}
   .wire-cross-promo a{color:var(--wire-blue);font-weight:700;}
   .wire-cross-promo a:hover{text-decoration:underline;}
+  .wire-headlines-spray{margin-top:8px;padding-top:8px;border-top:1px solid #ddd;}
+  .headlines-spray-follow-btn{display:inline-block;margin-top:4px;padding:5px 12px;background:var(--wire-red,#c1442c);color:#fff;font-family:var(--mono,monospace);font-size:11px;text-transform:uppercase;letter-spacing:.03em;text-decoration:none;border-radius:3px;}
+  .headlines-spray-follow-btn:hover{opacity:.85;}
+  .headlines-spray-count{display:block;margin-top:4px;font-family:var(--mono,monospace);font-size:10px;color:#888;}
   .wire-follows-teaser{margin-top:8px;padding-top:8px;border-top:1px solid #ddd;}
   .wire-follows-teaser ul{list-style:none;margin:0;padding:0;display:flex;flex-wrap:wrap;gap:6px;}
   .wire-follows-teaser li{padding:0;}
@@ -721,6 +725,21 @@ async function loadActionsFeed(){
   }
 }
 
+async function loadHeadlinesSpray(){
+  const box = document.getElementById('headlinesSprayBox');
+  const count = document.getElementById('headlinesSprayCount');
+  if (!box || !count) return;
+  try {
+    const res = await fetch(`${API}/api/mixes/headlines-best-in-the-world`);
+    if (!res.ok){ box.style.display = 'none'; return; }
+    const spray = await res.json();
+    count.textContent = spray.clone_count ? `${spray.clone_count} follower${spray.clone_count === 1 ? '' : 's'}` : '';
+    box.style.display = '';
+  } catch (err) {
+    box.style.display = 'none';
+  }
+}
+
 async function loadFollowsTeaser(){
   const box = document.getElementById('followsBox');
   const list = document.getElementById('followsTopicList');
@@ -832,6 +851,11 @@ function renderWire(){
             <li><a href="https://stopthetrillionaires.com/ai-bubble" target="_blank" rel="noopener">How Big Is the AI Bubble?</a></li>
           </ul>
         </div>
+        <div class="wire-headlines-spray" id="headlinesSprayBox" style="display:none;">
+          <div class="wire-cross-promo-label">🌊 Headlines: Best in the World <span style="font-weight:400;text-transform:none;letter-spacing:0;">— the official Spray</span></div>
+          <a href="/spray.html?spray=headlines-best-in-the-world" class="headlines-spray-follow-btn" id="headlinesSprayFollowLink">Follow this Spray</a>
+          <span class="headlines-spray-count" id="headlinesSprayCount"></span>
+        </div>
         <div class="wire-follows-teaser" id="followsBox" style="display:none;">
           <div class="wire-cross-promo-label">Follows <a href="/spray.html" style="font-weight:400;text-transform:none;letter-spacing:0;color:var(--wire-blue);text-decoration:underline;">— build your own &rarr;</a></div>
           <ul id="followsTopicList"></ul>
@@ -890,6 +914,7 @@ function renderWire(){
     });
   }
   loadActionsFeed();
+  loadHeadlinesSpray();
   loadFollowsTeaser();
   loadFrontpageFeed();
   loadClimateFeed();

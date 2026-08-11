@@ -247,6 +247,7 @@ async function initSchema() {
     `ALTER TABLE headlines ADD COLUMN subhead TEXT`,
     `ALTER TABLE feed_mixes ADD COLUMN topic_id INTEGER`,
     `ALTER TABLE feed_mixes ADD COLUMN clone_count INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE feed_mixes ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
   }
@@ -395,6 +396,29 @@ const STARTER_YOUTUBE_CHANNELS = [
 
 // Idempotent: matches an existing outlet by name (case-insensitive) first
 // and just attaches a channel id if it's missing one, rather than creating
+// ---------- Sprays® Branding: official "Headlines: Best in the World" ----------
+// The flagship Spray. Per the locked decision, this is NOT a hand-picked
+// subset — it IS the existing default blend of curated outlets already
+// powering the unfiltered Wire, auto-synced rather than a separately
+// maintained source list that could drift out of sync. It's implemented as
+// a single seeded, unchanging feed_mixes row (is_official=1) whose actual
+// sources/items are resolved LIVE at request time in resolveMixSources()
+// (see below) rather than stored in feed_mix_sources — so there is nothing
+// to keep in sync, it always reflects whatever outlets currently have
+// dispatches live.
+const OFFICIAL_HEADLINES_SPRAY_SLUG = "headlines-best-in-the-world";
+async function seedOfficialHeadlinesSpray() {
+  const existing = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [OFFICIAL_HEADLINES_SPRAY_SLUG]);
+  if (existing) return;
+  // creator_user_id has no FK constraint; 0 is a safe "system" sentinel since
+  // real users.id starts at 1 (AUTOINCREMENT) and never reaches 0.
+  await dbRun(
+    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, is_official)
+     VALUES (?, 'Headlines: Best in the World', 0, NULL, 1, 1)`,
+    [OFFICIAL_HEADLINES_SPRAY_SLUG]
+  );
+}
+
 // a duplicate row. Only inserts a new row when no matching outlet exists.
 async function seedYoutubeChannels() {
   const existingFeeds = await dbAll(`SELECT id, outlet, youtube_channel_id FROM feeds`);
@@ -808,7 +832,23 @@ async function generateUniqueMixSlug(name) {
 // not-yet-approved custom sources (still their own reading list); public
 // viewers only ever see approved ones, matching decision #5 in the scoping
 // doc — approval gates visibility in OTHERS' view, not the owner's own.
-async function resolveMixSources(mixId, { includePending = false } = {}) {
+async function resolveMixSources(mix, { includePending = false } = {}) {
+  // mix may be passed as either the full row (preferred) or a bare id for
+  // backward compatibility with any caller that hasn't been updated.
+  const mixId = typeof mix === "object" ? mix.id : mix;
+  const isOfficial = typeof mix === "object" && !!mix.is_official;
+
+  if (isOfficial) {
+    // Auto-synced: sources = every outlet actually contributing to the
+    // current unfiltered wire right now (not a stored, driftable list).
+    const outletRows = await dbAll(`SELECT DISTINCT outlet FROM dispatches ORDER BY outlet ASC`);
+    const items = await dbAll(`SELECT * FROM dispatches ORDER BY pinned DESC, date DESC, id DESC LIMIT 60`);
+    return {
+      sources: outletRows.map((r) => ({ source_type: "admin_outlet", outlet: r.outlet, pending: false })),
+      items,
+    };
+  }
+
   const sourceRows = await dbAll(
     `SELECT fms.*, ucs.name AS custom_name, ucs.feed_url AS custom_feed_url, ucs.submission_status AS custom_status
      FROM feed_mix_sources fms
@@ -998,13 +1038,14 @@ app.get("/api/mixes/:slug", async (req, res) => {
   if (!mix.is_public && !isOwner) return res.status(404).json({ error: "mix not found" });
 
   const topic = mix.topic_id ? await dbGet(`SELECT name, slug FROM topics WHERE id = ?`, [mix.topic_id]) : null;
-  const { sources, items } = await resolveMixSources(mix.id, { includePending: isOwner });
+  const { sources, items } = await resolveMixSources(mix, { includePending: isOwner });
   res.json({
     slug: mix.slug,
     name: mix.name,
     location_label: mix.location_label,
     is_public: !!mix.is_public,
     is_owner: isOwner,
+    is_official: !!mix.is_official,
     created_at: mix.created_at,
     clone_count: mix.clone_count,
     topic: topic ? { name: topic.name, slug: topic.slug } : null,
@@ -1022,13 +1063,18 @@ app.post("/api/mixes/:slug/clone", async (req, res) => {
   const isOwner = user.id === mix.creator_user_id;
   if (!mix.is_public && !isOwner) return res.status(404).json({ error: "mix not found" });
 
-  const sourceRows = await dbAll(
-    `SELECT fms.*, ucs.name AS custom_name, ucs.feed_url AS custom_feed_url, ucs.submission_status AS custom_status
-     FROM feed_mix_sources fms
-     LEFT JOIN user_custom_sources ucs ON ucs.id = fms.custom_source_id
-     WHERE fms.mix_id = ? ORDER BY fms.sort_order ASC, fms.id ASC`,
-    [mix.id]
-  );
+  // Official Spray: no stored feed_mix_sources rows to read — clone the
+  // live outlet list (whatever's actually contributing to the wire right
+  // now), same auto-sync principle as resolveMixSources() above.
+  const sourceRows = mix.is_official
+    ? (await dbAll(`SELECT DISTINCT outlet FROM dispatches`)).map((r) => ({ source_type: "admin_outlet", outlet: r.outlet }))
+    : await dbAll(
+        `SELECT fms.*, ucs.name AS custom_name, ucs.feed_url AS custom_feed_url, ucs.submission_status AS custom_status
+         FROM feed_mix_sources fms
+         LEFT JOIN user_custom_sources ucs ON ucs.id = fms.custom_source_id
+         WHERE fms.mix_id = ? ORDER BY fms.sort_order ASC, fms.id ASC`,
+        [mix.id]
+      );
 
   let outletsAdded = 0, customAdded = 0, customSkipped = 0;
   const existingCount = (await dbGet(`SELECT COUNT(*) AS n FROM user_custom_sources WHERE user_id = ?`, [user.id])).n;
@@ -1135,7 +1181,7 @@ app.delete("/api/admin/topics/:id", requireAdmin, async (req, res) => {
 // tie-broken by most recent.
 app.get("/api/mixes", async (req, res) => {
   const { topic, location } = req.query;
-  const conditions = [`fm.is_public = 1`];
+  const conditions = [`fm.is_public = 1`, `fm.is_official = 0`];
   const params = [];
 
   if (topic) {
@@ -2180,6 +2226,7 @@ async function start() {
       await migrateDateFormats();
       await autoSeedIfEmpty();
       await seedYoutubeChannels();
+      await seedOfficialHeadlinesSpray();
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       return;
     } catch (err) {
