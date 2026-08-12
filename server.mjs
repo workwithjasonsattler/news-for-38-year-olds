@@ -405,6 +405,7 @@ const STARTER_YOUTUBE_CHANNELS = [
   { outlet: "emptywheel", youtube_channel_id: "emptywheel" },
   { outlet: "The Daily Show", youtube_channel_id: "TheDailyShow" },
   { outlet: "Last Week Tonight", youtube_channel_id: "LastWeekTonight" },
+  { outlet: "Majority Report", youtube_channel_id: "TheMajorityReport" },
 ];
 
 // Idempotent: matches an existing outlet by name (case-insensitive) first
@@ -454,6 +455,20 @@ async function seedYoutubeChannels() {
     inserted++;
   }
   if (attached || inserted) console.log(`YouTube channel seed: attached ${attached} to existing outlets, inserted ${inserted} new row(s).`);
+}
+
+// Degenerate Art's beehiiv RSS URL has been stale/erroring since it was
+// added and Jason confirmed this is effectively permanent (beehiiv appears
+// to be blocking non-browser traffic on this feed) — dropping the RSS pull
+// entirely rather than continuing to retry a dead feed. The outlet row and
+// its YouTube channel (seeded above) stay intact; this only clears feed_url
+// so the 20-min import job stops attempting it. Idempotent: no-ops once
+// feed_url is already null.
+async function dropDegenerateArtRss() {
+  const result = await dbRun(
+    `UPDATE feeds SET feed_url = NULL WHERE outlet = 'Degenerate Art' AND feed_url IS NOT NULL`
+  );
+  if (result.changes) console.log("Dropped Degenerate Art's stale beehiiv RSS feed_url (permanent block, per Jason).");
 }
 
 // ---------- express app ----------
@@ -2425,6 +2440,7 @@ async function start() {
       await migrateDateFormats();
       await autoSeedIfEmpty();
       await seedYoutubeChannels();
+      await dropDegenerateArtRss();
       await seedOfficialHeadlinesSpray();
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       return;

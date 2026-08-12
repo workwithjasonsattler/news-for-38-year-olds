@@ -429,7 +429,10 @@
       <option value="rightwing">Right Wing</option>
     </select>
 
-    <p style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;margin:0 0 6px;">SECTIONS — SHOW &amp; ORDER</p>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:0 0 6px;">
+      <p style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;margin:0;">SECTIONS — SHOW &amp; ORDER</p>
+      <button type="button" onclick="resetComponentPrefs()" style="font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;background:none;border:none;color:var(--wire-blue);cursor:pointer;padding:0;">Reset to default</button>
+    </div>
     <div id="componentToggleList" style="margin-bottom:16px;"></div>
 
     <button onclick="saveViewPrefs()" style="width:100%;padding:12px 0;font-weight:700;font-size:14.5px;background:var(--support-teal);color:#F3EFE4;border:none;border-radius:3px;cursor:pointer;">Save</button>
@@ -562,6 +565,17 @@ function moveComponent(key, dir){
   [ordered[idx], ordered[swapWith]] = [ordered[swapWith], ordered[idx]];
   COMPONENT_ORDER = ordered;
   renderComponentToggleList();
+}
+// Resets the modal's staged show/hide + order state back to defaults (all
+// sections visible, COMPONENT_DEFS' own order). Matches the existing
+// edit-then-Save flow used elsewhere in this modal — it doesn't touch
+// localStorage or the account until Save is pressed, so a reader can back
+// out of a reset by just closing the modal without saving.
+function resetComponentPrefs(){
+  HIDDEN_COMPONENTS = [];
+  COMPONENT_ORDER = [];
+  renderComponentToggleList();
+  document.getElementById("viewSaveMsg").textContent = "Reset — click Save to apply.";
 }
 function closeViewModal(){ document.getElementById("viewOverlay").style.display = "none"; }
 document.getElementById("viewOverlay").addEventListener("click", e => { if (e.target.id === "viewOverlay") closeViewModal(); });
