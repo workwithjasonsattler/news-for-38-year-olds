@@ -141,15 +141,18 @@
 
   .video-item{padding:6px 0 !important;}
   .video-item a{display:block;color:#111 !important;font-weight:400 !important;}
-  .video-item img{display:block;width:100%;max-height:90px;object-fit:cover;border-radius:2px;margin-bottom:4px;}
-  .video-item .video-title{display:block;font-size:13px;line-height:1.35;}
-  .video-item a:hover .video-title{text-decoration:underline;}
-  .video-item .wire-meta{display:block;margin-top:2px;}
+  .video-thumb{position:relative;display:block;overflow:hidden;border-radius:3px;margin-bottom:6px;background:#111;}
+  .video-thumb img{display:block;width:100%;max-height:110px;object-fit:cover;transition:transform .25s ease;}
+  .video-item a:hover .video-thumb img{transform:scale(1.05);}
+  .video-thumb::after{content:"";position:absolute;left:8px;bottom:8px;width:24px;height:24px;border-radius:50%;background:var(--wire-red);box-shadow:0 1px 4px rgba(0,0,0,.4);}
+  .video-thumb::before{content:"";position:absolute;left:17px;bottom:16px;width:0;height:0;border-style:solid;border-width:4.5px 0 4.5px 7.5px;border-color:transparent transparent transparent #fff;z-index:1;}
+  .video-item .video-title{display:block;font-family:Georgia,'Times New Roman',serif;font-weight:700;font-size:14.5px;line-height:1.3;color:#111;transition:color .15s ease;}
+  .video-item a:hover .video-title{color:var(--wire-red);text-decoration:none;}
+  .video-item .video-channel{display:block;margin-top:4px;font-family:var(--mono, monospace);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--wire-red);opacity:.75;}
 
-  /* Videos box spans the full grid width (3 columns) so its items lay out
-     as their own 3-col x 3-row grid, filled column-first — otherwise a
-     single narrow column here leaves the rest of that row empty. */
-  #videosBox{grid-column:1 / -1;padding-left:0 !important;padding-right:0 !important;}
+  /* Videos row sits full-width above the wire-new-grid (see markup) so its
+     items lay out as their own 3-col x 3-row grid, filled column-first. */
+  #videosBox{padding-left:0 !important;padding-right:0 !important;margin-bottom:20px;}
   #videosList{display:grid;grid-template-columns:repeat(3, 1fr);grid-template-rows:repeat(3, auto);grid-auto-flow:column;column-gap:24px;}
   #videosList .video-item{border-bottom:none;}
   @media (max-width:820px){
@@ -449,13 +452,13 @@ function applyView(view){
 // class toggle, and a future mobile client can all share the same source
 // of truth for "what sections exist."
 const COMPONENT_DEFS = [
+  { key: "videos",     label: "Videos",                                      selector: "#videosBox" },
   { key: "headlines",  label: "Headlines",                                   selector: "#headlinesCol" },
   { key: "actions",    label: "What You Can Do About It",                    selector: "#actionsBox" },
   { key: "bluesky",    label: "Most Popular on Bluesky",                     selector: "#blueskyPopularBox" },
   { key: "climate",    label: "Climate Watch",                               selector: "#climateBox" },
   { key: "frontpage",  label: "Frontpage",                                   selector: "#frontpageBox" },
   { key: "sources",    label: "Sources",                                     selector: "#sourcesSection" },
-  { key: "videos",     label: "Videos",                                      selector: "#videosBox" },
   { key: "columns",    label: "Indie Media / Data Centers / People Power",   selector: ".wire-columns" },
   { key: "resources",  label: "Resources",                                   selector: "#resourcesBottomBox" },
 ];
@@ -739,10 +742,10 @@ async function loadVideoFeed(){
     list.innerHTML = items.slice(0, 9).map(item => `
       <li class="video-item">
         <a href="${item.url}" target="_blank" rel="noopener">
-          ${item.thumbnail ? `<img src="${item.thumbnail}" alt="" loading="lazy">` : ''}
+          ${item.thumbnail ? `<span class="video-thumb"><img src="${item.thumbnail}" alt="" loading="lazy"></span>` : ''}
           <span class="video-title">${item.title}</span>
         </a>
-        <span class="wire-meta">${item.channel}</span>
+        <span class="video-channel">${item.channel}</span>
       </li>
     `).join('');
     box.style.display = '';
@@ -882,6 +885,11 @@ function renderWire(){
   rest.forEach(d => bySection[sectionFor(d.beat)].push(d));
 
   wire.innerHTML = `
+    <aside class="wire-resources-box" id="videosBox" style="display:none;">
+      <h4>Videos <a href="/videos.html" style="font-family:var(--mono);font-size:10px;font-style:normal;font-weight:400;text-transform:uppercase;color:var(--wire-blue);text-decoration:underline;letter-spacing:.03em;">See all &rarr;</a></h4>
+      <ul id="videosList"></ul>
+    </aside>
+
     <div class="wire-new-grid">
       <div class="wire-alsobig" id="headlinesCol">
         ${alsoBig.map(d => `
@@ -934,11 +942,6 @@ function renderWire(){
       </aside>
 
       <div class="wire-sources" id="sourcesSection"></div>
-
-      <aside class="wire-resources-box" id="videosBox" style="display:none;">
-        <h4>Videos <a href="/videos.html" style="font-family:var(--mono);font-size:10px;font-style:normal;font-weight:400;text-transform:uppercase;color:var(--wire-blue);text-decoration:underline;letter-spacing:.03em;">See all &rarr;</a></h4>
-        <ul id="videosList"></ul>
-      </aside>
     </div>
 
     <div class="wire-columns">
