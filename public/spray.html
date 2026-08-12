@@ -87,6 +87,8 @@
   .s-create-msg{font-family:var(--mono);font-size:12px;margin-top:10px;}
   .s-signed-out-note{font-family:var(--mono);font-size:13px;color:var(--text-muted);padding:14px 0;}
   .s-signed-out-note a{color:var(--wire-blue);text-decoration:underline;cursor:pointer;}
+  /* honeypot — off-screen, not display:none/visibility:hidden (some bots check for those) */
+  .s-hp{position:absolute;left:-9999px;top:-9999px;}
 </style>
 </head>
 <body>
@@ -178,6 +180,26 @@
 
         <label>Curated outlets</label>
         <div id="outletCheckboxes" class="s-checkbox-list">Loading sources…</div>
+        <p style="font-size:12px;color:var(--text-muted);margin:2px 0 14px;">Don't see an outlet or journalist that belongs here? <a onclick="toggleSuggestSource()" style="color:var(--wire-blue);text-decoration:underline;cursor:pointer;">Suggest one</a> — it goes into a review queue before it's a real, followable source for everyone.</p>
+
+        <div id="suggestSourceBox" style="display:none;border:1px solid #ddd;padding:14px;margin:0 0 16px;border-radius:2px;">
+          <div class="s-inline-add" style="margin-bottom:6px;">
+            <select id="suggestSourceType" style="flex:0 0 130px;" onchange="updateSuggestSourceFields()">
+              <option value="outlet">Outlet</option>
+              <option value="journalist">Journalist</option>
+            </select>
+            <input type="text" id="suggestSourceName" placeholder="Name">
+          </div>
+          <div class="s-inline-add" id="suggestFeedUrlRow" style="margin-bottom:6px;">
+            <input type="text" id="suggestSourceFeedUrl" placeholder="RSS/Atom feed URL">
+          </div>
+          <div class="s-inline-add" style="margin-bottom:0;">
+            <input type="text" id="suggestSourceHandle" placeholder="Bluesky handle (optional for outlets, required for journalists)">
+            <input type="text" id="suggestSourceWebsite" name="website" class="s-hp" tabindex="-1" autocomplete="off">
+            <button type="button" onclick="submitSourceSuggestion()">Suggest</button>
+          </div>
+          <p class="s-create-msg" id="suggestSourceMsg"></p>
+        </div>
 
         <label>Your own sources</label>
         <div id="customSourceCheckboxes" class="s-checkbox-list">
@@ -278,6 +300,62 @@ async function proposeTopic(){
   } catch (err) {
     msg.style.color = 'var(--wire-red)';
     msg.textContent = 'Something went wrong.';
+  }
+}
+
+// ---------- Feature A: suggest an outlet or journalist ----------
+function toggleSuggestSource(){
+  const box = document.getElementById('suggestSourceBox');
+  box.style.display = (box.style.display === 'none') ? 'block' : 'none';
+  if (box.style.display === 'block') updateSuggestSourceFields();
+}
+
+function updateSuggestSourceFields(){
+  const type = document.getElementById('suggestSourceType').value;
+  const feedUrlRow = document.getElementById('suggestFeedUrlRow');
+  const handleInput = document.getElementById('suggestSourceHandle');
+  feedUrlRow.style.display = (type === 'journalist') ? 'none' : 'flex';
+  handleInput.placeholder = (type === 'journalist')
+    ? 'Bluesky handle (required)'
+    : 'Bluesky handle (optional for outlets, required for journalists)';
+}
+
+async function submitSourceSuggestion(){
+  const msg = document.getElementById('suggestSourceMsg');
+  const type = document.getElementById('suggestSourceType').value;
+  const outlet = document.getElementById('suggestSourceName').value.trim();
+  const feed_url = document.getElementById('suggestSourceFeedUrl').value.trim();
+  const bluesky_handle = document.getElementById('suggestSourceHandle').value.trim();
+  const website = document.getElementById('suggestSourceWebsite').value; // honeypot
+
+  if (!outlet){ msg.style.color = 'var(--wire-red)'; msg.textContent = 'A name is required.'; return; }
+  if (type === 'journalist' && !bluesky_handle){
+    msg.style.color = 'var(--wire-red)'; msg.textContent = 'Journalist suggestions need a Bluesky handle.'; return;
+  }
+  if (type === 'outlet' && !feed_url && !bluesky_handle){
+    msg.style.color = 'var(--wire-red)'; msg.textContent = 'Outlet suggestions need a feed URL, a Bluesky handle, or both.'; return;
+  }
+
+  msg.style.color = '#666'; msg.textContent = 'Checking…';
+  try {
+    const res = await fetch(`${API}/api/feeds/suggest`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ outlet, type, feed_url, bluesky_handle, website })
+    });
+    const data = await res.json();
+    if (res.ok){
+      msg.style.color = 'green';
+      msg.textContent = 'Thanks — that suggestion is in the review queue.';
+      document.getElementById('suggestSourceName').value = '';
+      document.getElementById('suggestSourceFeedUrl').value = '';
+      document.getElementById('suggestSourceHandle').value = '';
+    } else {
+      msg.style.color = 'var(--wire-red)';
+      msg.textContent = data.error || 'Something went wrong — try again.';
+    }
+  } catch (err) {
+    msg.style.color = 'var(--wire-red)';
+    msg.textContent = 'Something went wrong — try again.';
   }
 }
 

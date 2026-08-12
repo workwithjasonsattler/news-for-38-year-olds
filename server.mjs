@@ -1979,6 +1979,94 @@ app.delete("/api/admin/custom-sources/:id", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+// ---------- Feature A: suggest an outlet or journalist (public, unified feeds queue) ----------
+// A PUBLIC suggestion — becomes a real shared outlet/journalist row in the
+// curated `feeds` table (submission_status='pending'), NOT the private
+// user_custom_sources flow. Reuses the exact same submission_status/approve
+// pattern already used for reader-suggested YouTube channels — a suggested
+// outlet/journalist just lands in the same pending queue admin already sees.
+async function blueskyHandleResolves(handle) {
+  const url = `https://public.api.bsky.app/xrpc/app.bsky.actor.getProfile?actor=${encodeURIComponent(handle)}`;
+  const resp = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!resp.ok) return false;
+  const data = await resp.json();
+  return Boolean(data && data.did);
+}
+
+const feedSuggestCooldowns = new Map(); // ip -> last-submit timestamp (separate from the YouTube suggest cooldown map)
+
+app.post("/api/feeds/suggest", async (req, res) => {
+  const { outlet, type, feed_url, bluesky_handle, website } = req.body || {};
+  if (website) return res.json({ ok: true }); // honeypot tripped — pretend success, do nothing
+
+  const outletName = String(outlet || "").trim();
+  if (!outletName) return res.status(400).json({ error: "A name for the outlet or journalist is required." });
+  const feedType = type === "journalist" ? "journalist" : "outlet";
+  const feedUrl = String(feed_url || "").trim();
+  const handle = normalizeHandle(bluesky_handle);
+
+  if (feedType === "journalist" && !handle) {
+    return res.status(400).json({ error: "Journalist suggestions need a Bluesky handle." });
+  }
+  if (feedType === "outlet" && !feedUrl && !handle) {
+    return res.status(400).json({ error: "Outlet suggestions need an RSS feed URL, a Bluesky handle, or both." });
+  }
+  if (feedUrl && !/^https?:\/\//i.test(feedUrl)) {
+    return res.status(400).json({ error: "Feed URL must be a valid http(s) URL." });
+  }
+
+  const ip = req.ip || req.headers["x-forwarded-for"] || "unknown";
+  const last = feedSuggestCooldowns.get(ip) || 0;
+  if (Date.now() - last < SUGGEST_COOLDOWN_MS) {
+    return res.status(429).json({ error: "Please wait a moment before suggesting another source." });
+  }
+
+  // dedupe against anything already in the curated table, pending or approved
+  const existingByName = await dbGet(`SELECT id FROM feeds WHERE LOWER(outlet) = LOWER(?)`, [outletName]);
+  if (existingByName) return res.status(409).json({ error: "A source with that name has already been suggested or added." });
+  if (feedUrl) {
+    const existingByUrl = await dbGet(`SELECT id FROM feeds WHERE feed_url = ?`, [feedUrl]);
+    if (existingByUrl) return res.status(409).json({ error: "That feed URL has already been suggested or added." });
+  }
+  if (handle) {
+    const existingByHandle = await dbGet(`SELECT id FROM feeds WHERE bluesky_handle = ?`, [handle]);
+    if (existingByHandle) return res.status(409).json({ error: "That Bluesky handle has already been suggested or added." });
+  }
+
+  // Live-validate before it ever hits the pending queue — same spirit as the
+  // YouTube channel suggest flow and the custom-sources RSS validation.
+  if (feedUrl) {
+    try {
+      const resp = await fetch(feedUrl, {
+        headers: { "User-Agent": "n38-cms/1.0 (+https://news-for-38-year-olds.onrender.com)" },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const xml = await resp.text();
+      const parsed = xmlParser.parse(xml);
+      const items = extractItems(parsed).filter((it) => it.title && it.link);
+      if (items.length === 0) throw new Error("no items found");
+    } catch (err) {
+      return res.status(400).json({ error: "Couldn't read that as an RSS/Atom feed — double-check the URL." });
+    }
+  }
+  if (handle) {
+    let resolves = false;
+    try { resolves = await blueskyHandleResolves(handle); } catch { resolves = false; }
+    if (!resolves) {
+      return res.status(400).json({ error: "Couldn't find that Bluesky handle — double-check it." });
+    }
+  }
+
+  feedSuggestCooldowns.set(ip, Date.now());
+  const info = await dbRun(
+    `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status)
+     VALUES (?, '', ?, '', '', 'Indie Media', '{}', 3, ?, ?, NULL, 'pending')`,
+    [outletName, feedType === "journalist" ? null : (feedUrl || null), handle, feedType]
+  );
+  res.json({ id: info.lastInsertRowid, ok: true });
+});
+
 app.get("/go/:id", async (req, res) => {
   const row = await dbGet(`SELECT link FROM dispatches WHERE id = ?`, [req.params.id]);
   if (!row) return res.status(404).send("Not found");

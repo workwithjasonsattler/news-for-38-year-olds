@@ -91,30 +91,37 @@
     <h2 style="font-family:var(--mono);font-size:14px;">FEEDS</h2>
     <p style="font-size:13px;color:#666;">Add an outlet's RSS/Atom feed here — no file editing needed. Feeds refresh automatically in the background; "Run import now" pulls immediately if you don't want to wait.</p>
 
-    <div id="pendingChannelsPanel" style="display:none;margin-bottom:20px;padding:14px;border:1px solid #e0b84b;background:#fffaf0;">
-      <h3 style="font-family:var(--mono);font-size:12px;margin:0 0 10px;">PENDING YOUTUBE CHANNEL SUGGESTIONS</h3>
-      <table style="margin:0;">
-        <thead><tr><th>Outlet</th><th>YouTube Channel</th><th></th></tr></thead>
-        <tbody id="pendingChannelRows"></tbody>
-      </table>
-    </div>
+    <div id="pendingSuggestionsPanel" style="display:none;margin-bottom:20px;padding:14px;border:1px solid #e0b84b;background:#fffaf0;">
+      <h3 style="font-family:var(--mono);font-size:12px;margin:0 0 10px;">PENDING SUGGESTIONS</h3>
+      <div id="pendingSuggestionsTabs" style="display:flex;gap:6px;margin-bottom:12px;">
+        <button type="button" class="pending-tab-btn" data-tab="feeds" onclick="showPendingTab('feeds')" style="font-family:var(--mono);font-size:11px;padding:6px 12px;margin:0;border:1px solid rgba(0,0,0,.2);background:#fff;color:#222;border-radius:3px;cursor:pointer;"></button>
+        <button type="button" class="pending-tab-btn" data-tab="customSources" onclick="showPendingTab('customSources')" style="font-family:var(--mono);font-size:11px;padding:6px 12px;margin:0;border:1px solid rgba(0,0,0,.2);background:#fff;color:#222;border-radius:3px;cursor:pointer;"></button>
+        <button type="button" class="pending-tab-btn" data-tab="topics" onclick="showPendingTab('topics')" style="font-family:var(--mono);font-size:11px;padding:6px 12px;margin:0;border:1px solid rgba(0,0,0,.2);background:#fff;color:#222;border-radius:3px;cursor:pointer;"></button>
+      </div>
 
-    <div id="pendingCustomSourcesPanel" style="display:none;margin-bottom:20px;padding:14px;border:1px solid #e0b84b;background:#fffaf0;">
-      <h3 style="font-family:var(--mono);font-size:12px;margin:0 0 10px;">PENDING READER-SUBMITTED SOURCES (Super RSS Reader)</h3>
-      <p style="font-size:12px;color:#666;margin:0 0 10px;">These already power the submitting reader's own wire — approving only lets them show up when someone else views or clones a Mix containing this source.</p>
-      <table style="margin:0;">
-        <thead><tr><th>Name</th><th>Feed URL</th><th>Submitted by</th><th></th></tr></thead>
-        <tbody id="pendingCustomSourceRows"></tbody>
-      </table>
-    </div>
+      <div id="pendingFeedsTab" class="pending-tab-panel">
+        <p style="font-size:12px;color:#666;margin:0 0 10px;">Reader-suggested outlets, journalists, and YouTube channels — all land here as one queue before they become real, followable sources.</p>
+        <table style="margin:0;">
+          <thead><tr><th>Name</th><th>Type</th><th>Feed URL</th><th>Bluesky</th><th>YouTube</th><th></th></tr></thead>
+          <tbody id="pendingChannelRows"></tbody>
+        </table>
+      </div>
 
-    <div id="pendingTopicsPanel" style="display:none;margin-bottom:20px;padding:14px;border:1px solid #e0b84b;background:#fffaf0;">
-      <h3 style="font-family:var(--mono);font-size:12px;margin:0 0 10px;">PENDING TOPIC SUGGESTIONS (Follows)</h3>
-      <p style="font-size:12px;color:#666;margin:0 0 10px;">A reader proposed this as a new Topic. Approving makes it selectable when creating a Mix and visible in the public Topic directory.</p>
-      <table style="margin:0;">
-        <thead><tr><th>Name</th><th>Suggested by</th><th></th></tr></thead>
-        <tbody id="pendingTopicRows"></tbody>
-      </table>
+      <div id="pendingCustomSourcesTab" class="pending-tab-panel" style="display:none;">
+        <p style="font-size:12px;color:#666;margin:0 0 10px;">These already power the submitting reader's own wire — approving only lets them show up when someone else views or clones a Mix containing this source.</p>
+        <table style="margin:0;">
+          <thead><tr><th>Name</th><th>Feed URL</th><th>Submitted by</th><th></th></tr></thead>
+          <tbody id="pendingCustomSourceRows"></tbody>
+        </table>
+      </div>
+
+      <div id="pendingTopicsTab" class="pending-tab-panel" style="display:none;">
+        <p style="font-size:12px;color:#666;margin:0 0 10px;">A reader proposed this as a new Topic. Approving makes it selectable when creating a Mix and visible in the public Topic directory.</p>
+        <table style="margin:0;">
+          <thead><tr><th>Name</th><th>Suggested by</th><th></th></tr></thead>
+          <tbody id="pendingTopicRows"></tbody>
+        </table>
+      </div>
     </div>
 
     <table id="feedTable" style="margin-bottom:16px;">
@@ -360,6 +367,39 @@ function toggleFeedTypeFields(){
   document.getElementById('ff_outlet_only_fields').style.display = isJournalist ? 'none' : 'block';
 }
 
+// ---------- unified "Pending Suggestions" panel ----------
+// Frontend-only consolidation over the three (soon four) existing pending
+// endpoints — no new backend endpoint, just one tabbed view stitched
+// together in admin.html instead of three near-identical stacked panels.
+const pendingCounts = { feeds: 0, customSources: 0, topics: 0 };
+let activePendingTab = 'feeds';
+
+function showPendingTab(tab){
+  activePendingTab = tab;
+  ['feeds', 'customSources', 'topics'].forEach(t => {
+    const panelId = t === 'feeds' ? 'pendingFeedsTab' : t === 'customSources' ? 'pendingCustomSourcesTab' : 'pendingTopicsTab';
+    const panel = document.getElementById(panelId);
+    const btn = document.querySelector(`.pending-tab-btn[data-tab="${t}"]`);
+    if (panel) panel.style.display = (t === tab) ? 'block' : 'none';
+    if (btn) { btn.style.background = (t === tab) ? '#e0b84b' : '#fff'; }
+  });
+}
+
+function refreshPendingTabLabels(){
+  const label = (name, key) => `${name} (${pendingCounts[key]})`;
+  const feedsBtn = document.querySelector('.pending-tab-btn[data-tab="feeds"]');
+  const csBtn = document.querySelector('.pending-tab-btn[data-tab="customSources"]');
+  const topicsBtn = document.querySelector('.pending-tab-btn[data-tab="topics"]');
+  if (feedsBtn) feedsBtn.textContent = label('Feeds & Channels', 'feeds');
+  if (csBtn) csBtn.textContent = label('Custom Sources', 'customSources');
+  if (topicsBtn) topicsBtn.textContent = label('Topics', 'topics');
+  const outerPanel = document.getElementById('pendingSuggestionsPanel');
+  if (!outerPanel) return;
+  const anyPending = pendingCounts.feeds + pendingCounts.customSources + pendingCounts.topics > 0;
+  outerPanel.style.display = anyPending ? 'block' : 'none';
+  if (anyPending) showPendingTab(activePendingTab);
+}
+
 async function loadFeeds(){
   const res = await fetch('/api/feeds', {headers: authHeaders()});
   const all = await res.json();
@@ -387,14 +427,12 @@ async function loadFeeds(){
 }
 
 async function loadPendingTopics(){
-  const panel = document.getElementById('pendingTopicsPanel');
   const rows = document.getElementById('pendingTopicRows');
-  if (!panel || !rows) return;
+  if (!rows) return;
   const res = await fetch('/api/admin/pending-topics', {headers: authHeaders()});
-  if (!res.ok) return; // stay silent — this panel is a nice-to-have, not core feed management
+  if (!res.ok) return; // stay silent — this tab is a nice-to-have, not core feed management
   const pending = await res.json();
-  if (!pending.length){ panel.style.display = 'none'; return; }
-  panel.style.display = 'block';
+  pendingCounts.topics = pending.length;
   rows.innerHTML = pending.map(t => `
     <tr>
       <td>${t.name}</td>
@@ -405,6 +443,7 @@ async function loadPendingTopics(){
       </td>
     </tr>
   `).join('');
+  refreshPendingTabLabels();
 }
 
 async function approveTopic(id){
@@ -419,14 +458,12 @@ async function rejectTopic(id){
 }
 
 async function loadPendingCustomSources(){
-  const panel = document.getElementById('pendingCustomSourcesPanel');
   const rows = document.getElementById('pendingCustomSourceRows');
-  if (!panel || !rows) return;
+  if (!rows) return;
   const res = await fetch('/api/admin/pending-custom-sources', {headers: authHeaders()});
-  if (!res.ok) return; // stay silent — this panel is a nice-to-have, not core feed management
+  if (!res.ok) return; // stay silent — this tab is a nice-to-have, not core feed management
   const pending = await res.json();
-  if (!pending.length){ panel.style.display = 'none'; return; }
-  panel.style.display = 'block';
+  pendingCounts.customSources = pending.length;
   rows.innerHTML = pending.map(cs => `
     <tr>
       <td>${cs.name}</td>
@@ -438,6 +475,7 @@ async function loadPendingCustomSources(){
       </td>
     </tr>
   `).join('');
+  refreshPendingTabLabels();
 }
 
 async function approveCustomSource(id){
@@ -452,21 +490,23 @@ async function rejectCustomSource(id){
 }
 
 function renderPendingChannels(pending){
-  const panel = document.getElementById('pendingChannelsPanel');
   const rows = document.getElementById('pendingChannelRows');
-  if (!panel || !rows) return;
-  if (!pending.length){ panel.style.display = 'none'; return; }
-  panel.style.display = 'block';
+  if (!rows) return;
+  pendingCounts.feeds = pending.length;
   rows.innerHTML = pending.map(f => `
     <tr>
       <td>${f.outlet}</td>
-      <td>${f.youtube_channel_id || ''}</td>
+      <td>${f.feed_type === 'journalist' ? '<span style="color:#666;">Journalist</span>' : 'Outlet'}</td>
+      <td>${f.feed_url ? `<a class="link-cell" href="${f.feed_url}" target="_blank">${f.feed_url}</a>` : '<span style="color:#999;">—</span>'}</td>
+      <td>${f.bluesky_handle ? `<span style="color:#1185FE;">@${f.bluesky_handle}</span>` : '<span style="color:#999;">—</span>'}</td>
+      <td>${f.youtube_channel_id ? `<span style="color:#B33A3A;">${f.youtube_channel_id}</span>` : '<span style="color:#999;">—</span>'}</td>
       <td>
         <button class="btn-primary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="approveChannel(${f.id})">Approve</button>
         <button class="btn-danger" onclick="rejectChannel(${f.id})">Reject</button>
       </td>
     </tr>
   `).join('');
+  refreshPendingTabLabels();
 }
 
 async function approveChannel(id){
