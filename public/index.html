@@ -50,12 +50,17 @@
   /* ---- Wire (Drudge-style) view ---- */
   .wire{max-width:1180px;margin:20px auto 70px;padding:0 24px;display:block;}
 
+  /* Border/padding are NOT nth-child based — with sections hideable and
+     reorderable via Edit Layout, which child ends up visually first/last
+     in a row changes at runtime. .grid-col-first/.grid-col-last are
+     applied in JS (updateGridEdgeClasses()) to whichever children are
+     actually visible after hiding + CSS `order`, so the hairlines/padding
+     always land on the true left/right edge instead of a stale DOM
+     position. See updateGridEdgeClasses() below. */
   .wire-new-grid{display:grid;grid-template-columns:repeat(3, 1fr);row-gap:16px;align-items:start;padding-top:10px;margin-bottom:20px;}
-  .wire-new-grid > *{padding:0 22px;margin:0;}
-  .wire-new-grid > *:nth-child(3n+1){padding-left:0;}
-  .wire-new-grid > *:nth-child(3n){padding-right:0;}
-  .wire-new-grid > *:nth-child(3n+2),
-  .wire-new-grid > *:nth-child(3n){border-left:1px solid #ddd;}
+  .wire-new-grid > *{padding:0 22px;margin:0;border-left:1px solid #ddd;}
+  .wire-new-grid > *.grid-col-first{padding-left:0;border-left:none;}
+  .wire-new-grid > *.grid-col-last{padding-right:0;}
   @media (max-width:820px){
     .wire-new-grid{grid-template-columns:1fr;}
     .wire-new-grid > *{border-left:none !important;padding:0 !important;}
@@ -150,8 +155,12 @@
   .video-item a:hover .video-title{color:var(--wire-red);text-decoration:none;}
   .video-item .video-channel{display:block;margin-top:4px;font-family:var(--mono, monospace);font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--wire-red);opacity:.75;}
 
-  /* Videos row sits full-width above the wire-new-grid (see markup) so its
-     items lay out as their own 3-col x 3-row grid, filled column-first. */
+  /* Videos row sits full-width BETWEEN the two wire-new-grid rows (see
+     markup) so its items lay out as their own 3-col x 3-row grid, filled
+     column-first. It's a sibling of the two grids, not a child of either,
+     so Edit Layout's reorder arrows can toggle it but can't visually
+     interleave it with the grid boxes (CSS `order` only works within a
+     shared parent) — same known limitation as the bottom Resources box. */
   #videosBox{padding-left:0 !important;padding-right:0 !important;margin-bottom:20px;}
   #videosList{display:grid;grid-template-columns:repeat(3, 1fr);grid-template-rows:repeat(3, auto);grid-auto-flow:column;column-gap:24px;}
   #videosList .video-item{border-bottom:none;}
@@ -452,10 +461,10 @@ function applyView(view){
 // class toggle, and a future mobile client can all share the same source
 // of truth for "what sections exist."
 const COMPONENT_DEFS = [
-  { key: "videos",     label: "Videos",                                      selector: "#videosBox" },
   { key: "headlines",  label: "Headlines",                                   selector: "#headlinesCol" },
   { key: "actions",    label: "What You Can Do About It",                    selector: "#actionsBox" },
   { key: "bluesky",    label: "Most Popular on Bluesky",                     selector: "#blueskyPopularBox" },
+  { key: "videos",     label: "Videos",                                      selector: "#videosBox" },
   { key: "climate",    label: "Climate Watch",                               selector: "#climateBox" },
   { key: "frontpage",  label: "Frontpage",                                   selector: "#frontpageBox" },
   { key: "sources",    label: "Sources",                                     selector: "#sourcesSection" },
@@ -492,6 +501,26 @@ function applyHiddenComponents(){
       el.classList.toggle("component-hidden", HIDDEN_COMPONENTS.includes(c.key));
       el.style.order = i;
     });
+  });
+  updateGridEdgeClasses();
+}
+
+// Whichever section a reader hides or reorders, the .wire-new-grid rows
+// (Headlines/Actions/Bluesky and Climate/Frontpage/Sources) need their
+// left/right hairline + padding on the box that's ACTUALLY first/last
+// after hiding — not just the one that happens to be first/last in the
+// DOM. Re-run any time visibility or order changes (i.e. from inside
+// applyHiddenComponents(), not called separately).
+function updateGridEdgeClasses(){
+  document.querySelectorAll(".wire-new-grid").forEach(grid => {
+    const visible = Array.from(grid.children)
+      .filter(el => !el.classList.contains("component-hidden"))
+      .sort((a, b) => (parseInt(a.style.order, 10) || 0) - (parseInt(b.style.order, 10) || 0));
+    Array.from(grid.children).forEach(el => el.classList.remove("grid-col-first", "grid-col-last"));
+    if (visible.length){
+      visible[0].classList.add("grid-col-first");
+      visible[visible.length - 1].classList.add("grid-col-last");
+    }
   });
 }
 applyHiddenComponents();
@@ -885,11 +914,6 @@ function renderWire(){
   rest.forEach(d => bySection[sectionFor(d.beat)].push(d));
 
   wire.innerHTML = `
-    <aside class="wire-resources-box" id="videosBox" style="display:none;">
-      <h4>Videos <a href="/videos.html" style="font-family:var(--mono);font-size:10px;font-style:normal;font-weight:400;text-transform:uppercase;color:var(--wire-blue);text-decoration:underline;letter-spacing:.03em;">See all &rarr;</a></h4>
-      <ul id="videosList"></ul>
-    </aside>
-
     <div class="wire-new-grid">
       <div class="wire-alsobig" id="headlinesCol">
         ${alsoBig.map(d => `
@@ -930,7 +954,14 @@ function renderWire(){
         </div>
         <ul id="blueskyPopularList" class="wire-bluesky-list"></ul>
       </aside>
+    </div>
 
+    <aside class="wire-resources-box" id="videosBox" style="display:none;">
+      <h4>Videos <a href="/videos.html" style="font-family:var(--mono);font-size:10px;font-style:normal;font-weight:400;text-transform:uppercase;color:var(--wire-blue);text-decoration:underline;letter-spacing:.03em;">See all &rarr;</a></h4>
+      <ul id="videosList"></ul>
+    </aside>
+
+    <div class="wire-new-grid">
       <aside class="wire-resources-box" id="climateBox" style="display:none;">
         <h4>Climate Watch</h4>
         <ul id="climateList"></ul>
