@@ -185,8 +185,8 @@
         <div id="suggestSourceBox" style="display:none;border:1px solid #ddd;padding:14px;margin:0 0 16px;border-radius:2px;">
           <div class="s-inline-add" style="margin-bottom:6px;">
             <select id="suggestSourceType" style="flex:0 0 130px;" onchange="updateSuggestSourceFields()">
-              <option value="outlet">Outlet</option>
-              <option value="journalist">Journalist</option>
+              <option value="outlet">Organization</option>
+              <option value="journalist">Individual</option>
             </select>
             <input type="text" id="suggestSourceName" placeholder="Name">
           </div>
@@ -330,7 +330,7 @@ async function submitSourceSuggestion(){
 
   if (!outlet){ msg.style.color = 'var(--wire-red)'; msg.textContent = 'A name is required.'; return; }
   if (type === 'journalist' && !bluesky_handle){
-    msg.style.color = 'var(--wire-red)'; msg.textContent = 'Journalist suggestions need a Bluesky handle.'; return;
+    msg.style.color = 'var(--wire-red)'; msg.textContent = 'Individual suggestions need a Bluesky handle.'; return;
   }
   if (type === 'outlet' && !feed_url && !bluesky_handle){
     msg.style.color = 'var(--wire-red)'; msg.textContent = 'Outlet suggestions need a feed URL, a Bluesky handle, or both.'; return;

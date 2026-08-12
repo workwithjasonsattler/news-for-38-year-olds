@@ -678,8 +678,8 @@ function renderSourcesList(filterText){
   // are visible without an extra click — but don't touch SOURCES_OPEN itself,
   // so clearing the search restores whatever the reader had manually set.
   scrollEl.innerHTML =
-    renderSourceGroup('publications', 'Publications', publications, !!q) +
-    renderSourceGroup('people', 'People', people, !!q);
+    renderSourceGroup('publications', 'Organizations', publications, !!q) +
+    renderSourceGroup('people', 'Individuals', people, !!q);
 
   scrollEl.querySelectorAll('details.sources-group').forEach(d => {
     d.addEventListener('toggle', () => { SOURCES_OPEN[d.dataset.group] = d.open; });

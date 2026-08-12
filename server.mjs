@@ -1994,6 +1994,20 @@ app.delete("/api/admin/custom-sources/:id", requireAdmin, async (req, res) => {
   res.json({ ok: true });
 });
 
+// Accepts either the stored value ('journalist') or the newer display-facing
+// word ('individual') from any input source (bulk paste, suggest form, admin
+// single-add, a future mobile client) and always resolves to the one value
+// actually stored in the DB. Display layer was renamed to Individual/
+// Organization; the stored feed_type enum deliberately was NOT, to avoid
+// touching every feed_type === 'journalist' read-path in this file for a
+// copy-only change. This is the one place that normalization has to happen
+// consistently, regardless of which endpoint the input comes through.
+function normalizeFeedType(input) {
+  return ["journalist", "individual"].includes(String(input || "").trim().toLowerCase())
+    ? "journalist"
+    : "outlet";
+}
+
 // ---------- Feature A: suggest an outlet or journalist (public, unified feeds queue) ----------
 // A PUBLIC suggestion — becomes a real shared outlet/journalist row in the
 // curated `feeds` table (submission_status='pending'), NOT the private
@@ -2016,12 +2030,12 @@ app.post("/api/feeds/suggest", async (req, res) => {
 
   const outletName = String(outlet || "").trim();
   if (!outletName) return res.status(400).json({ error: "A name for the outlet or journalist is required." });
-  const feedType = type === "journalist" ? "journalist" : "outlet";
+  const feedType = normalizeFeedType(type);
   const feedUrl = String(feed_url || "").trim();
   const handle = normalizeHandle(bluesky_handle);
 
   if (feedType === "journalist" && !handle) {
-    return res.status(400).json({ error: "Journalist suggestions need a Bluesky handle." });
+    return res.status(400).json({ error: "Individual suggestions need a Bluesky handle." });
   }
   if (feedType === "outlet" && !feedUrl && !handle) {
     return res.status(400).json({ error: "Outlet suggestions need an RSS feed URL, a Bluesky handle, or both." });
@@ -2288,9 +2302,9 @@ app.post("/api/feeds", requireAdmin, async (req, res) => {
   const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type, youtube_channel_id } = req.body;
   const handle = normalizeHandle(bluesky_handle);
   const ytChannel = normalizeYoutubeChannel(youtube_channel_id);
-  const type = feed_type === "journalist" ? "journalist" : "outlet";
+  const type = normalizeFeedType(feed_type);
   if (!outlet) return res.status(400).json({ error: "outlet is required" });
-  if (type === "journalist" && !handle) return res.status(400).json({ error: "journalist feeds need a Bluesky handle" });
+  if (type === "journalist" && !handle) return res.status(400).json({ error: "individual feeds need a Bluesky handle" });
   if (type === "outlet" && !feed_url && !handle && !ytChannel) return res.status(400).json({ error: "outlet is required, and either feed_url, bluesky_handle, or youtube_channel_id" });
   try {
     const info = await dbRun(
@@ -2314,13 +2328,13 @@ app.post("/api/feeds/bulk", requireAdmin, async (req, res) => {
   for (const f of feeds) {
     const handle = normalizeHandle(f.bluesky_handle);
     const ytChannel = normalizeYoutubeChannel(f.youtube_channel_id);
-    const type = f.feed_type === "journalist" ? "journalist" : "outlet";
+    const type = normalizeFeedType(f.feed_type);
     if (!f.outlet) {
       errors.push(`Skipped a row — outlet name is required: ${JSON.stringify(f)}`);
       continue;
     }
     if (type === "journalist" && !handle) {
-      errors.push(`Skipped ${f.outlet} — journalist rows need a Bluesky handle.`);
+      errors.push(`Skipped ${f.outlet} — individual rows need a Bluesky handle.`);
       continue;
     }
     if (type === "outlet" && !f.feed_url && !handle && !ytChannel) {
@@ -2345,9 +2359,9 @@ app.put("/api/feeds/:id", requireAdmin, async (req, res) => {
   const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type, youtube_channel_id } = req.body;
   const handle = normalizeHandle(bluesky_handle);
   const ytChannel = normalizeYoutubeChannel(youtube_channel_id);
-  const type = feed_type === "journalist" ? "journalist" : "outlet";
+  const type = normalizeFeedType(feed_type);
   if (!outlet) return res.status(400).json({ error: "outlet is required" });
-  if (type === "journalist" && !handle) return res.status(400).json({ error: "journalist feeds need a Bluesky handle" });
+  if (type === "journalist" && !handle) return res.status(400).json({ error: "individual feeds need a Bluesky handle" });
   if (type === "outlet" && !feed_url && !handle && !ytChannel) return res.status(400).json({ error: "outlet is required, and either feed_url, bluesky_handle, or youtube_channel_id" });
   try {
     // An admin editing/saving a feed doubles as the approval action for a

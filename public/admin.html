@@ -132,8 +132,8 @@
     <h3 style="font-family:var(--mono);font-size:12px;" id="feedFormTitle">ADD A FEED</h3>
     <label>Feed type</label>
     <select id="ff_type" onchange="toggleFeedTypeFields()">
-      <option value="outlet">Outlet (publication — gets a wire column from its RSS feed)</option>
-      <option value="journalist">Journalist (Bluesky-only — no RSS, no wire column, listed in Sources only)</option>
+      <option value="outlet">Organization (publication — gets a wire column from its RSS feed)</option>
+      <option value="journalist">Individual (Bluesky-only — no RSS, no wire column, listed in Sources only)</option>
     </select>
     <label>Outlet name</label><input id="ff_outlet">
     <label>Default author (used if the feed doesn't list one)</label><input id="ff_author">
@@ -148,7 +148,7 @@
         <option value="People Power">People Power</option>
       </select>
     </div>
-    <label>Bluesky handle (e.g. marisakabas.bsky.social — required for Journalist type, optional for Outlets to power the "Most Popular on Bluesky" box)</label><input id="ff_bluesky" placeholder="handle.bsky.social">
+    <label>Bluesky handle (e.g. marisakabas.bsky.social — required for Individual type, optional for Organizations to power the "Most Popular on Bluesky" box)</label><input id="ff_bluesky" placeholder="handle.bsky.social">
     <label>YouTube channel (optional — handle, channel ID, or full URL; powers the Videos box)</label><input id="ff_youtube" placeholder="@channelhandle">
     <button class="btn-primary" id="feedSubmitBtn" onclick="submitFeed()">Add feed</button>
     <button class="btn-secondary" onclick="clearFeedForm()">Clear / Cancel edit</button>
@@ -160,7 +160,7 @@
     <h3 style="font-family:var(--mono);font-size:12px;margin-top:28px;border-top:1px solid rgba(0,0,0,.1);padding-top:20px;">BULK ADD FEEDS</h3>
     <p style="font-size:13px;color:#666;">Paste one feed per line, fields separated by <code>|</code>:<br>
     <code>Outlet | Feed URL | Section | Default Author | Tip URL | Subscribe URL | Bluesky Handle | Type | YouTube Channel</code><br>
-    <strong>Outlet</strong> is always required, and you need at least one of a <strong>Feed URL</strong>, a <strong>Bluesky Handle</strong>, or a <strong>YouTube Channel</strong> — leave the rest blank if you don't have them, e.g. <code>Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media</code>. To add a reporter who only has a Bluesky handle and no RSS feed, just leave the Feed URL field blank. Section must be exactly <code>Indie Media</code>, <code>Data Centers</code>, or <code>People Power</code> (defaults to Indie Media if left blank or misspelled). Bluesky Handle can be a bare handle (<code>marisakabas.bsky.social</code>) or a full profile URL. Leave <strong>Type</strong> blank for a normal outlet — write <code>journalist</code> to add a Bluesky-only person who never gets a wire column and only shows up in Sources. YouTube Channel can be a handle (<code>@channelname</code>), raw channel ID, or full URL.</p>
+    <strong>Outlet</strong> is always required, and you need at least one of a <strong>Feed URL</strong>, a <strong>Bluesky Handle</strong>, or a <strong>YouTube Channel</strong> — leave the rest blank if you don't have them, e.g. <code>Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media</code>. To add a person who only has a Bluesky handle and no RSS feed, just leave the Feed URL field blank. Section must be exactly <code>Indie Media</code>, <code>Data Centers</code>, or <code>People Power</code> (defaults to Indie Media if left blank or misspelled). Bluesky Handle can be a bare handle (<code>marisakabas.bsky.social</code>) or a full profile URL. Leave <strong>Type</strong> blank for a normal Organization — write <code>individual</code> (or <code>journalist</code>, same thing) to add a Bluesky-only person who never gets a wire column and only shows up in Sources. YouTube Channel can be a handle (<code>@channelname</code>), raw channel ID, or full URL.</p>
     <textarea id="bulk_feeds" rows="6" style="min-height:120px;" placeholder="Garbage Day | https://rss.beehiiv.com/feeds/99VTTjt0N1.xml | Indie Media
 Blood in the Machine | https://www.bloodinthemachine.com/feed | People Power | Brian Merchant | | https://www.bloodinthemachine.com/subscribe | bloodinthemachine.bsky.social
 Some Reporter | | | | | | somereporter.bsky.social | journalist
@@ -409,7 +409,7 @@ async function loadFeeds(){
   document.getElementById('feedRows').innerHTML = allFeeds.map(f => `
     <tr>
       <td>${f.outlet}</td>
-      <td>${f.feed_type === 'journalist' ? '<span style="color:#666;">Journalist</span>' : 'Outlet'}</td>
+      <td>${f.feed_type === 'journalist' ? '<span style="color:#666;">Individual</span>' : 'Organization'}</td>
       <td>${f.feed_url ? `<a class="link-cell" href="${f.feed_url}" target="_blank">${f.feed_url}</a>` : '<span style="color:#999;">—</span>'}</td>
       <td>${f.feed_type === 'journalist' ? '<span style="color:#999;">—</span>' : f.fallback_beat}</td>
       <td>${f.bluesky_handle ? `<span style="color:#1185FE;">@${f.bluesky_handle}</span>` : '<span style="color:#999;">—</span>'}</td>
@@ -496,7 +496,7 @@ function renderPendingChannels(pending){
   rows.innerHTML = pending.map(f => `
     <tr>
       <td>${f.outlet}</td>
-      <td>${f.feed_type === 'journalist' ? '<span style="color:#666;">Journalist</span>' : 'Outlet'}</td>
+      <td>${f.feed_type === 'journalist' ? '<span style="color:#666;">Individual</span>' : 'Organization'}</td>
       <td>${f.feed_url ? `<a class="link-cell" href="${f.feed_url}" target="_blank">${f.feed_url}</a>` : '<span style="color:#999;">—</span>'}</td>
       <td>${f.bluesky_handle ? `<span style="color:#1185FE;">@${f.bluesky_handle}</span>` : '<span style="color:#999;">—</span>'}</td>
       <td>${f.youtube_channel_id ? `<span style="color:#B33A3A;">${f.youtube_channel_id}</span>` : '<span style="color:#999;">—</span>'}</td>
@@ -557,7 +557,7 @@ async function submitFeed(){
     msg.style.color = '#B33A3A'; msg.textContent = 'Outlet name is required.'; return;
   }
   if (feedType === 'journalist' && !body.bluesky_handle.trim()){
-    msg.style.color = '#B33A3A'; msg.textContent = 'Journalist feeds need a Bluesky handle.'; return;
+    msg.style.color = '#B33A3A'; msg.textContent = 'Individual feeds need a Bluesky handle.'; return;
   }
   if (feedType === 'outlet' && !body.feed_url.trim() && !body.bluesky_handle.trim() && !body.youtube_channel_id.trim()){
     msg.style.color = '#B33A3A'; msg.textContent = 'Add a Feed URL, a Bluesky handle, or a YouTube channel.'; return;
@@ -605,7 +605,7 @@ async function submitBulkFeeds(){
       tip_url: tip_url || '',
       subscribe_url: subscribe_url || '',
       bluesky_handle: bluesky_handle || '',
-      feed_type: (feed_type || '').trim().toLowerCase() === 'journalist' ? 'journalist' : 'outlet',
+      feed_type: ['journalist', 'individual'].includes((feed_type || '').trim().toLowerCase()) ? 'journalist' : 'outlet',
       youtube_channel_id: youtube_channel_id || '',
     };
   });
