@@ -2686,6 +2686,15 @@ async function start() {
       await dropDegenerateArtRss();
       await seedOfficialHeadlinesSpray();
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
+      // Post once shortly after boot (not immediately — give the process a
+      // moment to settle) so a fresh deploy doesn't cost up to a full
+      // BLUESKY_BOT_INTERVAL_MINUTES of silence before you can tell it's
+      // actually working. Safe to call on every restart: the NOT IN dedup
+      // in pickTopStoryForBot() means it's a no-op if there's nothing new
+      // to post, it never reposts something already in bluesky_bot_posts.
+      if (BLUESKY_BOT_HANDLE && BLUESKY_BOT_APP_PASSWORD) {
+        setTimeout(postDueHeadlineToBluesky, 15000);
+      }
       return;
     } catch (err) {
       const isLastAttempt = attempt === MAX_ATTEMPTS;
