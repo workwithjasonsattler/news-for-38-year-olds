@@ -1082,6 +1082,92 @@ app.get("/api/mixes/:slug", async (req, res) => {
   });
 });
 
+// RSS output for any PUBLIC Spray/Mix (general capability, not Headlines-
+// only — see SCOPING-headlines-rss-bluesky-bot.md Part 1, Q2, "recommend
+// building it general"). Reuses the exact same resolveMixSources() live
+// query every web/app Spray view already uses — no new data source, just
+// an XML serialization layer. Short-TTL cache, fails soft: if the
+// underlying query throws, serve the last good cached XML rather than a
+// broken feed, since a silently-stale-but-valid feed is far better
+// behavior for RSS readers/aggregators than one that starts erroring on
+// every poll (most readers just quietly drop a feed that errors).
+const RSS_FEED_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const RSS_FEED_ITEM_CAP = 100; // more history than the 60-item web view, matches RSS-reader convention
+const rssFeedCache = new Map(); // slug -> { xml, fetchedAt }
+
+function escapeXml(str) {
+  return String(str ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function toRfc822(dateLike) {
+  const d = new Date(dateLike);
+  return isNaN(d) ? new Date().toUTCString() : d.toUTCString();
+}
+
+function buildMixRssXml(mix, items) {
+  const channelTitle = mix.is_official ? `${mix.name} — News for 38 Year Olds` : `${mix.name} — a Spray on News for 38 Year Olds`;
+  const channelLink = `${SITE_URL}/spray.html?spray=${encodeURIComponent(mix.slug)}`;
+  const channelDesc = mix.is_official
+    ? "The official flagship Spray — every outlet currently powering the unfiltered Wire, auto-synced in real time."
+    : `A reader-created Spray${mix.location_label ? ` (${mix.location_label})` : ""} on News for 38 Year Olds.`;
+
+  const itemsXml = items
+    .slice(0, RSS_FEED_ITEM_CAP)
+    .map((it) => {
+      const guid = escapeXml(it.link);
+      const pubDate = toRfc822(it.created_at || it.date);
+      return `    <item>
+      <title>${escapeXml(it.headline)}</title>
+      <link>${escapeXml(it.link)}</link>
+      <guid isPermaLink="true">${guid}</guid>
+      <pubDate>${pubDate}</pubDate>
+      ${it.excerpt ? `<description>${escapeXml(it.excerpt)}</description>` : ""}
+      ${it.outlet ? `<source>${escapeXml(it.outlet)}</source>` : ""}
+    </item>`;
+    })
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>${escapeXml(channelTitle)}</title>
+    <link>${escapeXml(channelLink)}</link>
+    <description>${escapeXml(channelDesc)}</description>
+    <language>en-us</language>
+    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+${itemsXml}
+  </channel>
+</rss>`;
+}
+
+app.get("/api/mixes/:slug/rss", async (req, res) => {
+  const slug = req.params.slug;
+  try {
+    const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [slug]);
+    if (!mix || !mix.is_public) return res.status(404).type("text/plain").send("feed not found");
+
+    const cached = rssFeedCache.get(slug);
+    if (cached && Date.now() - cached.fetchedAt < RSS_FEED_CACHE_TTL_MS) {
+      return res.type("application/rss+xml; charset=utf-8").send(cached.xml);
+    }
+
+    const { items } = await resolveMixSources(mix, { includePending: false });
+    const xml = buildMixRssXml(mix, items);
+    rssFeedCache.set(slug, { xml, fetchedAt: Date.now() });
+    res.type("application/rss+xml; charset=utf-8").send(xml);
+  } catch (err) {
+    console.error("RSS feed generation failed for", slug, err);
+    const cached = rssFeedCache.get(slug);
+    if (cached) return res.type("application/rss+xml; charset=utf-8").send(cached.xml); // fail soft: stale beats broken
+    res.status(500).type("text/plain").send("feed temporarily unavailable");
+  }
+});
+
 app.post("/api/mixes/:slug/clone", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });

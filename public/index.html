@@ -134,6 +134,7 @@
     line-height:1.4;color:var(--text-muted);}
 
   .wire-bluesky-box h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;}
+  .wire-alsobig h4{font-family:Georgia,serif;font-style:italic;font-weight:700;font-size:13px;letter-spacing:.02em;color:var(--wire-red);margin:0 0 8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap;}
   .bsky-filter-toggle{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;}
   .bsky-filter-btn{display:inline-flex;align-items:center;gap:4px;font-family:var(--mono, monospace);font-size:10px;text-transform:uppercase;letter-spacing:.03em;
     background:#f4f4f4;border:1px solid #ddd;color:#555;padding:3px 8px;cursor:pointer;border-radius:2px;}
@@ -246,7 +247,7 @@
   body[data-view="bbs"] .wire-new-grid > *{border-left:1px dashed #33ff33 !important;}
   body[data-view="bbs"] .wire-feed-box h4, body[data-view="bbs"] .wire-sources h4,
   body[data-view="bbs"] .wire-bluesky-box h4, body[data-view="bbs"] .wire-resources-box h4,
-  body[data-view="bbs"] .wire-col h4{
+  body[data-view="bbs"] .wire-alsobig h4, body[data-view="bbs"] .wire-col h4{
     color:#000; background:#33ff33; font-style:normal; padding:2px 6px; display:inline-block; text-transform:uppercase;
   }
   body[data-view="bbs"] .wire-item, body[data-view="bbs"] .wire-bluesky-list li, body[data-view="bbs"] .wire-resources-box li{
@@ -277,7 +278,7 @@
   body[data-view="rss"] .wire-new-grid > *{border-left:none !important; padding:16px 0 !important; border-bottom:1px solid #e0e0e0;}
   body[data-view="rss"] .wire-feed-box h4, body[data-view="rss"] .wire-sources h4,
   body[data-view="rss"] .wire-bluesky-box h4, body[data-view="rss"] .wire-resources-box h4,
-  body[data-view="rss"] .wire-col h4{
+  body[data-view="rss"] .wire-alsobig h4, body[data-view="rss"] .wire-col h4{
     color:#1a1a1a; font-style:normal; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:.03em; border-bottom:2px solid #1a1a1a; padding-bottom:6px;
   }
   body[data-view="rss"] .wire-item{border-bottom:1px solid #eee; padding:10px 0;}
@@ -309,7 +310,7 @@
   body[data-view="rightwing"] .wire-new-grid > *{border-left:2px solid #b31942 !important;}
   body[data-view="rightwing"] .wire-feed-box h4, body[data-view="rightwing"] .wire-sources h4,
   body[data-view="rightwing"] .wire-bluesky-box h4, body[data-view="rightwing"] .wire-resources-box h4,
-  body[data-view="rightwing"] .wire-col h4{
+  body[data-view="rightwing"] .wire-alsobig h4, body[data-view="rightwing"] .wire-col h4{
     background:#b31942; color:#fff; text-transform:uppercase; padding:6px 10px; font-style:normal; letter-spacing:.05em; border-left:5px solid #ffd700;
   }
   body[data-view="rightwing"] .wire-feed-box h4::before, body[data-view="rightwing"] .wire-col h4::before{content:"★ ";}
@@ -977,6 +978,7 @@ function renderWire(){
   wire.innerHTML = `
     <div class="wire-new-grid">
       <div class="wire-alsobig" id="headlinesCol">
+        <h4>Headlines: Best in the World <a href="/api/mixes/headlines-best-in-the-world/rss" style="font-family:var(--mono);font-size:10px;font-style:normal;font-weight:400;text-transform:uppercase;color:var(--wire-blue);text-decoration:underline;letter-spacing:.03em;">RSS Feed &rarr;</a></h4>
         ${alsoBig.map(d => `
           <div class="wire-item">
             <a href="/go/${d.id}" target="_blank" rel="noopener">${d.headline}</a>

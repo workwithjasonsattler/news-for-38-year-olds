@@ -67,6 +67,8 @@
   .s-mix-item .s-mix-item-outlet{display:block;font-family:var(--mono);font-size:11px;color:var(--text-muted);margin-top:3px;text-transform:uppercase;}
   .s-clone-btn{margin-top:14px;background:var(--wire-blue);color:#fff;border:none;padding:9px 16px;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;cursor:pointer;border-radius:2px;}
   .s-clone-btn:hover{background:#0000a8;}
+  .s-rss-link{display:inline-block;margin:10px 0 0 10px;font-family:var(--mono);font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--wire-blue);text-decoration:none;}
+  .s-rss-link:hover{text-decoration:underline;}
   .s-close-detail{font-family:var(--mono);font-size:11px;color:var(--wire-blue);text-decoration:underline;cursor:pointer;margin-bottom:14px;display:inline-block;}
 
   /* create-a-follow form */
@@ -130,6 +132,7 @@
     <p class="s-mix-detail-meta" id="mixDetailMeta"></p>
     <div class="s-mix-source-tags" id="mixDetailSources"></div>
     <button class="s-clone-btn" id="mixCloneBtn" onclick="cloneCurrentMix()">Copy this Follow into my account</button>
+    <a class="s-rss-link" id="mixRssLink" href="#" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
     <p class="s-create-msg" id="mixCloneMsg"></p>
     <div class="s-mix-items" id="mixDetailItems"></div>
   </section>
@@ -406,6 +409,7 @@ async function openMixDetail(slug){
   document.getElementById('mixDetailSources').innerHTML = mix.sources.map(s =>
     `<span class="s-mix-source-tag">${s.outlet}${s.pending ? ' (pending)' : ''}</span>`
   ).join('');
+  document.getElementById('mixRssLink').href = `${API}/api/mixes/${slug}/rss`;
   document.getElementById('mixDetailItems').innerHTML = mix.items.length
     ? mix.items.slice(0, 40).map(it => `
         <div class="s-mix-item">
