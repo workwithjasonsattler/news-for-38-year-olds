@@ -61,8 +61,19 @@
   .wire-new-grid > *{padding:0 22px;margin:0;border-left:1px solid #ddd;}
   .wire-new-grid > *.grid-col-first{padding-left:0;border-left:none;}
   .wire-new-grid > *.grid-col-last{padding-right:0;}
+  /* Whitespace-reclaim ("packed") mode — see packWireGrids() in the
+     script below for when this applies. CSS Grid forces a row to the
+     height of its tallest cell; switching to a flex row with
+     align-items:flex-start removes that forced match, so each column
+     just ends where its own content ends instead of padding out to
+     match a taller sibling. Border/padding rules above still apply
+     unchanged since they target direct children regardless of display
+     mode. */
+  .wire-new-grid.wire-grid-packed{display:flex;align-items:flex-start;}
+  .wire-new-grid.wire-grid-packed > *{flex:1 1 0;min-width:0;}
   @media (max-width:820px){
     .wire-new-grid{grid-template-columns:1fr;}
+    .wire-new-grid.wire-grid-packed{display:block;}
     .wire-new-grid > *{border-left:none !important;padding:0 !important;}
   }
 
@@ -262,6 +273,7 @@
   body[data-view="rss"] .top-headlines .thl-subhead{color:#666 !important;}
   body[data-view="rss"] .wire{max-width:720px;}
   body[data-view="rss"] .wire-new-grid{grid-template-columns:1fr; border-top:1px solid #e0e0e0;}
+  body[data-view="rss"] .wire-new-grid.wire-grid-packed{display:block;}
   body[data-view="rss"] .wire-new-grid > *{border-left:none !important; padding:16px 0 !important; border-bottom:1px solid #e0e0e0;}
   body[data-view="rss"] .wire-feed-box h4, body[data-view="rss"] .wire-sources h4,
   body[data-view="rss"] .wire-bluesky-box h4, body[data-view="rss"] .wire-resources-box h4,
@@ -506,6 +518,41 @@ function applyHiddenComponents(){
     });
   });
   updateGridEdgeClasses();
+  packWireGrids();
+}
+
+// ---- Whitespace reclaim ("packed" mode) for wire-new-grid rows ----
+// Row 1 (Headlines/Actions/Bluesky) and Row 2 (Climate Watch/Frontpage/
+// Sources) are each a separate .wire-new-grid, one section per column.
+// CSS Grid forces a row to the height of its tallest cell, leaving dead
+// whitespace below shorter columns. Locked decision: a row that's still
+// in its DEFAULT order (reader hasn't used Edit Layout's up/down arrows
+// on that row's own sections) gets "packed" — switched to an
+// independent-height flex row (.wire-grid-packed, see CSS above) so each
+// column just ends where its own content ends. A row a reader HAS
+// manually reordered reverts to the original fixed-grid behavior
+// (whitespace included) for that reader only — packing never overrides
+// an explicit manual choice. Mobile/RSS-skin collapse to a single stacked
+// column is handled entirely by CSS media queries above, not JS, so this
+// doesn't need a resize listener.
+const GRID_ROW_KEYS = {
+  row1: ["headlines", "actions", "bluesky"],
+  row2: ["climate", "frontpage", "sources"],
+};
+function isRowCustomized(rowKeys){
+  const resolved = orderedComponentDefs().map(c => c.key).filter(k => rowKeys.includes(k));
+  return JSON.stringify(resolved) !== JSON.stringify(rowKeys);
+}
+function packWireGrids(){
+  const grids = document.querySelectorAll(".wire-new-grid");
+  const rowOrder = ["row1", "row2"]; // matches renderWire()'s DOM order (Videos sits between them, outside both)
+  grids.forEach((grid, i) => {
+    const rowKeys = GRID_ROW_KEYS[rowOrder[i]];
+    if (!rowKeys) return;
+    const customized = isRowCustomized(rowKeys);
+    grid.classList.toggle("wire-grid-packed", !customized);
+    grid.classList.toggle("wire-grid-fixed", customized);
+  });
 }
 
 // Whichever section a reader hides or reorders, the .wire-new-grid rows
