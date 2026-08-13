@@ -1241,25 +1241,80 @@ async function getBlueskyBotSession() {
   }
 }
 
-function truncateForBluesky(text, reserveForLink) {
-  const max = BLUESKY_POST_CHAR_LIMIT - reserveForLink - 1; // -1 for the space before the link
-  if (text.length <= max) return text;
-  return text.slice(0, Math.max(0, max - 1)).trimEnd() + "…";
+function utf8ByteLength(str) {
+  return Buffer.byteLength(str, "utf8");
 }
 
-// "Top story from the window" = whatever's most prominent among dispatches
-// not yet posted by the bot: a pinned item wins if one exists, otherwise
-// the most recently added dispatch. No new ranking signal invented —
-// reuses the same pinned/recency precedence the Wire and the official
-// Spray already use. Tracked via an explicit NOT IN (already-posted ids),
-// not a MAX(id) watermark — a watermark breaks here specifically because
-// "pinned wins" can post a higher-id pinned item before an older,
-// lower-id non-pinned one, which a watermark would then permanently skip.
+// Bluesky facets need byte offsets (UTF-8), not JS string-index offsets —
+// those can diverge whenever the text contains anything outside plain
+// ASCII (emoji, curly quotes, etc.) ahead of the URL.
+function buildLinkFacet(fullText, url) {
+  const idx = fullText.indexOf(url);
+  if (idx === -1) return null;
+  const byteStart = utf8ByteLength(fullText.slice(0, idx));
+  const byteEnd = byteStart + utf8ByteLength(url);
+  return { index: { byteStart, byteEnd }, features: [{ $type: "app.bsky.richtext.facet#link", uri: url }] };
+}
+
+// Format: headline / outlet / link / (tip-or-subscribe line, only if one
+// exists — omitted entirely, not left as a dangling blank paragraph, if
+// the dispatch has neither). Headline gets truncated (not the fixed
+// outlet/link/tip parts) to keep the whole post under Bluesky's 300-char
+// limit. Both the article link and the tip/subscribe link (if present)
+// get real clickable facets, not just plain text — a post built via the
+// API doesn't get Bluesky's own client-side auto-link-detection.
+function buildBlueskyPostRecord(story) {
+  const outlet = story.outlet || "";
+  const link = story.link;
+
+  let tipLine = null;
+  let tipUrl = null;
+  if (story.tip_url) {
+    tipUrl = story.tip_url;
+    tipLine = `TIP YOUR REPORTER: ${tipUrl}`;
+  } else if (story.subscribe_url) {
+    tipUrl = story.subscribe_url;
+    tipLine = `SUBSCRIBE: ${tipUrl}`;
+  }
+
+  const suffixParts = [outlet, link];
+  if (tipLine) suffixParts.push(tipLine);
+  const suffix = "\n\n" + suffixParts.filter(Boolean).join("\n\n");
+
+  const maxHeadlineLen = Math.max(0, BLUESKY_POST_CHAR_LIMIT - suffix.length);
+  let headline = story.headline;
+  if (headline.length > maxHeadlineLen) {
+    headline = headline.slice(0, Math.max(0, maxHeadlineLen - 1)).trimEnd() + "…";
+  }
+
+  const text = headline + suffix;
+
+  const facets = [];
+  const linkFacet = buildLinkFacet(text, link);
+  if (linkFacet) facets.push(linkFacet);
+  if (tipUrl) {
+    const tipFacet = buildLinkFacet(text, tipUrl);
+    if (tipFacet) facets.push(tipFacet);
+  }
+
+  return { text, facets };
+}
+
+// "Newest, full stop" — Jason's explicit call after the first live post
+// picked an old PINNED item over a genuinely newer one. Pinned is a
+// website-prominence signal (what shows at the top of the Wire), not a
+// freshness signal, and this bot's whole point is real-time — so pinned
+// status is deliberately NOT part of this ordering, unlike the Wire/
+// official Spray. Tracked via an explicit NOT IN (already-posted ids),
+// not a MAX(id) watermark — a watermark would break the moment any
+// out-of-id-order pick ever happens again (harmless today since this is
+// now a pure date/id sort, but NOT IN costs nothing and is more robust
+// if the selection logic ever changes again).
 async function pickTopStoryForBot() {
   const candidates = await dbAll(
     `SELECT * FROM dispatches
      WHERE id NOT IN (SELECT dispatch_id FROM bluesky_bot_posts)
-     ORDER BY pinned DESC, date DESC, id DESC LIMIT 1`
+     ORDER BY date DESC, id DESC LIMIT 1`
   );
   return candidates[0] || null;
 }
@@ -1272,10 +1327,7 @@ async function postDueHeadlineToBluesky() {
     const story = await pickTopStoryForBot();
     if (!story) return; // nothing new since the last post — skip silently, not an error
 
-    const link = story.link;
-    const byline = story.outlet ? ` (${story.outlet})` : "";
-    const headlineText = truncateForBluesky(story.headline + byline, link.length);
-    const postText = `${headlineText} ${link}`;
+    const { text: postText, facets } = buildBlueskyPostRecord(story);
 
     const resp = await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {
       method: "POST",
@@ -1286,6 +1338,7 @@ async function postDueHeadlineToBluesky() {
         record: {
           $type: "app.bsky.feed.post",
           text: postText,
+          facets: facets.length ? facets : undefined,
           createdAt: new Date().toISOString(),
         },
       }),
