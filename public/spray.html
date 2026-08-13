@@ -449,9 +449,23 @@ async function cloneCurrentMix(){
 }
 
 // ---------- your own custom sources (minimal manager) ----------
-async function loadCustomSources(){
+// loadCustomSources() rebuilds the whole custom-source checkbox list from
+// scratch on every call (add, delete, initial sign-in). Two bugs this
+// used to have: (1) a newly-added source's checkbox came back UNCHECKED,
+// so a reader who'd just clicked "Add source" and then "Save this Follow"
+// hit "Pick at least one source" even though they'd just added one — they
+// had no way to know it wasn't automatically included; (2) rebuilding the
+// list also silently un-checked any OTHER custom sources the reader had
+// already picked, since the whole innerHTML gets replaced. Fixed by
+// capturing which ids are currently checked before the rebuild and
+// re-applying that (plus optionally auto-checking a just-added id) after.
+async function loadCustomSources(autoCheckId){
   const listEl = document.getElementById('customSourceList');
   const checkEl = document.getElementById('customSourceCheckboxes');
+  const previouslyChecked = new Set(
+    Array.from(document.querySelectorAll('.custom-source-cb:checked')).map(cb => cb.value)
+  );
+  const autoCheckStr = autoCheckId != null ? String(autoCheckId) : null;
   try {
     const res = await fetch(`${API}/api/my/custom-sources`);
     const sources = await res.json();
@@ -466,9 +480,11 @@ async function loadCustomSources(){
         <button onclick="deleteCustomSource(${s.id})">Remove</button>
       </div>
     `).join('');
-    checkEl.innerHTML = sources.map(s => `
-      <label><input type="checkbox" value="${s.id}" data-name="${s.name}" class="custom-source-cb"> ${s.name}</label>
-    `).join('');
+    checkEl.innerHTML = sources.map(s => {
+      const idStr = String(s.id);
+      const shouldCheck = previouslyChecked.has(idStr) || idStr === autoCheckStr;
+      return `<label><input type="checkbox" value="${s.id}" data-name="${s.name}" class="custom-source-cb"${shouldCheck ? ' checked' : ''}> ${s.name}</label>`;
+    }).join('');
   } catch (err) {
     listEl.innerHTML = '';
   }
@@ -487,9 +503,9 @@ async function addCustomSource(){
     const data = await res.json();
     if (res.ok){
       msg.style.color = 'green';
-      msg.textContent = '✓ Source added.';
+      msg.textContent = '✓ Source added and included in this Follow.';
       input.value = '';
-      loadCustomSources();
+      await loadCustomSources(data.id); // auto-check the one just added, keep any others already checked
     } else {
       msg.style.color = 'var(--wire-red)';
       msg.textContent = data.error || "Couldn't validate that feed.";
@@ -502,7 +518,7 @@ async function addCustomSource(){
 
 async function deleteCustomSource(id){
   await fetch(`${API}/api/my/custom-sources/${id}`, {method: 'DELETE'});
-  loadCustomSources();
+  await loadCustomSources();
 }
 
 // ---------- create a follow ----------
