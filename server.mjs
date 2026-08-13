@@ -1127,13 +1127,14 @@ function buildMixRssXml(mix, items) {
       <guid isPermaLink="true">${guid}</guid>
       <pubDate>${pubDate}</pubDate>
       ${it.excerpt ? `<description>${escapeXml(it.excerpt)}</description>` : ""}
+      ${it.outlet ? `<dc:creator>${escapeXml(it.outlet)}</dc:creator>` : ""}
       ${it.outlet ? `<source>${escapeXml(it.outlet)}</source>` : ""}
     </item>`;
     })
     .join("\n");
 
   return `<?xml version="1.0" encoding="UTF-8"?>
-<rss version="2.0">
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
   <channel>
     <title>${escapeXml(channelTitle)}</title>
     <link>${escapeXml(channelLink)}</link>
