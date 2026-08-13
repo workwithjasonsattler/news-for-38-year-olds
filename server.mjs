@@ -245,6 +245,15 @@ async function initSchema() {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       PRIMARY KEY (user_id, outlet)
     )`,
+    // ---------- Bluesky bot posting log ----------
+    // Tracks what the headlines bot has already posted so nothing double-
+    // posts across restarts/cache misses — same "just a tracking table"
+    // philosophy as feed_thumbs/clone_count elsewhere in this codebase.
+    `CREATE TABLE IF NOT EXISTS bluesky_bot_posts (
+      dispatch_id INTEGER PRIMARY KEY,
+      posted_at TEXT NOT NULL DEFAULT (datetime('now')),
+      bluesky_post_uri TEXT
+    )`,
   ];
   for (const sql of statements) await dbRun(sql);
 
@@ -1168,6 +1177,139 @@ app.get("/api/mixes/:slug/rss", async (req, res) => {
     res.status(500).type("text/plain").send("feed temporarily unavailable");
   }
 });
+
+// ---------- Bluesky headlines bot ----------
+// Posts the "top story" from the Headlines: Best in the World Spray to a
+// Bluesky bot account every BLUESKY_BOT_INTERVAL_MINUTES (Jason's call:
+// batch, one post per window, not one-post-per-headline — see
+// SCOPING-headlines-rss-bluesky-bot.md Part 2). First live-write
+// integration in this codebase; everything else Bluesky-related so far is
+// read-only via the public unauthenticated AT Protocol AppView endpoints.
+// Fails soft throughout: a down API, an expired/unrefreshable session, or
+// any posting error just gets logged and retried next cycle — never
+// affects the main site.
+const BLUESKY_BOT_HANDLE = normalizeHandle(process.env.BLUESKY_BOT_HANDLE || "");
+const BLUESKY_BOT_APP_PASSWORD = process.env.BLUESKY_BOT_APP_PASSWORD || "";
+const BLUESKY_BOT_INTERVAL_MINUTES = Number(process.env.BLUESKY_BOT_INTERVAL_MINUTES || 15);
+const BLUESKY_POST_CHAR_LIMIT = 300;
+
+let blueskyBotSession = null; // { accessJwt, refreshJwt, did, fetchedAt }
+const BLUESKY_SESSION_REFRESH_MS = 90 * 60 * 1000; // Bluesky access tokens run ~2h; refresh a bit early to be safe
+
+async function getBlueskyBotSession() {
+  if (!BLUESKY_BOT_HANDLE || !BLUESKY_BOT_APP_PASSWORD) return null; // not configured — fail soft, same pattern as YOUTUBE_API_KEY
+
+  if (blueskyBotSession && Date.now() - blueskyBotSession.fetchedAt < BLUESKY_SESSION_REFRESH_MS) {
+    return blueskyBotSession;
+  }
+
+  // Try refreshing an existing session first (cheaper, doesn't re-spend the
+  // app password), fall back to a fresh login if there's nothing to refresh
+  // or the refresh itself fails.
+  if (blueskyBotSession?.refreshJwt) {
+    try {
+      const resp = await fetch("https://bsky.social/xrpc/com.atproto.server.refreshSession", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${blueskyBotSession.refreshJwt}` },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        blueskyBotSession = { accessJwt: data.accessJwt, refreshJwt: data.refreshJwt, did: data.did, fetchedAt: Date.now() };
+        return blueskyBotSession;
+      }
+    } catch (err) {
+      console.error("Bluesky bot session refresh failed, falling back to fresh login:", err.message);
+    }
+  }
+
+  try {
+    const resp = await fetch("https://bsky.social/xrpc/com.atproto.server.createSession", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier: BLUESKY_BOT_HANDLE, password: BLUESKY_BOT_APP_PASSWORD }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) throw new Error(`createSession ${resp.status}`);
+    const data = await resp.json();
+    blueskyBotSession = { accessJwt: data.accessJwt, refreshJwt: data.refreshJwt, did: data.did, fetchedAt: Date.now() };
+    return blueskyBotSession;
+  } catch (err) {
+    console.error("Bluesky bot login failed:", err.message);
+    blueskyBotSession = null;
+    return null;
+  }
+}
+
+function truncateForBluesky(text, reserveForLink) {
+  const max = BLUESKY_POST_CHAR_LIMIT - reserveForLink - 1; // -1 for the space before the link
+  if (text.length <= max) return text;
+  return text.slice(0, Math.max(0, max - 1)).trimEnd() + "…";
+}
+
+// "Top story from the window" = whatever's most prominent among dispatches
+// not yet posted by the bot: a pinned item wins if one exists, otherwise
+// the most recently added dispatch. No new ranking signal invented —
+// reuses the same pinned/recency precedence the Wire and the official
+// Spray already use. Tracked via an explicit NOT IN (already-posted ids),
+// not a MAX(id) watermark — a watermark breaks here specifically because
+// "pinned wins" can post a higher-id pinned item before an older,
+// lower-id non-pinned one, which a watermark would then permanently skip.
+async function pickTopStoryForBot() {
+  const candidates = await dbAll(
+    `SELECT * FROM dispatches
+     WHERE id NOT IN (SELECT dispatch_id FROM bluesky_bot_posts)
+     ORDER BY pinned DESC, date DESC, id DESC LIMIT 1`
+  );
+  return candidates[0] || null;
+}
+
+async function postDueHeadlineToBluesky() {
+  const session = await getBlueskyBotSession();
+  if (!session) return; // not configured, or login/refresh failed — logged already, retry next cycle
+
+  try {
+    const story = await pickTopStoryForBot();
+    if (!story) return; // nothing new since the last post — skip silently, not an error
+
+    const link = story.link;
+    const byline = story.outlet ? ` (${story.outlet})` : "";
+    const headlineText = truncateForBluesky(story.headline + byline, link.length);
+    const postText = `${headlineText} ${link}`;
+
+    const resp = await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.accessJwt}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repo: session.did,
+        collection: "app.bsky.feed.post",
+        record: {
+          $type: "app.bsky.feed.post",
+          text: postText,
+          createdAt: new Date().toISOString(),
+        },
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) throw new Error(`createRecord ${resp.status}: ${await resp.text().catch(() => "")}`);
+    const data = await resp.json();
+
+    await dbRun(
+      `INSERT INTO bluesky_bot_posts (dispatch_id, bluesky_post_uri) VALUES (?, ?)`,
+      [story.id, data.uri || null]
+    );
+    console.log(`Bluesky bot posted dispatch #${story.id}: ${story.headline}`);
+  } catch (err) {
+    console.error("Bluesky bot posting failed:", err.message); // fail soft — never affects the main site, retried next cycle
+  }
+}
+
+if (BLUESKY_BOT_HANDLE && BLUESKY_BOT_APP_PASSWORD) {
+  setInterval(postDueHeadlineToBluesky, BLUESKY_BOT_INTERVAL_MINUTES * 60 * 1000);
+  console.log(`Bluesky headlines bot enabled — posting every ${BLUESKY_BOT_INTERVAL_MINUTES}min as @${BLUESKY_BOT_HANDLE}`);
+} else {
+  console.log("Bluesky headlines bot disabled (BLUESKY_BOT_HANDLE / BLUESKY_BOT_APP_PASSWORD not set)");
+}
 
 app.post("/api/mixes/:slug/clone", async (req, res) => {
   const user = await getCurrentUser(req);
