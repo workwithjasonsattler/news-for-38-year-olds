@@ -291,29 +291,6 @@
   }
   #discoverFeedsList .nc-stats, #discoverPacksList .nc-stats{font-size:10px;color:#999;}
 
-  #mostMentionedList{margin-top:12px;}
-  #mostMentionedList .nc-mm-row{
-    display:grid;
-    grid-template-columns:28px 1fr auto;
-    align-items:center;
-    gap:10px;
-    padding:6px 0;
-    border-bottom:1px solid var(--bf-gray);
-  }
-  #mostMentionedList .nc-mm-row:first-child .nc-mm-rank{color:var(--bf-red);}
-  #mostMentionedList .nc-mm-rank{
-    font-family:Impact,'Arial Black',sans-serif;
-    font-size:18px;
-    color:var(--bf-navy);
-    text-align:center;
-  }
-  #mostMentionedList .nc-mm-body{min-width:0;}
-  #mostMentionedList .nc-mm-name{font-weight:800;font-size:13px;color:#111;}
-  #mostMentionedList .nc-mm-bar-track{background:var(--bf-gray);height:5px;border-radius:3px;margin-top:4px;overflow:hidden;}
-  #mostMentionedList .nc-mm-bar-fill{background:var(--bf-navy);height:100%;border-radius:3px;}
-  #mostMentionedList .nc-mm-row:first-child .nc-mm-bar-fill{background:var(--bf-red);}
-  #mostMentionedList .nc-mm-count{font-size:12px;color:#999;font-weight:700;white-space:nowrap;}
-
   .nc-discover-section{max-width:1100px;margin:32px auto 0;padding:0 24px;}
   .nc-discover-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 48px;margin-top:12px;}
   @media(max-width:760px){.nc-discover-grid{grid-template-columns:1fr;}}
@@ -498,14 +475,6 @@
   </div>
 </section>
 
-<section class="nc-discover-section">
-  <div class="nc-panel-header">
-    <h2><span class="panel-emoji">🏛️</span>Most Mentioned</h2>
-    <span class="nc-panel-sub">Politicians getting talked about, last 24 hours</span>
-  </div>
-  <div id="mostMentionedList"><p class="nc-loading">Loading…</p></div>
-</section>
-
 <footer class="nc-footer">
   <span>NEWS FOR 38 YEAR OLDS</span> — NO PAYWALL. NO ALGORITHM. NO BILLIONAIRES. TIP YOUR REPORTER.
 </footer>
@@ -645,31 +614,6 @@ async function loadDiscover(){
   }
 }
 
-async function loadMostMentioned(){
-  const list = document.getElementById('mostMentionedList');
-  try {
-    const res = await fetch(`${API}/api/nerve-center/most-mentioned`);
-    const rows = await res.json();
-    if (!rows || !rows.length) {
-      list.innerHTML = '<p class="nc-empty">Nothing trending by name in the last 24 hours yet.</p>';
-      return;
-    }
-    const max = rows[0].total || 1;
-    list.innerHTML = rows.map((r, i) => `
-      <div class="nc-mm-row">
-        <span class="nc-mm-rank">${i+1}</span>
-        <div class="nc-mm-body">
-          <span class="nc-mm-name">${r.name}</span>
-          <div class="nc-mm-bar-track"><div class="nc-mm-bar-fill" style="width:${Math.max(4, Math.round((r.total/max)*100))}%"></div></div>
-        </div>
-        <span class="nc-mm-count">${r.total} mention${r.total === 1 ? '' : 's'}</span>
-      </div>
-    `).join('');
-  } catch(err){
-    list.innerHTML = '<p class="nc-empty">Couldn\'t load Most Mentioned right now.</p>';
-  }
-}
-
 function getBskyFilter(){
   const checked = document.querySelector('input[name="ncBskyFilter"]:checked');
   return checked ? checked.value : 'all';
@@ -680,7 +624,6 @@ function loadAll(){
   loadBluesky(section, getBskyFilter());
   loadChatter(section);
   loadDiscover();
-  loadMostMentioned();
 }
 
 document.querySelectorAll('input[name="ncBskyFilter"]').forEach(input => {
