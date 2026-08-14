@@ -1364,6 +1364,81 @@ if (BLUESKY_BOT_HANDLE && BLUESKY_BOT_APP_PASSWORD) {
   console.log("Bluesky headlines bot disabled (BLUESKY_BOT_HANDLE / BLUESKY_BOT_APP_PASSWORD not set)");
 }
 
+// ---------- Bluesky: "Top of the Nerve Center" roundup post ----------
+// A second, much lower-cadence job on the SAME bot account/session as the
+// headlines bot above — no new credentials needed. Purpose is different
+// from the headlines bot: this doesn't post news, it posts a "here's
+// what's trending on Nerve Center right now" roundup that LINKS BACK TO
+// NERVE CENTER ITSELF (not the underlying article), specifically to drive
+// people to the Nerve Center page. Picks the single top-scoring post across
+// ALL sections from the same ranked blueskyCache the homepage Popular on
+// Bluesky box uses (Jason's call: "top skeets from all", not filtered to
+// one Focus category).
+const BLUESKY_ROUNDUP_INTERVAL_MINUTES = Number(process.env.BLUESKY_ROUNDUP_INTERVAL_MINUTES || 8 * 60);
+let lastRoundupPostedUrl = null; // avoid firing an identical back-to-back post if the top skeet hasn't changed
+
+function buildNerveCenterRoundupPost(topPost) {
+  const nerveCenterLink = `${SITE_URL}/nerve-center.html`;
+  const snippetMax = 160;
+  let snippet = (topPost.text || "").trim();
+  if (snippet.length > snippetMax) snippet = snippet.slice(0, snippetMax - 1).trimEnd() + "…";
+
+  const intro = "🗞️ TOP OF THE NERVE CENTER";
+  const body = `${topPost.outlet} on Bluesky: "${snippet}"`;
+  const cta = `See what's trending → ${nerveCenterLink}`;
+  const text = [intro, body, cta].join("\n\n");
+
+  const facets = [];
+  const linkFacet = buildLinkFacet(text, nerveCenterLink);
+  if (linkFacet) facets.push(linkFacet);
+  return { text, facets };
+}
+
+async function postNerveCenterRoundupToBluesky() {
+  const session = await getBlueskyBotSession();
+  if (!session) return; // not configured, or login/refresh failed — logged already, retry next cycle
+
+  try {
+    const now = Date.now();
+    if (now - blueskyCache.fetchedAt > BLUESKY_CACHE_TTL_MS) {
+      const data = await fetchBlueskyPopular();
+      blueskyCache = { data, fetchedAt: now };
+    }
+    const topPost = blueskyCache.data[0];
+    if (!topPost) return; // nothing to roundup — skip silently, not an error
+    if (topPost.blueskyUrl === lastRoundupPostedUrl) return; // same top skeet as last cycle, don't repeat verbatim
+
+    const { text: postText, facets } = buildNerveCenterRoundupPost(topPost);
+
+    const resp = await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.accessJwt}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        repo: session.did,
+        collection: "app.bsky.feed.post",
+        record: {
+          $type: "app.bsky.feed.post",
+          text: postText,
+          facets: facets.length ? facets : undefined,
+          createdAt: new Date().toISOString(),
+        },
+      }),
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) throw new Error(`createRecord ${resp.status}: ${await resp.text().catch(() => "")}`);
+
+    lastRoundupPostedUrl = topPost.blueskyUrl;
+    console.log(`Bluesky Nerve Center roundup posted — top skeet: ${topPost.outlet}`);
+  } catch (err) {
+    console.error("Bluesky Nerve Center roundup posting failed:", err.message); // fail soft, retried next cycle
+  }
+}
+
+if (BLUESKY_BOT_HANDLE && BLUESKY_BOT_APP_PASSWORD) {
+  setInterval(postNerveCenterRoundupToBluesky, BLUESKY_ROUNDUP_INTERVAL_MINUTES * 60 * 1000);
+  console.log(`Bluesky Nerve Center roundup enabled — posting every ${BLUESKY_ROUNDUP_INTERVAL_MINUTES}min as @${BLUESKY_BOT_HANDLE}`);
+}
+
 app.post("/api/mixes/:slug/clone", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
@@ -2008,6 +2083,193 @@ app.get("/api/nerve-center/chatter", async (req, res) => {
   } catch (err) {
     console.error("Nerve center chatter error:", err);
     res.json([]);
+  }
+});
+
+// ---------- Nerve Center: Most Mentioned Politicians ----------
+// Curated name list from YouGov's "most popular politicians" ratings
+// (https://yougov.com/en-us/ratings/politicians, Q2 2026 fame/popularity
+// data) — a "who's actually famous enough to be worth tracking" seed list,
+// not a partisan filter (it includes figures across the spectrum on
+// purpose, since a mention-tracker is more useful and more honest if it's
+// not pre-filtered to one side). Static admin-curated list, same spirit as
+// the journalist Bluesky list — not reader-submitted, no moderation queue
+// needed for v1.
+const POLITICIANS = [
+  "Barack Obama", "Bernie Sanders", "Arnold Schwarzenegger", "Kamala Harris", "Alexandria Ocasio-Cortez", "Joe Biden",
+  "Mark Kelly", "Zohran Mamdani", "George W. Bush", "Tim Walz", "Bill Clinton", "Hillary Clinton",
+  "Madeleine Albright", "Elizabeth Warren", "Cory Booker", "Robert F. Kennedy, Jr.", "Pete Buttigieg", "Gavin Newsom",
+  "Charlie Kirk", "Jasmine Crockett", "Al Gore", "Gabrielle Giffords", "Stacey Abrams", "JD Vance",
+  "Henry Kissinger", "Gretchen Whitmer", "Ted Cruz", "Nancy Pelosi", "Hakeem Jeffries", "Liz Cheney",
+  "J.B. Pritzker", "Tulsi Gabbard", "Jon Ossoff", "Ilhan Omar", "Raphael Warnock", "Donald Trump",
+  "Marco Rubio", "Ron DeSantis", "Amy Klobuchar", "Mike Huckabee", "Karoline Leavitt", "Al Green",
+  "Tammy Duckworth", "Maxine Waters", "James Talarico", "Sarah Palin", "John Kerry", "Michael Bloomberg",
+  "Al Franken", "Beto O'Rourke", "Katie Porter", "Bob Dole", "Adam Schiff", "Mitt Romney",
+  "Robert Reich", "Kash Patel", "John Fetterman", "Ro Khanna", "Greg Abbott", "Tim Kaine",
+  "Rashida Tlaib", "Andy Beshear", "Jamie Raskin", "Mike Johnson", "Adam Kinzinger", "Dianne Feinstein",
+  "Pete Hegseth", "Tim Scott", "Dan Quayle", "Andrew Yang", "Josh Shapiro", "Barry Goldwater",
+  "Charles Schumer", "Rand Paul", "Doug Burgum", "Sheila Jackson Lee", "Kristi Noem", "Vivek Ramaswamy",
+  "Ted Lieu", "Xavier Becerra", "Nikki Haley", "Pramila Jayapal", "Herman Cain", "Trey Gowdy",
+  "Michael Dukakis", "Wes Moore", "Glenn Youngkin", "Joseph P. Kennedy III", "Elizabeth Dole", "Tom Homan",
+  "Mike Pence", "Patrick Kennedy", "Antony Blinken", "Kirsten Gillibrand", "Stephen Miller", "Steve Scalise",
+  "Rick Scott", "Eric Adams", "Jerry Nadler", "Barbara Lee", "Chris Murphy", "Deb Haaland",
+  "Michael Steele", "Jim Clyburn", "Graham Platner", "Nina Turner", "Bill De Blasio", "Kathy Hochul",
+  "Donna Brazile", "Linda McMahon", "Dick Cheney", "Kari Lake", "John Kasich", "Sherrod Brown",
+  "Andrew Cuomo", "Harry Reid", "Andrew Young", "Jerry Brown", "Newt Gingrich", "Josh Hawley",
+  "Kevin McCarthy", "Abigail Spanberger", "Douglas Emhoff", "Joe Manchin", "Paul Ryan", "John Edwards",
+  "Jared Kushner", "Jeb Bush", "Ron Paul", "Sean Duffy", "Elise Stefanik", "Carol Moseley Braun",
+  "Brian Kemp", "Keith Ellison", "Jason Chaffetz", "Claire McCaskill", "Eleanor Holmes Norton", "Christopher Dodd",
+  "Thomas Massie", "Julian Castro", "Leon Panetta", "Barbara Boxer", "Charles B. Rangel", "Jill Stein",
+  "Scott Bessent", "Lindsey Graham", "Jim Jordan", "Sheldon Whitehouse", "Lina Khan", "Rick Perry",
+  "Doug Collins", "Alan Keyes", "John Thune", "Allen West", "Mark R. Warner", "Susie Wiles",
+  "Donald Rumsfeld", "Howard Dean", "Ayanna Pressley", "Marsha Blackburn", "Tommy Tuberville", "George Pataki",
+  "Joe Arpaio", "Lauren Boebert", "Kathleen Sebelius", "Joe Walsh", "Val Demings", "Tom Cotton",
+  "Lee Zeldin", "Dick Gephardt", "Tom Steyer", "Jared Polis", "Roy Cooper", "Jeanne Shaheen",
+  "Chris Christie", "Barney Frank", "Henry Paulson", "Christopher A. Coons", "Muriel Bowser", "Marjorie Taylor Greene",
+  "Debbie Wasserman Schultz", "Rahm Emanuel", "Richard Blumenthal", "Scott P. Brown", "Richard Durbin", "Patty Murray",
+  "Jim Webb", "Linda S\u00e1nchez", "J.C. Watts", "Janet Napolitano", "Carly Fiorina", "Maria Cantwell",
+  "Jan Brewer", "Cori Bush", "Bob Kerrey", "Jon Tester", "Laura Loomer", "Debbie Stabenow",
+  "Scott Walker", "John Ashcroft", "Mitch McConnell", "Brooke Rollins", "Larry Hogan", "Tina Smith",
+  "Barbara Mikulski", "Jeff Flake", "Jeff Merkley", "Steve King", "Tammy Baldwin", "George J. Mitchell",
+  "Matt Gaetz", "Scott Turner", "Michael Bennet", "Mary Landrieu", "Dan Crenshaw", "Martin O'Malley",
+  "Jay Rockefeller", "Rick Santorum", "Bill Nelson", "John Ratcliffe", "Henry Waxman", "Lina Hidalgo",
+  "Antonio Villaraigosa", "Chuck Grassley", "Gray Davis", "Mark Robinson", "Michele Bachmann", "John Hickenlooper",
+  "Janette Nesheiwat", "Lisa Murkowski", "Jim Inhofe", "John Cornyn", "Jim McDermott", "Elissa Slotkin",
+  "Tom Udall", "Peter Navarro", "Tim Pawlenty", "Susan Collins", "Asa Hutchinson", "Francis Suarez",
+  "Dennis Kucinich", "Tom Ridge", "Tim Ryan", "Ed Markey", "Evan Bayh", "Tom Harkin",
+  "Adam Smith", "Robert M. Duncan", "Bobby Jindal", "Phyllis Schlafly", "Catherine Cortez Masto", "Steny Hoyer",
+  "Alison Lundergan Grimes", "Stephanie Rawlings Blake", "Phil Murphy", "Patrick Leahy", "Brian Schatz", "Markwayne Mullin",
+  "Robert P. Casey Jr.", "Ben Sasse", "Gary Johnson", "Ed Rendell", "Deval Patrick", "Gary Hart",
+  "Eric Cantor", "Ted Strickland", "Chris Van Hollen", "Bill Frist", "Frederica Wilson", "Donna Edwards",
+  "Mike Lawler", "Wendy Davis", "Bill Bennett", "Jason Palmer", "Chris Wright", "Russell Vought",
+  "Marianne Williamson", "Mike Waltz", "Tony Evers", "David H. Koch", "Olympia Snowe", "Mia Love",
+  "Sonceria Ann Berry", "Adelita Grijalva", "John Boehner", "Rod Blagojevich", "Jack Reed", "Richard M. Daley",
+  "Clay Higgins", "Tom Vilsack", "Pat Toomey", "Kay Bailey Hutchison", "Howard Lutnick", "Charlie Crist",
+  "Susana Martinez", "Chip Roy", "Laura Kelly", "Pat Roberts", "Kim Reynolds", "Reince Priebus",
+  "Chase Oliver", "Tom Tancredo", "Terry McAuliffe", "John Delaney", "Cenk Uygur", "Mark Meadows",
+  "Orrin Hatch", "Tom DeLay", "Benjamin L. Cardin", "Jackie Speier", "Jon Huntsman, Jr.", "Charles G. Koch",
+  "Kay R. Hagan", "Kwame Kilpatrick", "Andy Biggs", "Ben Cardin", "Mitch Daniels", "Mike DeWine",
+  "Lawrence Summers", "Jim Banks", "Andy Barr", "Joni Ernst", "Robert Menendez", "Roy Blunt",
+  "Louie Gohmert", "Jon Corzine", "Austin Scott", "Alejandro Mayorkas", "Jan Schakowsky", "Loretta Sanchez",
+  "Jon Kyl", "Alan Grayson", "Rob Portman", "Jennifer Granholm", "Anthony D. Weiner", "Jake Sullivan",
+  "Doug Ducey", "Alex Castellanos", "Alvin Brown", "Maggie Hassan", "Paul Gosar", "John Larson",
+  "Ron Klain", "Michael S. Lee", "Jim DeMint", "Ron Wyden", "Max Baucus", "Sharron Angle",
+  "Jay Inslee", "Lamar Alexander", "Darrell Issa", "Sam Brownback", "Saxby Chambliss", "Jay Nixon",
+  "Jeff Sessions", "Gina Raimondo", "Mark Udall", "Mark Sanford", "Dave Weldon", "Brendan Carr",
+  "Bob Corker", "John Barrasso", "Richard Ojeda", "Haley Barbour", "Lyndon LaRouche", "Chuck Hagel",
+  "Kelly Ayotte", "Lori Chavez-DeRemer", "Thomas R. Carper", "David Vitter", "Ken Cuccinelli", "Nydia Vel\u00e1zquez",
+  "Gary C. Peters", "William Weld", "Jamieson Greer", "Lincoln Chafee", "Joe Sestak",
+];
+
+// A handful of common short-form aliases for currently-active/relevant
+// figures, so a bare "Trump" or "AOC" mention still counts even when the
+// full name isn't spelled out. Deliberately conservative: skipped common
+// English words (Warren, Miller, Green, Scott, Paul, Cain, Brown, King,
+// Smith, Walker) and any surname shared by more than one person on this
+// list (Bush, Clinton, Kennedy, Paul, Cardin, Udall) to avoid false-positive
+// matches. Full-name matching (via POLITICIANS above) still applies to
+// every name on the list regardless of whether it has an alias here — this
+// is a supplement, not a replacement.
+const POLITICIAN_ALIASES = {
+  "Donald Trump": ["Trump"],
+  "JD Vance": ["Vance"],
+  "Barack Obama": ["Obama"],
+  "Joe Biden": ["Biden"],
+  "Kamala Harris": ["Harris"],
+  "Bernie Sanders": ["Bernie"],
+  "Alexandria Ocasio-Cortez": ["AOC", "Ocasio-Cortez"],
+  "Zohran Mamdani": ["Mamdani"],
+  "Gavin Newsom": ["Newsom"],
+  "Pete Buttigieg": ["Buttigieg"],
+  "Gretchen Whitmer": ["Whitmer"],
+  "J.B. Pritzker": ["Pritzker"],
+  "Jon Ossoff": ["Ossoff"],
+  "John Fetterman": ["Fetterman"],
+  "Jasmine Crockett": ["Crockett"],
+  "Hakeem Jeffries": ["Jeffries"],
+  "Charles Schumer": ["Schumer"],
+  "Pramila Jayapal": ["Jayapal"],
+  "Ilhan Omar": ["Omar"],
+  "Rashida Tlaib": ["Tlaib"],
+  "Ron DeSantis": ["DeSantis"],
+  "Josh Hawley": ["Hawley"],
+  "Marjorie Taylor Greene": ["MTG"],
+  "Karoline Leavitt": ["Leavitt"],
+  "Russell Vought": ["Vought"],
+  "Kristi Noem": ["Noem"],
+  "Pete Hegseth": ["Hegseth"],
+  "Kash Patel": ["Patel"],
+  "Charlie Kirk": ["Kirk"],
+};
+
+function escapeRegex(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+// Precompute one word-boundary regex per politician (full name + any
+// aliases, combined with |) — built once at startup, not per-request.
+const POLITICIAN_MATCHERS = POLITICIANS.map((name) => {
+  const patterns = [name, ...(POLITICIAN_ALIASES[name] || [])].map(escapeRegex);
+  return { name, regex: new RegExp(`\\b(${patterns.join("|")})\\b`, "i") };
+});
+
+const MOST_MENTIONED_TTL_MS = 15 * 60 * 1000; // 15 min — same order as other Nerve Center caches
+let mostMentionedCache = { data: [], fetchedAt: 0 };
+
+async function computeMostMentioned() {
+  // Dispatches: `date` is stored as a bare YYYY-MM-DD (no time), so it can't
+  // support real hour-granularity filtering — `created_at` (full timestamp,
+  // set when the RSS import job pulled the item in) is the reliable proxy
+  // for "posted in the last 24h" here.
+  const dispatchRows = await dbAll(
+    `SELECT headline, excerpt FROM dispatches WHERE created_at >= datetime('now', '-1 day') LIMIT 500`
+  );
+
+  const now = Date.now();
+  if (now - blueskyAllPostsCache.fetchedAt > BLUESKY_CACHE_TTL_MS) {
+    await fetchBlueskyPopular(); // side effect: refreshes blueskyAllPostsCache
+  }
+  const cutoff = now - 24 * 60 * 60 * 1000;
+  const blueskyRows = blueskyAllPostsCache.data.filter((p) => p.createdAt >= cutoff);
+
+  const counts = new Map(); // name -> { headlineMentions, blueskyMentions }
+  const tally = (name, field) => {
+    const entry = counts.get(name) || { headlineMentions: 0, blueskyMentions: 0 };
+    entry[field] += 1;
+    counts.set(name, entry);
+  };
+
+  for (const row of dispatchRows) {
+    const text = `${row.headline || ""} ${row.excerpt || ""}`;
+    for (const { name, regex } of POLITICIAN_MATCHERS) {
+      if (regex.test(text)) tally(name, "headlineMentions");
+    }
+  }
+  for (const post of blueskyRows) {
+    const text = post.text || "";
+    for (const { name, regex } of POLITICIAN_MATCHERS) {
+      if (regex.test(text)) tally(name, "blueskyMentions");
+    }
+  }
+
+  return [...counts.entries()]
+    .map(([name, c]) => ({ name, ...c, total: c.headlineMentions + c.blueskyMentions }))
+    .filter((r) => r.total > 0)
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 15);
+}
+
+app.get("/api/nerve-center/most-mentioned", async (req, res) => {
+  try {
+    const now = Date.now();
+    if (now - mostMentionedCache.fetchedAt > MOST_MENTIONED_TTL_MS) {
+      const data = await computeMostMentioned();
+      mostMentionedCache = { data, fetchedAt: now };
+    }
+    res.json(mostMentionedCache.data);
+  } catch (err) {
+    console.error("Most mentioned politicians error:", err);
+    res.json(mostMentionedCache.data); // fail soft — serve last good cache, never break the page
   }
 });
 
