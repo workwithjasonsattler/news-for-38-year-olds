@@ -254,6 +254,14 @@ async function initSchema() {
       posted_at TEXT NOT NULL DEFAULT (datetime('now')),
       bluesky_post_uri TEXT
     )`,
+    // Small reusable key/value table for single-value bot state that needs
+    // to survive restarts (e.g. "what was the last roundup post's URL") —
+    // deliberately generic so future single-value bot state doesn't need
+    // its own one-off table each time.
+    `CREATE TABLE IF NOT EXISTS bot_state (
+      key TEXT PRIMARY KEY,
+      value TEXT
+    )`,
   ];
   for (const sql of statements) await dbRun(sql);
 
@@ -1375,7 +1383,7 @@ if (BLUESKY_BOT_HANDLE && BLUESKY_BOT_APP_PASSWORD) {
 // Bluesky box uses (Jason's call: "top skeets from all", not filtered to
 // one Focus category).
 const BLUESKY_ROUNDUP_INTERVAL_MINUTES = Number(process.env.BLUESKY_ROUNDUP_INTERVAL_MINUTES || 8 * 60);
-let lastRoundupPostedUrl = null; // avoid firing an identical back-to-back post if the top skeet hasn't changed
+const ROUNDUP_STATE_KEY = "last_roundup_posted_url";
 
 function buildNerveCenterRoundupPost(topPost) {
   const nerveCenterLink = `${SITE_URL}/nerve-center.html`;
@@ -1406,7 +1414,13 @@ async function postNerveCenterRoundupToBluesky() {
     }
     const topPost = blueskyCache.data[0];
     if (!topPost) return; // nothing to roundup — skip silently, not an error
-    if (topPost.blueskyUrl === lastRoundupPostedUrl) return; // same top skeet as last cycle, don't repeat verbatim
+
+    // Persisted (not in-memory) so this guard survives a restart — this is
+    // what makes it safe to also kick this job shortly after boot (see the
+    // startup section below), the same way the headlines bot's DB-backed
+    // dedup makes its own boot-time kick safe.
+    const lastRow = await dbGet(`SELECT value FROM bot_state WHERE key = ?`, [ROUNDUP_STATE_KEY]);
+    if (lastRow?.value === topPost.blueskyUrl) return; // same top skeet as last post, don't repeat verbatim
 
     const { text: postText, facets } = buildNerveCenterRoundupPost(topPost);
 
@@ -1427,7 +1441,11 @@ async function postNerveCenterRoundupToBluesky() {
     });
     if (!resp.ok) throw new Error(`createRecord ${resp.status}: ${await resp.text().catch(() => "")}`);
 
-    lastRoundupPostedUrl = topPost.blueskyUrl;
+    await dbRun(
+      `INSERT INTO bot_state (key, value) VALUES (?, ?)
+       ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      [ROUNDUP_STATE_KEY, topPost.blueskyUrl]
+    );
     console.log(`Bluesky Nerve Center roundup posted — top skeet: ${topPost.outlet}`);
   } catch (err) {
     console.error("Bluesky Nerve Center roundup posting failed:", err.message); // fail soft, retried next cycle
@@ -3009,6 +3027,13 @@ async function start() {
       // to post, it never reposts something already in bluesky_bot_posts.
       if (BLUESKY_BOT_HANDLE && BLUESKY_BOT_APP_PASSWORD) {
         setTimeout(postDueHeadlineToBluesky, 15000);
+        // Roundup's dedup guard is now DB-backed (bot_state table), not
+        // in-memory, so this boot-time kick is safe the same way the
+        // headlines bot's is: if the top skeet hasn't changed since the
+        // last real post, this is a genuine no-op, not a duplicate.
+        // Staggered a few seconds after the headlines kick so the two
+        // don't fire in the same instant.
+        setTimeout(postNerveCenterRoundupToBluesky, 20000);
       }
       return;
     } catch (err) {
