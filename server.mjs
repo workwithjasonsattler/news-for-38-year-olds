@@ -1308,6 +1308,85 @@ function buildBlueskyPostRecord(story) {
   return { text, facets };
 }
 
+// ---------- Bluesky: link-card image previews ----------
+// Posting via the raw API (as this bot does) does NOT get Bluesky's own
+// client-side link-card generation — that only happens when the official
+// app/web client composes a post, fetches the target URL's OG tags itself,
+// uploads a thumbnail blob, and attaches an app.bsky.embed.external record
+// BEFORE the post is created. A raw createRecord call with no embed shows
+// as plain text + a clickable link, no image, no card. This builds that
+// embed manually so the bot's posts look the same as a normal share.
+const OG_IMAGE_FETCH_TIMEOUT_MS = 6000;
+const BLUESKY_THUMB_MAX_BYTES = 950000; // Bluesky's external-embed thumb cap is ~1,000,000 bytes; stay safely under it
+
+async function fetchOgImage(pageUrl) {
+  try {
+    const resp = await fetch(pageUrl, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; N38Bot/1.0; +https://news-for-38-year-olds.onrender.com)" },
+      signal: AbortSignal.timeout(OG_IMAGE_FETCH_TIMEOUT_MS),
+    });
+    if (!resp.ok) return null;
+    const html = await resp.text();
+    // og:image first, twitter:image as a fallback — attribute order (content
+    // before/after property) varies by site, so try both orderings.
+    const patterns = [
+      /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i,
+      /<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i,
+      /<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)["']/i,
+      /<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']/i,
+    ];
+    for (const re of patterns) {
+      const match = html.match(re);
+      if (match?.[1]) {
+        try {
+          return new URL(match[1], pageUrl).href; // resolve relative URLs against the page
+        } catch {
+          continue;
+        }
+      }
+    }
+    return null;
+  } catch {
+    return null; // fail soft — timeout, blocked, no og:image, whatever — just means no thumbnail
+  }
+}
+
+async function uploadImageBlobToBluesky(session, imageUrl) {
+  try {
+    const resp = await fetch(imageUrl, { signal: AbortSignal.timeout(OG_IMAGE_FETCH_TIMEOUT_MS) });
+    if (!resp.ok) return null;
+    const contentType = resp.headers.get("content-type") || "image/jpeg";
+    if (!contentType.startsWith("image/")) return null;
+    const buf = Buffer.from(await resp.arrayBuffer());
+    if (buf.byteLength > BLUESKY_THUMB_MAX_BYTES || buf.byteLength === 0) return null;
+
+    const uploadResp = await fetch("https://bsky.social/xrpc/com.atproto.repo.uploadBlob", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.accessJwt}`, "Content-Type": contentType },
+      body: buf,
+      signal: AbortSignal.timeout(OG_IMAGE_FETCH_TIMEOUT_MS),
+    });
+    if (!uploadResp.ok) return null;
+    const data = await uploadResp.json();
+    return data.blob || null;
+  } catch {
+    return null; // fail soft — a missing/broken thumbnail should never block the actual post
+  }
+}
+
+function buildExternalEmbed({ uri, title, description, thumbBlob }) {
+  const embed = {
+    $type: "app.bsky.embed.external",
+    external: {
+      uri,
+      title: (title || "").slice(0, 300),
+      description: (description || "").slice(0, 1000),
+    },
+  };
+  if (thumbBlob) embed.external.thumb = thumbBlob;
+  return embed;
+}
+
 // "Newest, full stop" — Jason's explicit call after the first live post
 // picked an old PINNED item over a genuinely newer one. Pinned is a
 // website-prominence signal (what shows at the top of the Wire), not a
@@ -1337,6 +1416,28 @@ async function postDueHeadlineToBluesky() {
 
     const { text: postText, facets } = buildBlueskyPostRecord(story);
 
+    // Best-effort link-card image — never let a missing/slow/broken
+    // thumbnail hold up or fail the actual post. embed stays undefined
+    // (posts as plain text + clickable link, today's existing behavior)
+    // if anything here doesn't pan out.
+    let embed;
+    try {
+      const ogImageUrl = await fetchOgImage(story.link);
+      if (ogImageUrl) {
+        const thumbBlob = await uploadImageBlobToBluesky(session, ogImageUrl);
+        if (thumbBlob) {
+          embed = buildExternalEmbed({
+            uri: story.link,
+            title: story.headline,
+            description: story.outlet || "",
+            thumbBlob,
+          });
+        }
+      }
+    } catch (err) {
+      console.error("Bluesky bot link-card image failed (posting without it):", err.message);
+    }
+
     const resp = await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {
       method: "POST",
       headers: { Authorization: `Bearer ${session.accessJwt}`, "Content-Type": "application/json" },
@@ -1347,6 +1448,7 @@ async function postDueHeadlineToBluesky() {
           $type: "app.bsky.feed.post",
           text: postText,
           facets: facets.length ? facets : undefined,
+          embed,
           createdAt: new Date().toISOString(),
         },
       }),
@@ -1384,6 +1486,34 @@ if (BLUESKY_BOT_HANDLE && BLUESKY_BOT_APP_PASSWORD) {
 // one Focus category).
 const BLUESKY_ROUNDUP_INTERVAL_MINUTES = Number(process.env.BLUESKY_ROUNDUP_INTERVAL_MINUTES || 8 * 60);
 const ROUNDUP_STATE_KEY = "last_roundup_posted_url";
+
+// The roundup always links to the same page (nerve-center.html), so it
+// always shows the same branded card image (nerve-center-og.png, already
+// built for social-share meta tags in an earlier session) — upload it ONCE
+// and cache the resulting blob ref in memory, rather than re-uploading an
+// unchanging file on every single roundup post.
+let cachedNerveCenterThumbBlob = null;
+
+async function getNerveCenterThumbBlob(session) {
+  if (cachedNerveCenterThumbBlob) return cachedNerveCenterThumbBlob;
+  try {
+    const imagePath = path.join(__dirname, "public", "nerve-center-og.png");
+    const buf = await readFile(imagePath);
+    const uploadResp = await fetch("https://bsky.social/xrpc/com.atproto.repo.uploadBlob", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${session.accessJwt}`, "Content-Type": "image/png" },
+      body: buf,
+      signal: AbortSignal.timeout(OG_IMAGE_FETCH_TIMEOUT_MS),
+    });
+    if (!uploadResp.ok) return null;
+    const data = await uploadResp.json();
+    cachedNerveCenterThumbBlob = data.blob || null;
+    return cachedNerveCenterThumbBlob;
+  } catch (err) {
+    console.error("Nerve Center roundup thumb upload failed (posting without it):", err.message);
+    return null;
+  }
+}
 
 function buildNerveCenterRoundupPost(topPost) {
   const nerveCenterLink = `${SITE_URL}/nerve-center.html`;
@@ -1424,6 +1554,22 @@ async function postNerveCenterRoundupToBluesky() {
 
     const { text: postText, facets } = buildNerveCenterRoundupPost(topPost);
 
+    const nerveCenterLink = `${SITE_URL}/nerve-center.html`;
+    let embed;
+    try {
+      const thumbBlob = await getNerveCenterThumbBlob(session);
+      if (thumbBlob) {
+        embed = buildExternalEmbed({
+          uri: nerveCenterLink,
+          title: "News for 38 Year Olds — Nerve Center",
+          description: "What's trending on Bluesky, ranked with no algorithm you can't see.",
+          thumbBlob,
+        });
+      }
+    } catch (err) {
+      console.error("Nerve Center roundup link-card image failed (posting without it):", err.message);
+    }
+
     const resp = await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {
       method: "POST",
       headers: { Authorization: `Bearer ${session.accessJwt}`, "Content-Type": "application/json" },
@@ -1434,6 +1580,7 @@ async function postNerveCenterRoundupToBluesky() {
           $type: "app.bsky.feed.post",
           text: postText,
           facets: facets.length ? facets : undefined,
+          embed,
           createdAt: new Date().toISOString(),
         },
       }),
