@@ -1,0 +1,310 @@
+:root {
+  /* -----------------------------------------------------------------
+     SOURCE? tokens — "hacked into something": amber-phosphor CRT +
+     stamped/redacted document aesthetic. Deliberately NOT N38YO's
+     warm-newspaper Georgia serif, and NOT the app shell's dark-ink/
+     burst-mark identity (--ink/#14161B, wire-red, Barlow Condensed).
+     ----------------------------------------------------------------- */
+  --void: #0B0C0A;
+  --void-2: #131412;
+  --void-3: #1B1D19;
+  --line: #34362F;
+  --paper: #D8D6CE;
+  --muted: #6B6A63;
+  --amber: #FFB000;
+  --amber-dim: #B37D00;
+  --stamp-red: #B8123A;
+  --stamp-red-dim: #7A0C27;
+
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+
+  --display: "JetBrains Mono", "Space Mono", ui-monospace, monospace;
+  --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --data: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .tab-btn, .btn, .card, .stamp { transition: transform 0.12s ease, background 0.15s ease, opacity 0.15s ease; }
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--void);
+  color: var(--paper);
+  font-family: var(--body);
+  -webkit-tap-highlight-color: transparent;
+  height: 100%;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+a { color: var(--amber); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+button {
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* ---------------------------------------------------------------
+   Header / wordmark — "SOURCE?_" with a blinking terminal cursor
+   --------------------------------------------------------------- */
+.source-header {
+  padding: calc(14px + var(--safe-top)) 18px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--void-2);
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.wordmark {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 22px;
+  letter-spacing: 0.5px;
+  color: var(--amber);
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.wordmark .cursor {
+  display: inline-block;
+  width: 9px;
+  height: 18px;
+  background: var(--amber);
+  animation: blink 1.1s steps(1) infinite;
+  margin-left: 3px;
+}
+
+@keyframes blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0; }
+}
+
+.tagline {
+  font-family: var(--data);
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* ---------------------------------------------------------------
+   Main content area
+   --------------------------------------------------------------- */
+.source-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px 16px calc(90px + var(--safe-bottom));
+}
+
+.state-block {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--muted);
+}
+
+.state-block h3 {
+  font-family: var(--display);
+  color: var(--paper);
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 14px 0 6px;
+}
+
+.state-block p {
+  font-size: 13px;
+  margin: 0;
+}
+
+.terminal-glyph {
+  font-family: var(--display);
+  font-size: 28px;
+  color: var(--amber);
+}
+
+.terminal-glyph.spin { animation: spin 1.1s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ---------------------------------------------------------------
+   Transmission cards — intercepted-printout look. No rounded
+   corners, thin amber hairline, monospace metadata row.
+   --------------------------------------------------------------- */
+.card {
+  background: var(--void-2);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--amber-dim);
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.card:active { background: var(--void-3); }
+
+.card-meta {
+  font-family: var(--data);
+  font-size: 10px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.card-title {
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--paper);
+  font-weight: 500;
+}
+
+.card-title:hover { color: var(--amber); text-decoration: none; }
+
+.card-excerpt {
+  font-size: 13px;
+  color: var(--muted);
+  margin-top: 6px;
+  line-height: 1.5;
+}
+
+/* ---------------------------------------------------------------
+   Signature element: rubber-stamp badge
+   --------------------------------------------------------------- */
+.stamp {
+  display: inline-block;
+  font-family: var(--display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border: 1.5px solid var(--amber);
+  color: var(--amber);
+  transform: rotate(-3deg);
+  border-radius: 2px;
+}
+
+.stamp.unverified {
+  border-color: var(--stamp-red);
+  color: var(--stamp-red);
+  transform: rotate(2deg);
+}
+
+/* ---------------------------------------------------------------
+   Bottom tab bar — command-line style tabs
+   --------------------------------------------------------------- */
+.tab-bar {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: var(--void-2);
+  border-top: 1px solid var(--line);
+  padding-bottom: var(--safe-bottom);
+  display: flex;
+  z-index: 20;
+}
+
+.tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-family: var(--data);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  padding: 10px 4px 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+}
+
+.tab-btn::before {
+  content: "";
+}
+
+.tab-btn.active {
+  color: var(--amber);
+}
+
+.tab-btn .tab-prompt {
+  font-size: 10px;
+}
+
+/* ---------------------------------------------------------------
+   Buttons
+   --------------------------------------------------------------- */
+.btn {
+  font-family: var(--data);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 10px 16px;
+  border: 1px solid var(--amber);
+  background: transparent;
+  color: var(--amber);
+  border-radius: 2px;
+}
+
+.btn:active { background: var(--amber); color: var(--void); }
+
+.btn.primary { background: var(--amber); color: var(--void); }
+.btn.primary:active { background: var(--amber-dim); }
+
+/* ---------------------------------------------------------------
+   Toast
+   --------------------------------------------------------------- */
+#toast {
+  position: fixed;
+  bottom: calc(70px + var(--safe-bottom));
+  left: 50%;
+  transform: translateX(-50%) translateY(10px);
+  background: var(--void-3);
+  border: 1px solid var(--amber);
+  color: var(--paper);
+  font-family: var(--data);
+  font-size: 12px;
+  padding: 8px 14px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 50;
+  max-width: 90%;
+}
+
+#toast.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* scanline flicker on load, subtle, respects reduced-motion */
+@media (prefers-reduced-motion: no-preference) {
+  .source-main.boot::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(
+      0deg, rgba(255,176,0,0.03) 0px, rgba(255,176,0,0.03) 1px,
+      transparent 1px, transparent 3px
+    );
+    animation: flicker 0.4s ease-out;
+    z-index: 30;
+  }
+}
+
+@keyframes flicker {
+  0% { opacity: 0.6; }
+  100% { opacity: 0; }
+}
