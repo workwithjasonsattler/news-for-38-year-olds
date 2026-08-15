@@ -43,31 +43,31 @@
   }
 
   // ---------------------------------------------------------------
-  // View mode — Terminal (original amber/void aesthetic) vs Mobile
-  // (lighter, higher-contrast, scannable). User-swappable, for beta
-  // testing which reads better. Defaults to Mobile.
+  // Layout mode — Mobile (bottom tab bar, single column) vs Desktop
+  // (top nav, multi-column grid). Same theme/components either way —
+  // this swaps ARRANGEMENT, not color scheme. Defaults to Mobile.
   // ---------------------------------------------------------------
-  const MODE_KEY = "source_view_mode";
+  const LAYOUT_KEY = "source_layout_mode";
 
-  function getViewMode() {
-    return localStorage.getItem(MODE_KEY) || "mobile";
+  function getLayoutMode() {
+    return localStorage.getItem(LAYOUT_KEY) || "mobile";
   }
 
-  function setViewMode(mode) {
-    localStorage.setItem(MODE_KEY, mode);
-    document.body.dataset.mode = mode;
+  function setLayoutMode(mode) {
+    localStorage.setItem(LAYOUT_KEY, mode);
+    document.body.dataset.layout = mode;
     renderViewToggle();
   }
 
   function renderViewToggle() {
     const el = document.getElementById("viewToggle");
     if (!el) return;
-    const mode = getViewMode();
+    const mode = getLayoutMode();
     el.innerHTML = `
       <button class="view-toggle-btn${mode === "mobile" ? " active" : ""}" data-mode="mobile">MOBILE</button>
-      <button class="view-toggle-btn${mode === "terminal" ? " active" : ""}" data-mode="terminal">TERM</button>`;
+      <button class="view-toggle-btn${mode === "desktop" ? " active" : ""}" data-mode="desktop">DESKTOP</button>`;
     el.querySelectorAll(".view-toggle-btn").forEach(btn => {
-      btn.addEventListener("click", () => setViewMode(btn.dataset.mode));
+      btn.addEventListener("click", () => setLayoutMode(btn.dataset.mode));
     });
   }
 
@@ -136,9 +136,6 @@
   }
 
   function renderActiveTab() {
-    const main = document.getElementById("main");
-    main.classList.add("boot");
-    setTimeout(() => main.classList.remove("boot"), 450);
     if (activeTab === "read") return renderRead();
     if (activeTab === "sources") return renderSources();
     if (activeTab === "buzz") return renderBuzz();
@@ -147,42 +144,74 @@
 
   // ---------------------------------------------------------------
   // READ — the RSS reader, built on Sprays. Maps to /api/dispatches.
+  // Cards show a stored image immediately when the feed had one at
+  // import time; only fall back to a live og:image lookup for items
+  // that don't. Cards whose article is also trending on Bluesky get
+  // a badge linking over to Buzz.
   // ---------------------------------------------------------------
   async function renderRead() {
     const main = document.getElementById("main");
     main.innerHTML = stateBlock({ title: "PULLING TRANSMISSION", body: "Fetching latest dispatches...", spin: true });
     try {
-      const items = await api("/api/dispatches");
+      const [items, trendingLinks] = await Promise.all([
+        api("/api/dispatches"),
+        getTrendingLinks(),
+      ]);
       if (!Array.isArray(items) || items.length === 0) {
         main.innerHTML = stateBlock({ glyph: "∅", title: "NO SIGNAL", body: "No dispatches available right now." });
         return;
       }
       const shown = items.slice(0, 60);
-      main.innerHTML = shown.map(renderDispatchCard).join("");
-      loadThumbnails(shown.map(d => d.id).filter(id => typeof id === "number"));
+      main.innerHTML = shown.map(d => renderDispatchCard(d, trendingLinks.has(d.link))).join("");
+      main.querySelectorAll(".buzz-badge").forEach(btn => {
+        btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
+      });
+      const needsLiveThumb = shown.filter(d => !d.image_url && typeof d.id === "number").map(d => d.id);
+      loadThumbnails(needsLiveThumb);
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "TRANSMISSION FAILED", body: e.message || "Could not reach the wire." });
     }
   }
 
-  function renderDispatchCard(d) {
+  // Trending-on-Bluesky link set, used to badge Read-tab cards. Fails
+  // soft to an empty set — Bluesky being unreachable should never break
+  // the Read tab, it just means no badges show.
+  async function getTrendingLinks() {
+    try {
+      const posts = await api("/api/nerve-center/bluesky");
+      const set = new Set();
+      (Array.isArray(posts) ? posts : []).forEach(p => { if (p.hasLink && p.link) set.add(p.link); });
+      return set;
+    } catch (e) {
+      return new Set();
+    }
+  }
+
+  function renderDispatchCard(d, isTrending) {
     const excerpt = (d.excerpt || "").trim();
+    const hasImage = !!d.image_url;
     return `
-      <a class="card" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener" style="display:block;">
+      <div class="card">
         <div class="card-meta"><span>${escapeHtml(d.outlet || d.source || "UNKNOWN")}</span><span>${relTime(d.date)}</span></div>
-        <div class="card-body">
-          <div class="card-text">
-            <div class="card-title">${escapeHtml(d.title || d.headline || "")}</div>
-            ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt.slice(0, 160))}</div>` : ""}
+        <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
+          <div class="card-body">
+            <div class="card-text">
+              <div class="card-title">${escapeHtml(d.title || d.headline || "")}</div>
+              ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt.slice(0, 160))}</div>` : ""}
+            </div>
+            <img class="card-thumb${hasImage ? " loaded" : ""}" id="thumb-${d.id}" alt=""
+              ${hasImage ? `src="${escapeHtml(d.image_url)}"` : ""} loading="lazy"
+              onerror="this.classList.remove('loaded')">
           </div>
-          <img class="card-thumb" id="thumb-${d.id}" alt="" loading="lazy">
-        </div>
-      </a>`;
+        </a>
+        ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
+      </div>`;
   }
 
   // Fetches thumbnails in batches of 20 (the endpoint's own cap) and pops
-  // each image in as it resolves. Fails soft per-item — a dispatch with no
-  // og:image, or a failed fetch, just leaves that card text-only.
+  // each image in as it resolves. Only called for dispatches that had no
+  // stored image_url to begin with. Fails soft per-item — a dispatch with
+  // no og:image, or a failed fetch, just leaves that card text-only.
   async function loadThumbnails(ids) {
     for (let i = 0; i < ids.length; i += 20) {
       const batch = ids.slice(i, i + 20);
@@ -230,26 +259,68 @@
   }
 
   // ---------------------------------------------------------------
-  // BUZZ — organized around big stories/topics. Maps to the Nerve
-  // Center panels (Popular on Bluesky).
+  // BUZZ — organized around big stories/topics. Actions (Rogan's
+  // List) up top, then Trending on Bluesky. Maps to the existing
+  // Nerve Center panels + the Actions SIMPLE_FEED.
   // ---------------------------------------------------------------
   async function renderBuzz() {
     const main = document.getElementById("main");
     main.innerHTML = stateBlock({ title: "SCANNING CHATTER", body: "Pulling the signal off Bluesky...", spin: true });
-    try {
-      const posts = await api("/api/nerve-center/bluesky");
-      if (!Array.isArray(posts) || posts.length === 0) {
-        main.innerHTML = stateBlock({ glyph: "∅", title: "QUIET RIGHT NOW", body: "No chatter picked up in the current window." });
-        return;
-      }
-      main.innerHTML = posts.slice(0, 40).map(p => `
-        <a class="card" href="${escapeHtml(p.link || p.postUrl || "#")}" target="_blank" rel="noopener" style="display:block;">
-          <div class="card-meta"><span>${escapeHtml(p.author || p.outlet || "")}</span><span>${relTime(p.indexedAt || p.date)}</span></div>
-          <div class="card-title">${escapeHtml(p.text || p.title || "")}</div>
-        </a>`).join("");
-    } catch (e) {
-      main.innerHTML = stateBlock({ glyph: "!", title: "SIGNAL LOST", body: e.message || "Could not reach Bluesky chatter." });
+    const [actionsResult, postsResult] = await Promise.allSettled([
+      api("/api/actions-feed"),
+      api("/api/nerve-center/bluesky"),
+    ]);
+
+    const actions = actionsResult.status === "fulfilled" && Array.isArray(actionsResult.value) ? actionsResult.value : [];
+    const posts = postsResult.status === "fulfilled" && Array.isArray(postsResult.value) ? postsResult.value : [];
+
+    if (actions.length === 0 && posts.length === 0) {
+      main.innerHTML = stateBlock({ glyph: "∅", title: "QUIET RIGHT NOW", body: "No chatter picked up in the current window." });
+      return;
     }
+
+    let html = "";
+    if (actions.length > 0) {
+      html += `<div class="section-label">WHAT YOU CAN DO</div>` + renderActionsSection(actions);
+    }
+    if (posts.length > 0) {
+      html += `<div class="section-label">TRENDING ON BLUESKY</div>` + posts.slice(0, 40).map(renderBluePost).join("");
+    }
+    main.innerHTML = html;
+  }
+
+  function renderActionsSection(actions) {
+    const [top, ...rest] = actions;
+    let html = "";
+    if (top) {
+      const excerpt = (top.excerpt || "").trim();
+      html += `
+        <div class="card">
+          <a class="card-link" href="${escapeHtml(top.link || "#")}" target="_blank" rel="noopener">
+            <div class="card-body">
+              <div class="card-text">
+                <div class="card-title">${escapeHtml(top.title || "")}</div>
+                ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt.slice(0, 160))}</div>` : ""}
+              </div>
+              ${top.image ? `<img class="card-thumb loaded" src="${escapeHtml(top.image)}" alt="" loading="lazy" onerror="this.classList.remove('loaded')">` : ""}
+            </div>
+          </a>
+        </div>`;
+    }
+    if (rest.length > 0) {
+      html += `<div class="card">` + rest.map(a => `
+        <a class="card-link plain-row" href="${escapeHtml(a.link || "#")}" target="_blank" rel="noopener">${escapeHtml(a.title || "")}</a>
+      `).join("") + `</div>`;
+    }
+    return html;
+  }
+
+  function renderBluePost(p) {
+    return `
+      <a class="card card-link" href="${escapeHtml(p.link || p.postUrl || "#")}" target="_blank" rel="noopener" style="display:block;">
+        <div class="card-meta"><span>${escapeHtml(p.author || p.outlet || "")}</span><span>${relTime(p.indexedAt || p.date)}</span></div>
+        <div class="card-title">${escapeHtml(p.text || p.title || "")}</div>
+      </a>`;
   }
 
   // ---------------------------------------------------------------
@@ -265,7 +336,7 @@
           <div class="card-meta"><span>ACCESS</span></div>
           <div class="card-title" style="margin-bottom:10px;">Sign in to save your Sprays across devices.</div>
           <input id="youEmail" type="email" placeholder="you@domain.com"
-            style="width:100%; padding:9px; background:var(--void); border:1px solid var(--line); color:var(--paper); font-family:var(--data); font-size:13px; margin-bottom:8px;">
+            style="width:100%; padding:9px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--body); font-size:14px; margin-bottom:8px; border-radius:8px;">
           <button class="btn primary" id="youSendLink">SEND ACCESS LINK</button>
         </div>`;
       document.getElementById("youSendLink").addEventListener("click", async () => {
@@ -310,10 +381,11 @@
     el.id = "onboarding";
     el.innerHTML = `
       <div class="ob-wordmark">SOURCE?</div>
-      <h1>Get the news first, from the best sources.</h1>
-      <p>Start with our Best in the World News Spray, edit it, or pick your own.</p>
-      <button class="ob-btn" id="obStart">Start with Best in the World
-        <span class="ob-btn-sub">Our flagship Spray — live, unfiltered, always current</span></button>
+      <div class="ob-rule"></div>
+      <h1>News first, from the best sources. Escape the billionaires' algorithm.</h1>
+      <p>Start with our News Spray, edit it, or pick your own.</p>
+      <button class="ob-btn" id="obStart">Start with our News Spray
+        <span class="ob-btn-sub">Best in the World — live, unfiltered, always current</span></button>
       <button class="ob-btn secondary" id="obOwn">Pick my own sources
         <span class="ob-btn-sub">Build a Spray from scratch</span></button>
     `;
@@ -333,7 +405,7 @@
   // Boot
   // ---------------------------------------------------------------
   document.addEventListener("DOMContentLoaded", async () => {
-    document.body.dataset.mode = getViewMode();
+    document.body.dataset.layout = getLayoutMode();
     renderViewToggle();
     renderTabBar();
     await refreshSession();

@@ -269,6 +269,7 @@ async function initSchema() {
   for (const stmt of [
     `ALTER TABLE dispatches ADD COLUMN tip_url TEXT`,
     `ALTER TABLE dispatches ADD COLUMN subscribe_url TEXT`,
+    `ALTER TABLE dispatches ADD COLUMN image_url TEXT`,
     `ALTER TABLE feeds ADD COLUMN subscribe_url TEXT`,
     `ALTER TABLE feeds ADD COLUMN bluesky_handle TEXT`,
     `ALTER TABLE feeds ADD COLUMN feed_type TEXT NOT NULL DEFAULT 'outlet'`,
@@ -2964,7 +2965,7 @@ async function importAllFeeds() {
         const excerpt = truncate(stripHtml(item.summary), 160);
         if (!headline || !item.link) continue;
         const info = await dbRun(
-          `INSERT OR IGNORE INTO dispatches (name, outlet, beat, date, headline, excerpt, link, tip_url, subscribe_url) VALUES (?,?,?,?,?,?,?,?,?)`,
+          `INSERT OR IGNORE INTO dispatches (name, outlet, beat, date, headline, excerpt, link, tip_url, subscribe_url, image_url) VALUES (?,?,?,?,?,?,?,?,?,?)`,
           [
             item.author?.trim() || feed.default_author || feed.outlet,
             feed.outlet,
@@ -2975,6 +2976,7 @@ async function importAllFeeds() {
             item.link,
             feed.tip_url || "",
             feed.subscribe_url || "",
+            item.image || "",
           ]
         );
         if (info.changes) added++;

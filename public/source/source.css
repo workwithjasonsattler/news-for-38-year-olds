@@ -1,25 +1,25 @@
 :root {
   /* -----------------------------------------------------------------
-     SOURCE? tokens — "hacked into something": amber-phosphor CRT +
-     stamped/redacted document aesthetic. Deliberately NOT N38YO's
-     warm-newspaper Georgia serif, and NOT the app shell's dark-ink/
-     burst-mark identity (--ink/#14161B, wire-red, Barlow Condensed).
+     SOURCE? tokens — clean white, modern reader. Retired direction:
+     amber-on-black terminal ("hacked into something"). This is now
+     the ONE identity — the mobile/desktop toggle below swaps LAYOUT,
+     not theme.
      ----------------------------------------------------------------- */
-  --void: #0B0C0A;
-  --void-2: #131412;
-  --void-3: #1B1D19;
-  --line: #34362F;
-  --paper: #D8D6CE;
-  --muted: #6B6A63;
-  --amber: #FFB000;
-  --amber-dim: #B37D00;
-  --stamp-red: #B8123A;
-  --stamp-red-dim: #7A0C27;
+  --bg: #FFFFFF;
+  --surface: #F7F7F4;
+  --surface-2: #FFFFFF;
+  --line: #E6E7E1;
+  --ink: #14161B;
+  --ink-muted: #6B6E67;
+  --accent: #C98A00;
+  --accent-dim: #8C6300;
+  --accent-soft: #FFF4DC;
+  --alert: #B8123A;
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  --display: "JetBrains Mono", "Space Mono", ui-monospace, monospace;
+  --display: "Poppins", "Inter", -apple-system, sans-serif;
   --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --data: "IBM Plex Mono", ui-monospace, monospace;
 }
@@ -27,14 +27,14 @@
 * { box-sizing: border-box; }
 
 @media (prefers-reduced-motion: no-preference) {
-  .tab-btn, .btn, .card, .stamp { transition: transform 0.12s ease, background 0.15s ease, opacity 0.15s ease; }
+  .tab-btn, .btn, .card { transition: transform 0.12s ease, background 0.15s ease, opacity 0.15s ease; }
 }
 
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--void);
-  color: var(--paper);
+  background: var(--bg);
+  color: var(--ink);
   font-family: var(--body);
   -webkit-tap-highlight-color: transparent;
   height: 100%;
@@ -47,107 +47,72 @@ body {
   min-height: 100dvh;
 }
 
-a { color: var(--amber); text-decoration: none; }
+a { color: var(--accent-dim); text-decoration: none; }
 a:hover { text-decoration: underline; }
 
-button {
-  font-family: inherit;
-  cursor: pointer;
-}
+button { font-family: inherit; cursor: pointer; }
 
 /* ---------------------------------------------------------------
-   MOBILE view mode — a lighter, higher-contrast, scannable
-   alternative to the default Terminal aesthetic. Every component
-   below is built on the --void/--paper/--amber custom properties,
-   so overriding them here re-themes the whole app with no
-   duplicate component CSS. User-swappable via the header toggle;
-   defaults to mobile for the beta (see source.js).
-   --------------------------------------------------------------- */
-body[data-mode="mobile"] {
-  --void: #EEEFEA;
-  --void-2: #FFFFFF;
-  --void-3: #F6F5F0;
-  --line: #DAD8D0;
-  --paper: #1A1B17;
-  --muted: #6B6A63;
-  --amber: #B37D00;
-  --amber-dim: #8C6300;
-}
-
-body[data-mode="mobile"] .wordmark,
-body[data-mode="mobile"] .wordmark .cursor {
-  color: var(--amber);
-}
-
-body[data-mode="mobile"] .card {
-  border-left-width: 3px;
-}
-
-/* ---------------------------------------------------------------
-   Header / wordmark — "SOURCE?_" with a blinking terminal cursor
+   Header / wordmark
    --------------------------------------------------------------- */
 .source-header {
   padding: calc(14px + var(--safe-top)) 18px 12px;
   border-bottom: 1px solid var(--line);
-  background: var(--void-2);
+  background: var(--surface-2);
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.wordmark-wrap { display: flex; flex-direction: column; }
+
+.wordmark {
+  font-family: var(--display);
+  font-weight: 800;
+  font-size: 21px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+
+.wordmark-rule {
+  width: 46px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  margin-top: 3px;
+  transform: rotate(-1.5deg);
+}
+
+.tagline {
+  font-family: var(--body);
+  font-size: 11px;
+  color: var(--ink-muted);
+  margin-top: 5px;
 }
 
 .view-toggle {
   display: flex;
   border: 1px solid var(--line);
+  border-radius: 20px;
+  overflow: hidden;
   flex-shrink: 0;
 }
 
 .view-toggle-btn {
   background: transparent;
   border: none;
-  color: var(--muted);
-  font-family: var(--data);
-  font-size: 9px;
-  letter-spacing: 0.05em;
-  padding: 6px 8px;
+  color: var(--ink-muted);
+  font-family: var(--body);
+  font-weight: 600;
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  padding: 6px 11px;
 }
 
 .view-toggle-btn.active {
-  background: var(--amber);
-  color: var(--void);
-}
-
-.wordmark {
-  font-family: var(--display);
-  font-weight: 700;
-  font-size: 22px;
-  letter-spacing: 0.5px;
-  color: var(--amber);
-  display: flex;
-  align-items: baseline;
-  gap: 2px;
-}
-
-.wordmark .cursor {
-  display: inline-block;
-  width: 9px;
-  height: 18px;
-  background: var(--amber);
-  animation: blink 1.1s steps(1) infinite;
-  margin-left: 3px;
-}
-
-@keyframes blink {
-  0%, 49% { opacity: 1; }
-  50%, 100% { opacity: 0; }
-}
-
-.tagline {
-  font-family: var(--data);
-  font-size: 10px;
-  color: var(--muted);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
+  background: var(--ink);
+  color: var(--bg);
 }
 
 /* ---------------------------------------------------------------
@@ -156,111 +121,160 @@ body[data-mode="mobile"] .card {
 .source-main {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 16px calc(90px + var(--safe-bottom));
+  padding: 14px 14px calc(90px + var(--safe-bottom));
+  background: var(--bg);
 }
 
 .state-block {
   text-align: center;
   padding: 60px 20px;
-  color: var(--muted);
+  color: var(--ink-muted);
 }
 
 .state-block h3 {
   font-family: var(--display);
-  color: var(--paper);
+  color: var(--ink);
   font-size: 15px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-weight: 700;
   margin: 14px 0 6px;
 }
 
-.state-block p {
-  font-size: 13px;
-  margin: 0;
-}
+.state-block p { font-size: 13px; margin: 0; }
 
-.terminal-glyph {
-  font-family: var(--display);
-  font-size: 28px;
-  color: var(--amber);
-}
-
+.terminal-glyph { font-family: var(--display); font-size: 26px; color: var(--accent); font-weight: 700; }
 .terminal-glyph.spin { animation: spin 1.1s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ---------------------------------------------------------------
-   Transmission cards — intercepted-printout look. No rounded
-   corners, thin amber hairline, monospace metadata row.
+   Dispatch cards — clean reader-list style: thumbnail left,
+   title/excerpt right, subtle hairline separators rather than
+   boxed cards.
    --------------------------------------------------------------- */
 .card {
-  background: var(--void-2);
+  background: var(--surface-2);
   border: 1px solid var(--line);
-  border-left: 2px solid var(--amber-dim);
-  padding: 12px 14px;
-  margin-bottom: 10px;
+  border-radius: 10px;
+  padding: 12px;
+  margin-bottom: 8px;
+  display: block;
 }
 
-.card:active { background: var(--void-3); }
+.card:active { background: var(--surface); }
 
 .card-meta {
   font-family: var(--data);
-  font-size: 10px;
-  color: var(--muted);
+  font-size: 10.5px;
+  color: var(--ink-muted);
   text-transform: uppercase;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.04em;
   display: flex;
   justify-content: space-between;
   margin-bottom: 6px;
 }
 
+.card-body { display: flex; gap: 10px; align-items: flex-start; }
+.card-body .card-text { flex: 1; min-width: 0; }
+
+.card-link { display: block; color: inherit; text-decoration: none; }
+.card-link:hover .card-title { color: var(--accent-dim); text-decoration: none; }
+
 .card-title {
+  font-family: var(--display);
+  font-weight: 600;
   font-size: 15px;
   line-height: 1.35;
-  color: var(--paper);
-  font-weight: 500;
+  color: var(--ink);
 }
 
-.card-title:hover { color: var(--amber); text-decoration: none; }
+.card:hover .card-title { color: var(--accent-dim); }
 
 .card-excerpt {
   font-size: 13px;
-  color: var(--muted);
+  color: var(--ink-muted);
   margin-top: 6px;
   line-height: 1.5;
 }
 
-.card-body {
-  display: flex;
-  gap: 10px;
-  align-items: flex-start;
-}
-
-.card-body .card-text { flex: 1; min-width: 0; }
-
 .card-thumb {
-  width: 78px;
-  height: 78px;
+  width: 72px;
+  height: 72px;
   flex-shrink: 0;
   object-fit: cover;
-  background: var(--void-3);
-  border: 1px solid var(--line);
-  display: none; /* shown once a thumbnail actually loads */
+  background: var(--surface);
+  border-radius: 8px;
+  display: none;
 }
 
 .card-thumb.loaded { display: block; }
 
+/* trending-on-Bluesky badge, links out to Buzz */
+.buzz-badge {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-top: 9px;
+  padding: 7px 10px;
+  background: var(--accent-soft);
+  color: var(--accent-dim);
+  border: none;
+  border-radius: 8px;
+  font-family: var(--body);
+  font-weight: 600;
+  font-size: 12px;
+}
+
+/* section headers within a tab (e.g. Buzz: Actions / Trending) */
+.section-label {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  margin: 20px 2px 8px;
+}
+
+.section-label:first-child { margin-top: 2px; }
+
+/* plain link rows, used for the non-preview items in a top-item
+   preview list (e.g. Actions after the first item) */
+.plain-row {
+  display: block;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13.5px;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
+.plain-row:last-child { border-bottom: none; }
+.plain-row:hover { color: var(--accent-dim); }
+
+/* signature stamp badge, now on white */
+.stamp {
+  display: inline-block;
+  font-family: var(--display);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 12px;
+  background: var(--accent-soft);
+  color: var(--accent-dim);
+}
+
+.stamp.unverified { background: #FCE4E9; color: var(--alert); }
+
 /* ---------------------------------------------------------------
-   Onboarding — first-run screen. Deliberately calmer/lighter than
-   either main view mode: this is the first thing a new reader
-   sees, so it leans on the mobile-mode token set regardless of
-   which mode is currently active.
+   Onboarding
    --------------------------------------------------------------- */
 .onboarding {
   position: fixed;
   inset: 0;
   z-index: 100;
-  background: #F3F2ED;
-  color: #1A1B17;
+  background: var(--bg);
+  color: var(--ink);
   display: flex;
   flex-direction: column;
   justify-content: center;
@@ -269,25 +283,34 @@ body[data-mode="mobile"] .card {
 
 .onboarding .ob-wordmark {
   font-family: var(--display);
-  font-weight: 700;
+  font-weight: 800;
   font-size: 20px;
-  color: #B37D00;
+  color: var(--ink);
+  margin-bottom: 6px;
+}
+
+.onboarding .ob-rule {
+  width: 46px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
   margin-bottom: 30px;
+  transform: rotate(-1.5deg);
 }
 
 .onboarding h1 {
   font-family: var(--display);
-  font-size: 26px;
-  line-height: 1.25;
-  margin: 0 0 12px;
+  font-size: 25px;
   font-weight: 700;
+  line-height: 1.3;
+  margin: 0 0 12px;
 }
 
 .onboarding p {
   font-family: var(--body);
   font-size: 15px;
   line-height: 1.5;
-  color: #4A4942;
+  color: var(--ink-muted);
   margin: 0 0 30px;
 }
 
@@ -300,56 +323,30 @@ body[data-mode="mobile"] .card {
   font-weight: 600;
   padding: 15px 16px;
   margin-bottom: 10px;
-  border: 1.5px solid #1A1B17;
-  background: #1A1B17;
-  color: #F3F2ED;
-  border-radius: 3px;
+  border: 1.5px solid var(--ink);
+  background: var(--ink);
+  color: var(--bg);
+  border-radius: 10px;
 }
 
-.ob-btn.secondary {
-  background: transparent;
-  color: #1A1B17;
-}
+.ob-btn.secondary { background: transparent; color: var(--ink); }
 
 .ob-btn-sub {
   display: block;
-  font-family: var(--data);
-  font-size: 11px;
+  font-family: var(--body);
+  font-size: 11.5px;
   font-weight: 400;
   opacity: 0.65;
   margin-top: 3px;
 }
 
 /* ---------------------------------------------------------------
-   Signature element: rubber-stamp badge
-   --------------------------------------------------------------- */
-.stamp {
-  display: inline-block;
-  font-family: var(--display);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  padding: 3px 8px;
-  border: 1.5px solid var(--amber);
-  color: var(--amber);
-  transform: rotate(-3deg);
-  border-radius: 2px;
-}
-
-.stamp.unverified {
-  border-color: var(--stamp-red);
-  color: var(--stamp-red);
-  transform: rotate(2deg);
-}
-
-/* ---------------------------------------------------------------
-   Bottom tab bar — command-line style tabs
+   Bottom tab bar (mobile layout)
    --------------------------------------------------------------- */
 .tab-bar {
   position: fixed;
   bottom: 0; left: 0; right: 0;
-  background: var(--void-2);
+  background: var(--surface-2);
   border-top: 1px solid var(--line);
   padding-bottom: var(--safe-bottom);
   display: flex;
@@ -360,10 +357,11 @@ body[data-mode="mobile"] .card {
   flex: 1;
   background: none;
   border: none;
-  color: var(--muted);
-  font-family: var(--data);
+  color: var(--ink-muted);
+  font-family: var(--body);
+  font-weight: 600;
   font-size: 11px;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.01em;
   padding: 10px 4px 8px;
   display: flex;
   flex-direction: column;
@@ -371,37 +369,25 @@ body[data-mode="mobile"] .card {
   gap: 3px;
 }
 
-.tab-btn::before {
-  content: "";
-}
-
-.tab-btn.active {
-  color: var(--amber);
-}
-
-.tab-btn .tab-prompt {
-  font-size: 10px;
-}
+.tab-btn.active { color: var(--accent-dim); }
 
 /* ---------------------------------------------------------------
    Buttons
    --------------------------------------------------------------- */
 .btn {
-  font-family: var(--data);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-family: var(--body);
+  font-weight: 600;
+  font-size: 13px;
   padding: 10px 16px;
-  border: 1px solid var(--amber);
+  border: 1px solid var(--ink);
   background: transparent;
-  color: var(--amber);
-  border-radius: 2px;
+  color: var(--ink);
+  border-radius: 8px;
 }
 
-.btn:active { background: var(--amber); color: var(--void); }
-
-.btn.primary { background: var(--amber); color: var(--void); }
-.btn.primary:active { background: var(--amber-dim); }
+.btn:active { background: var(--ink); color: var(--bg); }
+.btn.primary { background: var(--ink); color: var(--bg); }
+.btn.primary:active { background: var(--accent-dim); border-color: var(--accent-dim); }
 
 /* ---------------------------------------------------------------
    Toast
@@ -411,12 +397,12 @@ body[data-mode="mobile"] .card {
   bottom: calc(70px + var(--safe-bottom));
   left: 50%;
   transform: translateX(-50%) translateY(10px);
-  background: var(--void-3);
-  border: 1px solid var(--amber);
-  color: var(--paper);
-  font-family: var(--data);
-  font-size: 12px;
-  padding: 8px 14px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--body);
+  font-size: 12.5px;
+  padding: 9px 14px;
+  border-radius: 8px;
   opacity: 0;
   pointer-events: none;
   z-index: 50;
@@ -429,23 +415,52 @@ body[data-mode="mobile"] .card {
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
 
-/* scanline flicker on load, subtle, respects reduced-motion */
-@media (prefers-reduced-motion: no-preference) {
-  .source-main.boot::after {
-    content: "";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    background: repeating-linear-gradient(
-      0deg, rgba(255,176,0,0.03) 0px, rgba(255,176,0,0.03) 1px,
-      transparent 1px, transparent 3px
-    );
-    animation: flicker 0.4s ease-out;
-    z-index: 30;
-  }
+/* ---------------------------------------------------------------
+   DESKTOP layout — this is the "swap out" view: top nav instead of
+   a bottom tab bar, wider multi-column card grid. Same theme, same
+   components, different arrangement. Answers the original "add a
+   mobile view the user can swap [out of]" ask now that the theme
+   itself is unified.
+   --------------------------------------------------------------- */
+body[data-layout="desktop"] .tab-bar {
+  position: static;
+  border-top: none;
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 0;
+  max-width: 720px;
+  margin: 0 auto;
 }
 
-@keyframes flicker {
-  0% { opacity: 0.6; }
-  100% { opacity: 0; }
+body[data-layout="desktop"] .tab-btn {
+  flex-direction: row;
+  gap: 6px;
+  padding: 14px 8px;
+}
+
+body[data-layout="desktop"] .source-main {
+  max-width: 720px;
+  margin: 0 auto;
+  padding-bottom: 40px;
+  width: 100%;
+}
+
+body[data-layout="desktop"] #main {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  align-items: start;
+}
+
+body[data-layout="desktop"] .state-block {
+  grid-column: 1 / -1;
+}
+
+@media (min-width: 900px) {
+  body[data-layout="desktop"] .tab-bar,
+  body[data-layout="desktop"] .source-main {
+    max-width: 960px;
+  }
+  body[data-layout="desktop"] #main {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
 }
