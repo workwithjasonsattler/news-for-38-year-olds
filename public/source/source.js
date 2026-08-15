@@ -43,6 +43,35 @@
   }
 
   // ---------------------------------------------------------------
+  // View mode — Terminal (original amber/void aesthetic) vs Mobile
+  // (lighter, higher-contrast, scannable). User-swappable, for beta
+  // testing which reads better. Defaults to Mobile.
+  // ---------------------------------------------------------------
+  const MODE_KEY = "source_view_mode";
+
+  function getViewMode() {
+    return localStorage.getItem(MODE_KEY) || "mobile";
+  }
+
+  function setViewMode(mode) {
+    localStorage.setItem(MODE_KEY, mode);
+    document.body.dataset.mode = mode;
+    renderViewToggle();
+  }
+
+  function renderViewToggle() {
+    const el = document.getElementById("viewToggle");
+    if (!el) return;
+    const mode = getViewMode();
+    el.innerHTML = `
+      <button class="view-toggle-btn${mode === "mobile" ? " active" : ""}" data-mode="mobile">MOBILE</button>
+      <button class="view-toggle-btn${mode === "terminal" ? " active" : ""}" data-mode="terminal">TERM</button>`;
+    el.querySelectorAll(".view-toggle-btn").forEach(btn => {
+      btn.addEventListener("click", () => setViewMode(btn.dataset.mode));
+    });
+  }
+
+  // ---------------------------------------------------------------
   // Toast
   // ---------------------------------------------------------------
   let toastTimer = null;
@@ -128,23 +157,50 @@
         main.innerHTML = stateBlock({ glyph: "∅", title: "NO SIGNAL", body: "No dispatches available right now." });
         return;
       }
-      main.innerHTML = `
-        <div class="card" style="border-left-color: var(--amber); margin-bottom:16px;">
-          <div class="card-meta"><span>HEADLINES : BEST IN THE WORLD</span><span class="stamp">VERIFIED</span></div>
-          <div class="card-excerpt">Live wire. No algorithm you can't see.</div>
-        </div>
-      ` + items.slice(0, 60).map(renderDispatchCard).join("");
+      const shown = items.slice(0, 60);
+      main.innerHTML = shown.map(renderDispatchCard).join("");
+      loadThumbnails(shown.map(d => d.id).filter(id => typeof id === "number"));
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "TRANSMISSION FAILED", body: e.message || "Could not reach the wire." });
     }
   }
 
   function renderDispatchCard(d) {
+    const excerpt = (d.excerpt || "").trim();
     return `
       <a class="card" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener" style="display:block;">
         <div class="card-meta"><span>${escapeHtml(d.outlet || d.source || "UNKNOWN")}</span><span>${relTime(d.date)}</span></div>
-        <div class="card-title">${escapeHtml(d.title || d.headline || "")}</div>
+        <div class="card-body">
+          <div class="card-text">
+            <div class="card-title">${escapeHtml(d.title || d.headline || "")}</div>
+            ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt.slice(0, 160))}</div>` : ""}
+          </div>
+          <img class="card-thumb" id="thumb-${d.id}" alt="" loading="lazy">
+        </div>
       </a>`;
+  }
+
+  // Fetches thumbnails in batches of 20 (the endpoint's own cap) and pops
+  // each image in as it resolves. Fails soft per-item — a dispatch with no
+  // og:image, or a failed fetch, just leaves that card text-only.
+  async function loadThumbnails(ids) {
+    for (let i = 0; i < ids.length; i += 20) {
+      const batch = ids.slice(i, i + 20);
+      if (batch.length === 0) continue;
+      try {
+        const map = await api(`/api/dispatches/thumbnails?ids=${batch.join(",")}`);
+        Object.entries(map).forEach(([id, url]) => {
+          if (!url) return;
+          const img = document.getElementById(`thumb-${id}`);
+          if (!img) return;
+          img.src = url;
+          img.addEventListener("load", () => img.classList.add("loaded"));
+          img.addEventListener("error", () => img.remove());
+        });
+      } catch (e) {
+        // fail soft — thumbnails are a nice-to-have, never block reading
+      }
+    }
   }
 
   // ---------------------------------------------------------------
@@ -239,12 +295,53 @@
   }
 
   // ---------------------------------------------------------------
+  // Onboarding — first-run only. "Start with ours" lands on Read
+  // (which already IS the live Headlines: Best in the World wire —
+  // no clone needed to just read it). "Pick my own" heads to
+  // Sources to start tuning. Per the locked scoping doc's decision
+  // #9, a reader can also clone the flagship Spray for real later
+  // from the Sources/You flow once signed in.
+  // ---------------------------------------------------------------
+  const ONBOARDED_KEY = "source_onboarded";
+
+  function showOnboarding() {
+    const el = document.createElement("div");
+    el.className = "onboarding";
+    el.id = "onboarding";
+    el.innerHTML = `
+      <div class="ob-wordmark">SOURCE?</div>
+      <h1>Get the news first, from the best sources.</h1>
+      <p>Start with our Best in the World News Spray, edit it, or pick your own.</p>
+      <button class="ob-btn" id="obStart">Start with Best in the World
+        <span class="ob-btn-sub">Our flagship Spray — live, unfiltered, always current</span></button>
+      <button class="ob-btn secondary" id="obOwn">Pick my own sources
+        <span class="ob-btn-sub">Build a Spray from scratch</span></button>
+    `;
+    document.body.appendChild(el);
+    document.getElementById("obStart").addEventListener("click", () => dismissOnboarding("read"));
+    document.getElementById("obOwn").addEventListener("click", () => dismissOnboarding("sources"));
+  }
+
+  function dismissOnboarding(landOnTab) {
+    localStorage.setItem(ONBOARDED_KEY, "1");
+    const el = document.getElementById("onboarding");
+    if (el) el.remove();
+    switchTab(landOnTab);
+  }
+
+  // ---------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------
   document.addEventListener("DOMContentLoaded", async () => {
+    document.body.dataset.mode = getViewMode();
+    renderViewToggle();
     renderTabBar();
     await refreshSession();
     renderActiveTab();
+
+    if (!localStorage.getItem(ONBOARDED_KEY)) {
+      showOnboarding();
+    }
 
     if ("serviceWorker" in navigator) {
       navigator.serviceWorker.register("/source/sw.js").catch(() => { /* fail soft */ });

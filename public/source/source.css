@@ -56,6 +56,34 @@ button {
 }
 
 /* ---------------------------------------------------------------
+   MOBILE view mode — a lighter, higher-contrast, scannable
+   alternative to the default Terminal aesthetic. Every component
+   below is built on the --void/--paper/--amber custom properties,
+   so overriding them here re-themes the whole app with no
+   duplicate component CSS. User-swappable via the header toggle;
+   defaults to mobile for the beta (see source.js).
+   --------------------------------------------------------------- */
+body[data-mode="mobile"] {
+  --void: #EEEFEA;
+  --void-2: #FFFFFF;
+  --void-3: #F6F5F0;
+  --line: #DAD8D0;
+  --paper: #1A1B17;
+  --muted: #6B6A63;
+  --amber: #B37D00;
+  --amber-dim: #8C6300;
+}
+
+body[data-mode="mobile"] .wordmark,
+body[data-mode="mobile"] .wordmark .cursor {
+  color: var(--amber);
+}
+
+body[data-mode="mobile"] .card {
+  border-left-width: 3px;
+}
+
+/* ---------------------------------------------------------------
    Header / wordmark — "SOURCE?_" with a blinking terminal cursor
    --------------------------------------------------------------- */
 .source-header {
@@ -65,6 +93,28 @@ button {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  gap: 10px;
+}
+
+.view-toggle {
+  display: flex;
+  border: 1px solid var(--line);
+  flex-shrink: 0;
+}
+
+.view-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-family: var(--data);
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  padding: 6px 8px;
+}
+
+.view-toggle-btn.active {
+  background: var(--amber);
+  color: var(--void);
 }
 
 .wordmark {
@@ -177,6 +227,97 @@ button {
   color: var(--muted);
   margin-top: 6px;
   line-height: 1.5;
+}
+
+.card-body {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.card-body .card-text { flex: 1; min-width: 0; }
+
+.card-thumb {
+  width: 78px;
+  height: 78px;
+  flex-shrink: 0;
+  object-fit: cover;
+  background: var(--void-3);
+  border: 1px solid var(--line);
+  display: none; /* shown once a thumbnail actually loads */
+}
+
+.card-thumb.loaded { display: block; }
+
+/* ---------------------------------------------------------------
+   Onboarding — first-run screen. Deliberately calmer/lighter than
+   either main view mode: this is the first thing a new reader
+   sees, so it leans on the mobile-mode token set regardless of
+   which mode is currently active.
+   --------------------------------------------------------------- */
+.onboarding {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: #F3F2ED;
+  color: #1A1B17;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 32px 26px calc(32px + var(--safe-bottom));
+}
+
+.onboarding .ob-wordmark {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 20px;
+  color: #B37D00;
+  margin-bottom: 30px;
+}
+
+.onboarding h1 {
+  font-family: var(--display);
+  font-size: 26px;
+  line-height: 1.25;
+  margin: 0 0 12px;
+  font-weight: 700;
+}
+
+.onboarding p {
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.5;
+  color: #4A4942;
+  margin: 0 0 30px;
+}
+
+.ob-btn {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--body);
+  font-size: 15px;
+  font-weight: 600;
+  padding: 15px 16px;
+  margin-bottom: 10px;
+  border: 1.5px solid #1A1B17;
+  background: #1A1B17;
+  color: #F3F2ED;
+  border-radius: 3px;
+}
+
+.ob-btn.secondary {
+  background: transparent;
+  color: #1A1B17;
+}
+
+.ob-btn-sub {
+  display: block;
+  font-family: var(--data);
+  font-size: 11px;
+  font-weight: 400;
+  opacity: 0.65;
+  margin-top: 3px;
 }
 
 /* ---------------------------------------------------------------

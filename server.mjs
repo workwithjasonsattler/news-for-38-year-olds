@@ -1869,6 +1869,46 @@ app.get("/api/dispatches", async (req, res) => {
   res.json(rows);
 });
 
+// Thumbnail lookup for dispatch cards (used by SOURCE?'s scannable Read
+// view, which shows an image when one's available). Reuses the same
+// fetchOgImage() helper the Bluesky bot already uses for link-card
+// thumbnails, with its own in-memory cache keyed by article link so N
+// readers loading the same headline only trigger one fetch. Capped at 20
+// ids per call and fails soft per-item (a slow/broken og:image lookup for
+// one article never blocks the others).
+const dispatchThumbCache = new Map(); // link -> { url: string|null, ts: number }
+const DISPATCH_THUMB_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+app.get("/api/dispatches/thumbnails", async (req, res) => {
+  const ids = String(req.query.ids || "")
+    .split(",")
+    .map((s) => parseInt(s.trim(), 10))
+    .filter((n) => Number.isInteger(n))
+    .slice(0, 20);
+  if (ids.length === 0) return res.json({});
+
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = await dbAll(`SELECT id, link FROM dispatches WHERE id IN (${placeholders})`, ids);
+
+  const results = await Promise.allSettled(
+    rows.map(async (row) => {
+      const cached = dispatchThumbCache.get(row.link);
+      if (cached && Date.now() - cached.ts < DISPATCH_THUMB_CACHE_TTL_MS) {
+        return [row.id, cached.url];
+      }
+      const url = await fetchOgImage(row.link);
+      dispatchThumbCache.set(row.link, { url, ts: Date.now() });
+      return [row.id, url];
+    })
+  );
+
+  const out = {};
+  results.forEach((r) => {
+    if (r.status === "fulfilled") out[r.value[0]] = r.value[1];
+  });
+  res.json(out);
+});
+
 app.get("/api/sources", async (req, res) => {
   const rows = await dbAll(
     `SELECT outlet, default_author, subscribe_url, tip_url, feed_url, bluesky_handle, feed_type FROM feeds WHERE submission_status = 'approved' ORDER BY outlet ASC`
