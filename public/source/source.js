@@ -176,7 +176,10 @@
         main.innerHTML = stateBlock({ glyph: "∅", title: "NO SIGNAL", body: "No dispatches available right now." });
         return;
       }
-      const shown = items.slice(0, 60);
+      const shown = items
+        .slice()
+        .sort((a, b) => new Date(b.date) - new Date(a.date))
+        .slice(0, 60);
       main.innerHTML = shown.map((d, i) => renderDispatchCard(d, trendingLinks.has(d.link), i === 0)).join("");
       main.querySelectorAll(".buzz-badge").forEach(btn => {
         btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
