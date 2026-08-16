@@ -464,3 +464,59 @@ body[data-layout="desktop"] .state-block {
     grid-template-columns: 1fr 1fr 1fr;
   }
 }
+
+/* ---------------------------------------------------------------
+   PHONE FRAME PREVIEW — when the Mobile layout is loaded on a wide
+   (desktop-class) screen, scope the whole app into a fixed
+   phone-sized frame instead of stretching the bottom tab bar / cards
+   full browser width. Presentation-only: no markup/JS change. The
+   one real behavior shift is that elements using position:fixed
+   (tab bar, onboarding overlay, toast) normally resolve against the
+   real browser viewport — inside the frame they're switched to
+   position:absolute so they stay scoped to the phone body instead of
+   pinning to the actual window edges.
+   --------------------------------------------------------------- */
+@media (min-width: 700px) {
+  html {
+    background: #E7E7E2;
+    min-height: 100vh;
+    display: flex;
+  }
+
+  body[data-layout="mobile"] {
+    position: relative;
+    width: 390px;
+    height: 844px;
+    max-height: calc(100vh - 64px);
+    min-height: 0;
+    margin: 32px auto;
+    border: 10px solid var(--ink);
+    border-radius: 46px;
+    overflow: hidden;
+    box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  }
+
+  /* decorative notch, purely cosmetic phone-bezel cue */
+  body[data-layout="mobile"]::before {
+    content: "";
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 96px;
+    height: 22px;
+    background: var(--ink);
+    border-radius: 14px;
+    z-index: 30;
+  }
+
+  body[data-layout="mobile"] .source-header {
+    padding-top: 34px;
+  }
+
+  body[data-layout="mobile"] .tab-bar,
+  body[data-layout="mobile"] .onboarding,
+  body[data-layout="mobile"] #toast {
+    position: absolute;
+  }
+}
