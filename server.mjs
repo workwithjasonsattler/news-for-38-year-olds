@@ -1946,8 +1946,20 @@ async function fetchReaderArticle(url) {
       signal: controller.signal,
       redirect: "follow",
       headers: {
-        "User-Agent": "Mozilla/5.0 (compatible; N38YOReader/1.0; +https://news-for-38-year-olds.onrender.com)",
-        "Accept": "text/html,application/xhtml+xml",
+        // A real browser UA + headers, not a self-declared bot string —
+        // fixes the sites that reject purely on a bare/robotic UA.
+        // Sites running real bot-management (Cloudflare/Akamai/
+        // PerimeterX) will still block this regardless — no header
+        // combination fakes their JS-challenge/fingerprint checks from
+        // a plain server-side fetch. That's a hard ceiling, not
+        // something to keep tuning headers against.
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        // A Google referrer lets some paywalled sites' "first click
+        // free"-style JS through even though it won't touch real bot
+        // management — cheap to include, occasionally helps.
+        "Referer": "https://www.google.com/",
       },
     });
     if (!upstream.ok) throw new Error(`Upstream returned ${upstream.status}`);
@@ -1956,6 +1968,13 @@ async function fetchReaderArticle(url) {
     clearTimeout(timer);
   }
   if (html.length > READER_MAX_HTML_BYTES) html = html.slice(0, READER_MAX_HTML_BYTES);
+
+  // Bail early on an obvious bot-challenge/interstitial page rather than
+  // running Readability against it — it'll never contain real article
+  // text, so this just fails faster with a clearer reason in the logs.
+  if (/cf-browser-verification|Just a moment\.\.\.|Enable JavaScript and cookies to continue|Access to this page has been denied|Please verify you are a human/i.test(html)) {
+    throw new Error("Blocked by upstream bot protection");
+  }
 
   const dom = new JSDOM(html, { url });
   const article = new Readability(dom.window.document).parse();
@@ -1992,6 +2011,7 @@ app.get("/api/read", async (req, res) => {
     const data = await fetchReaderArticle(url);
     res.json(data);
   } catch (e) {
+    console.error(`[reader-mode] failed for ${url}: ${e.message}`);
     res.status(502).json({ error: "Could not load a readable version of this article." });
   }
 });
