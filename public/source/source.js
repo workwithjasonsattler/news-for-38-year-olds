@@ -101,6 +101,21 @@
     return Math.floor(hrs / 24) + "d";
   }
 
+  // Deterministic small color for an outlet's initial-avatar chip — no
+  // per-outlet icon assets exist in this codebase yet, so this gives
+  // each source a stable, distinct visual identity for free.
+  function outletHue(name) {
+    let h = 0;
+    for (let i = 0; i < name.length; i++) h = (h * 31 + name.charCodeAt(i)) >>> 0;
+    return h % 360;
+  }
+
+  function outletChip(name) {
+    const label = (name || "Unknown").trim();
+    const initial = label.charAt(0).toUpperCase() || "?";
+    return `<span class="outlet-chip"><span class="outlet-avatar" style="background:hsl(${outletHue(label)} 55% 42%)">${escapeHtml(initial)}</span>${escapeHtml(label)}</span>`;
+  }
+
   function stateBlock({ glyph, title, body, spin }) {
     return `<div class="state-block"><div class="terminal-glyph${spin ? " spin" : ""}">${glyph || ">_"}</div>
       <h3>${escapeHtml(title)}</h3><p>${escapeHtml(body)}</p></div>`;
@@ -162,7 +177,7 @@
         return;
       }
       const shown = items.slice(0, 60);
-      main.innerHTML = shown.map(d => renderDispatchCard(d, trendingLinks.has(d.link))).join("");
+      main.innerHTML = shown.map((d, i) => renderDispatchCard(d, trendingLinks.has(d.link), i === 0)).join("");
       main.querySelectorAll(".buzz-badge").forEach(btn => {
         btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
       });
@@ -187,21 +202,40 @@
     }
   }
 
-  function renderDispatchCard(d, isTrending) {
-    const excerpt = (d.excerpt || "").trim();
+  function renderDispatchCard(d, isTrending, featured) {
+    const excerpt = (d.excerpt || "").trim().slice(0, 280);
     const hasImage = !!d.image_url;
+    const title = d.title || d.headline || "";
+    const thumb = `<img class="card-thumb${hasImage ? " loaded" : ""}" id="thumb-${d.id}" alt=""
+        ${hasImage ? `src="${escapeHtml(d.image_url)}"` : ""} loading="lazy"
+        onerror="this.classList.remove('loaded')">`;
+
+    if (featured) {
+      return `
+        <div class="card card-featured">
+          <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
+            <div class="card-featured-media">
+              ${thumb}
+              <span class="card-featured-tag">Top story</span>
+            </div>
+            <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></div>
+            <div class="card-title">${escapeHtml(title)}</div>
+            ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt)}</div>` : ""}
+          </a>
+          ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
+        </div>`;
+    }
+
     return `
       <div class="card">
-        <div class="card-meta"><span>${escapeHtml(d.outlet || d.source || "UNKNOWN")}</span><span>${relTime(d.date)}</span></div>
+        <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></div>
         <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
           <div class="card-body">
             <div class="card-text">
-              <div class="card-title">${escapeHtml(d.title || d.headline || "")}</div>
-              ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt.slice(0, 160))}</div>` : ""}
+              <div class="card-title">${escapeHtml(title)}</div>
+              ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt)}</div>` : ""}
             </div>
-            <img class="card-thumb${hasImage ? " loaded" : ""}" id="thumb-${d.id}" alt=""
-              ${hasImage ? `src="${escapeHtml(d.image_url)}"` : ""} loading="lazy"
-              onerror="this.classList.remove('loaded')">
+            ${thumb}
           </div>
         </a>
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}

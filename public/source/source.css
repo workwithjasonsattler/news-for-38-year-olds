@@ -168,8 +168,31 @@ button { font-family: inherit; cursor: pointer; }
   text-transform: uppercase;
   letter-spacing: 0.04em;
   display: flex;
+  align-items: center;
   justify-content: space-between;
   margin-bottom: 6px;
+}
+
+.outlet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.outlet-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  color: #fff;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 9px;
+  letter-spacing: 0;
+  flex-shrink: 0;
 }
 
 .card-body { display: flex; gap: 10px; align-items: flex-start; }
@@ -184,6 +207,10 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 15px;
   line-height: 1.35;
   color: var(--ink);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card:hover .card-title { color: var(--accent-dim); }
@@ -193,19 +220,95 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink-muted);
   margin-top: 6px;
   line-height: 1.5;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .card-thumb {
-  width: 72px;
-  height: 72px;
+  width: 80px;
+  height: 80px;
   flex-shrink: 0;
   object-fit: cover;
   background: var(--surface);
-  border-radius: 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
   display: none;
 }
 
 .card-thumb.loaded { display: block; }
+
+/* ---------------------------------------------------------------
+   Featured card — the newest dispatch in the Read tab gets a
+   full-bleed image treatment on top instead of a side thumbnail, so
+   the wire has a clear entry point rather than reading as one flat
+   list from the very first card.
+   --------------------------------------------------------------- */
+.card-featured {
+  padding: 0;
+  overflow: hidden;
+}
+
+.card-featured .card-link { display: block; }
+
+.card-featured-media {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.card-featured-media .card-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+.card-featured-tag {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: var(--data);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 4px 8px;
+  border-radius: 6px;
+}
+
+.card-featured .card-meta,
+.card-featured .card-title,
+.card-featured .card-excerpt {
+  padding-left: 14px;
+  padding-right: 14px;
+}
+
+.card-featured .card-meta { margin-top: 12px; }
+
+.card-featured .card-title {
+  font-size: 19px;
+  -webkit-line-clamp: 3;
+}
+
+.card-featured .card-excerpt {
+  -webkit-line-clamp: 3;
+  padding-bottom: 14px;
+}
+
+.card-featured .card-excerpt:last-child { padding-bottom: 14px; }
+.card-featured .card-title:last-child { padding-bottom: 14px; }
+
+.card-featured .buzz-badge {
+  width: auto;
+  margin: 10px 14px 14px;
+}
 
 /* trending-on-Bluesky badge, links out to Buzz */
 .buzz-badge {
