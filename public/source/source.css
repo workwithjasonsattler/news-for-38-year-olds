@@ -699,19 +699,86 @@ body[data-layout="desktop"] #main.read-layout {
 
 .reader-frame-wrap { margin-top: 18px; }
 
-.reader-frame {
-  width: 100%;
-  height: 680px;
+.reader-article-loading .state-block { padding: 30px 0; }
+
+.reader-article-error {
+  font-size: 13.5px;
+  color: var(--ink-muted);
+  background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--surface);
-  display: block;
+  padding: 14px 16px;
 }
+
+.reader-article {
+  border-top: 1px solid var(--line);
+  padding-top: 18px;
+  font-size: 16px;
+  line-height: 1.7;
+  color: var(--ink);
+}
+
+.reader-article-byline {
+  font-family: var(--data);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  margin-bottom: 14px;
+}
+
+.reader-article h1,
+.reader-article h2,
+.reader-article h3 {
+  font-family: var(--display);
+  font-weight: 700;
+  line-height: 1.3;
+  margin: 22px 0 10px;
+  color: var(--ink);
+}
+
+.reader-article h1 { font-size: 21px; }
+.reader-article h2 { font-size: 19px; }
+.reader-article h3 { font-size: 17px; }
+
+.reader-article p { margin: 0 0 16px; }
+
+.reader-article a { color: var(--accent-dim); text-decoration: underline; }
+
+.reader-article img,
+.reader-article figure {
+  max-width: 100%;
+  height: auto;
+  border-radius: 8px;
+  margin: 16px 0;
+}
+
+.reader-article figcaption {
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  margin-top: 6px;
+}
+
+.reader-article blockquote {
+  margin: 16px 0;
+  padding: 4px 0 4px 16px;
+  border-left: 3px solid var(--accent);
+  color: var(--ink-muted);
+  font-style: italic;
+}
+
+.reader-article ul,
+.reader-article ol {
+  margin: 0 0 16px;
+  padding-left: 22px;
+}
+
+.reader-article li { margin-bottom: 6px; }
 
 .reader-frame-note {
   font-size: 11.5px;
   color: var(--ink-muted);
-  margin-top: 8px;
+  margin-top: 14px;
 }
 
 .reader-feed {

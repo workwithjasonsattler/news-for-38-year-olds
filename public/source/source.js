@@ -304,14 +304,28 @@
       </div>`;
     const moreBtn = document.getElementById("readerMoreBtn");
     if (moreBtn) {
-      moreBtn.addEventListener("click", () => {
+      moreBtn.addEventListener("click", async () => {
         const wrap = document.getElementById("readerFrameWrap");
         if (!wrap || !d.link) return;
         wrap.hidden = false;
-        wrap.innerHTML = `
-          <iframe class="reader-frame" src="${escapeHtml(d.link)}" loading="lazy" referrerpolicy="no-referrer"></iframe>
-          <div class="reader-frame-note">If the page above doesn't load, some sites block embedding — <a href="${escapeHtml(d.link)}" target="_blank" rel="noopener">open it directly</a>.</div>`;
-        moreBtn.remove();
+        wrap.innerHTML = `<div class="reader-article-loading">${stateBlock({ title: "PULLING THE FULL PIECE", body: "Fetching a clean, readable version...", spin: true })}</div>`;
+        moreBtn.disabled = true;
+        try {
+          const article = await api(`/api/read?url=${encodeURIComponent(d.link)}`);
+          wrap.innerHTML = `
+            <article class="reader-article">
+              ${article.byline ? `<div class="reader-article-byline">${escapeHtml(article.byline)}</div>` : ""}
+              ${article.html}
+            </article>
+            <div class="reader-frame-note">Reader view, extracted from the source page — <a href="${escapeHtml(d.link)}" target="_blank" rel="noopener">open the original ↗</a></div>`;
+          moreBtn.remove();
+        } catch (e) {
+          wrap.innerHTML = `
+            <div class="reader-article-error">
+              Couldn't pull a clean readable version of this one — <a href="${escapeHtml(d.link)}" target="_blank" rel="noopener">open the original directly ↗</a>.
+            </div>`;
+          moreBtn.disabled = false;
+        }
       });
     }
     const buzzBtn = pane.querySelector(".buzz-badge");

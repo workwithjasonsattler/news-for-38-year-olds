@@ -10,6 +10,9 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
+import { JSDOM } from "jsdom";
+import { Readability } from "@mozilla/readability";
+import sanitizeHtml from "sanitize-html";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "letmein";
@@ -1915,6 +1918,82 @@ app.get("/api/sources", async (req, res) => {
     `SELECT outlet, default_author, subscribe_url, tip_url, feed_url, bluesky_handle, feed_type FROM feeds WHERE submission_status = 'approved' ORDER BY outlet ASC`
   );
   res.json(rows);
+});
+
+// ---------- Reader mode (SOURCE?'s Desktop "More" — read the actual
+// article without leaving the reader pane). Iframing the live page
+// doesn't work: nearly every news site sends X-Frame-Options/CSP
+// frame-ancestors that blocks embedding outright. Instead, fetch the
+// article server-side and run it through Readability (the same engine
+// Firefox's reader view uses) to pull out just the article content,
+// then sanitize before it's ever sent to the browser, since this is
+// third-party HTML being injected into our own page. Cached by URL —
+// N readers opening the same article only trigger one fetch. Fails
+// soft: on any error the frontend falls back to "open the original".
+const READER_CACHE_TTL_MS = 20 * 60 * 1000;
+const readerCache = new Map(); // url -> { data, ts }
+const READER_MAX_HTML_BYTES = 3 * 1024 * 1024; // 3MB cap, some pages are huge
+
+async function fetchReaderArticle(url) {
+  const cached = readerCache.get(url);
+  if (cached && Date.now() - cached.ts < READER_CACHE_TTL_MS) return cached.data;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  let html;
+  try {
+    const upstream = await fetch(url, {
+      signal: controller.signal,
+      redirect: "follow",
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; N38YOReader/1.0; +https://news-for-38-year-olds.onrender.com)",
+        "Accept": "text/html,application/xhtml+xml",
+      },
+    });
+    if (!upstream.ok) throw new Error(`Upstream returned ${upstream.status}`);
+    html = await upstream.text();
+  } finally {
+    clearTimeout(timer);
+  }
+  if (html.length > READER_MAX_HTML_BYTES) html = html.slice(0, READER_MAX_HTML_BYTES);
+
+  const dom = new JSDOM(html, { url });
+  const article = new Readability(dom.window.document).parse();
+  if (!article || !article.content || (article.textContent || "").trim().length < 200) {
+    throw new Error("Could not extract article content");
+  }
+
+  const cleanHtml = sanitizeHtml(article.content, {
+    allowedTags: sanitizeHtml.defaults.allowedTags.concat(["h1", "h2", "figure", "figcaption", "img"]),
+    allowedAttributes: {
+      a: ["href", "name", "target", "rel"],
+      img: ["src", "alt"],
+      "*": [],
+    },
+    allowedSchemes: ["http", "https", "mailto"],
+    transformTags: {
+      a: sanitizeHtml.simpleTransform("a", { target: "_blank", rel: "noopener" }),
+    },
+  });
+
+  const data = {
+    title: article.title || "",
+    byline: article.byline || "",
+    html: cleanHtml,
+  };
+  readerCache.set(url, { data, ts: Date.now() });
+  return data;
+}
+
+app.get("/api/read", async (req, res) => {
+  const url = String(req.query.url || "");
+  if (!/^https?:\/\//i.test(url)) return res.status(400).json({ error: "Invalid url" });
+  try {
+    const data = await fetchReaderArticle(url);
+    res.json(data);
+  } catch (e) {
+    res.status(502).json({ error: "Could not load a readable version of this article." });
+  }
 });
 
 // ---------- Thumbs-up (Feature B) ----------
