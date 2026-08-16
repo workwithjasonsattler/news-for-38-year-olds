@@ -18,7 +18,10 @@
       <div class="wordmark-rule"></div>
       <div class="tagline">News first. No algorithm.</div>
     </div>
-    <div class="view-toggle" id="viewToggle"></div>
+    <div class="header-actions">
+      <button class="icon-btn" id="refreshBtn" title="Refresh" aria-label="Refresh">⟳</button>
+      <div class="view-menu" id="viewMenu"></div>
+    </div>
   </header>
 
   <main class="source-main" id="main"></main>
@@ -26,6 +29,13 @@
   <nav class="tab-bar" id="tabBar"></nav>
 
   <div id="toast"></div>
+
+  <!-- Review-only control: switches the Mobile/Desktop LAYOUT preview.
+       Lives outside the app frame itself (position:fixed to the real
+       browser viewport, only shown at desktop widths) — this is for
+       looking at the app during development/demos, not a setting a
+       real reader sees or uses inside the product. -->
+  <div class="layout-review" id="layoutReview"></div>
 
   <script src="/source/source.js"></script>
 </body>

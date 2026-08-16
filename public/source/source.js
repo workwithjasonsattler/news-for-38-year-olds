@@ -44,8 +44,13 @@
 
   // ---------------------------------------------------------------
   // Layout mode — Mobile (bottom tab bar, single column) vs Desktop
-  // (top nav, multi-column grid). Same theme/components either way —
-  // this swaps ARRANGEMENT, not color scheme. Defaults to Mobile.
+  // (top nav, reader pane + feed). Same theme/components either
+  // way — this swaps ARRANGEMENT, not color scheme. Defaults to
+  // Mobile. REVIEW-ONLY control now: it doesn't live inside the app
+  // header anymore, it's rendered into #layoutReview, a fixed-to-
+  // viewport element that sits outside the phone-frame preview so
+  // it never shows up as an in-product control for a real reader —
+  // it's here for looking at both arrangements during development.
   // ---------------------------------------------------------------
   const LAYOUT_KEY = "source_layout_mode";
 
@@ -56,18 +61,70 @@
   function setLayoutMode(mode) {
     localStorage.setItem(LAYOUT_KEY, mode);
     document.body.dataset.layout = mode;
-    renderViewToggle();
+    renderLayoutReview();
+    renderActiveTab();
   }
 
-  function renderViewToggle() {
-    const el = document.getElementById("viewToggle");
+  function renderLayoutReview() {
+    const el = document.getElementById("layoutReview");
     if (!el) return;
     const mode = getLayoutMode();
     el.innerHTML = `
-      <button class="view-toggle-btn${mode === "mobile" ? " active" : ""}" data-mode="mobile">MOBILE</button>
-      <button class="view-toggle-btn${mode === "desktop" ? " active" : ""}" data-mode="desktop">DESKTOP</button>`;
-    el.querySelectorAll(".view-toggle-btn").forEach(btn => {
+      <span class="layout-review-label">PREVIEW</span>
+      <button class="layout-review-btn${mode === "mobile" ? " active" : ""}" data-mode="mobile">MOBILE</button>
+      <button class="layout-review-btn${mode === "desktop" ? " active" : ""}" data-mode="desktop">DESKTOP</button>`;
+    el.querySelectorAll(".layout-review-btn").forEach(btn => {
       btn.addEventListener("click", () => setLayoutMode(btn.dataset.mode));
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // Read display — Headlines Only (compact, RSS-style) vs Expanded
+  // (image + excerpt, post/social-style). Doubles as the Desktop
+  // reader's feed-list style, per Jason's spec: the right-hand feed
+  // can be "rss style or post/notes/social media style" — same
+  // toggle, one control, both surfaces read it.
+  // ---------------------------------------------------------------
+  const READ_DISPLAY_KEY = "source_read_display";
+
+  function getReadDisplay() {
+    return localStorage.getItem(READ_DISPLAY_KEY) || "expanded";
+  }
+
+  function setReadDisplay(mode) {
+    localStorage.setItem(READ_DISPLAY_KEY, mode);
+    renderViewMenu();
+    if (activeTab === "read") renderRead();
+  }
+
+  function renderViewMenu() {
+    const el = document.getElementById("viewMenu");
+    if (!el) return;
+    const mode = getReadDisplay();
+    el.innerHTML = `
+      <button class="view-menu-btn" id="viewMenuBtn" aria-haspopup="true" aria-expanded="false">VIEW ▾</button>
+      <div class="view-menu-list" id="viewMenuList" hidden>
+        <button class="view-menu-item${mode === "headlines" ? " active" : ""}" data-action="headlines">Headlines Only</button>
+        <button class="view-menu-item${mode === "expanded" ? " active" : ""}" data-action="expanded">Expanded</button>
+        <div class="view-menu-sep"></div>
+        <button class="view-menu-item" data-action="customize">Customize</button>
+      </div>`;
+    const btn = document.getElementById("viewMenuBtn");
+    const list = document.getElementById("viewMenuList");
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const opening = list.hidden;
+      list.hidden = !opening;
+      btn.setAttribute("aria-expanded", String(opening));
+    });
+    list.querySelectorAll(".view-menu-item").forEach(item => {
+      item.addEventListener("click", () => {
+        list.hidden = true;
+        btn.setAttribute("aria-expanded", "false");
+        const action = item.dataset.action;
+        if (action === "customize") { switchTab("sources"); return; }
+        setReadDisplay(action);
+      });
     });
   }
 
@@ -151,6 +208,8 @@
   }
 
   function renderActiveTab() {
+    const main = document.getElementById("main");
+    if (main) main.classList.remove("read-layout");
     if (activeTab === "read") return renderRead();
     if (activeTab === "sources") return renderSources();
     if (activeTab === "buzz") return renderBuzz();
@@ -164,6 +223,11 @@
   // that don't. Cards whose article is also trending on Bluesky get
   // a badge linking over to Buzz.
   // ---------------------------------------------------------------
+  // Currently open story in the Desktop reader pane. Persists across a
+  // manual refresh as long as that story is still in the fresh list;
+  // falls back to the newest item otherwise.
+  let selectedDispatch = null;
+
   async function renderRead() {
     const main = document.getElementById("main");
     main.innerHTML = stateBlock({ title: "PULLING TRANSMISSION", body: "Fetching latest dispatches...", spin: true });
@@ -180,15 +244,119 @@
         .slice()
         .sort((a, b) => new Date(b.date) - new Date(a.date))
         .slice(0, 60);
-      main.innerHTML = shown.map((d, i) => renderDispatchCard(d, trendingLinks.has(d.link), i === 0)).join("");
-      main.querySelectorAll(".buzz-badge").forEach(btn => {
-        btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
-      });
-      const needsLiveThumb = shown.filter(d => !d.image_url && typeof d.id === "number").map(d => d.id);
+
+      if (getLayoutMode() === "desktop") {
+        renderReadDesktop(shown, trendingLinks);
+      } else {
+        main.innerHTML = shown.map((d, i) => renderDispatchCard(d, trendingLinks.has(d.link), i === 0)).join("");
+        main.querySelectorAll(".buzz-badge").forEach(btn => {
+          btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
+        });
+      }
+
+      const needsLiveThumb = getReadDisplay() === "headlines"
+        ? []
+        : shown.filter(d => !d.image_url && typeof d.id === "number").map(d => d.id);
       loadThumbnails(needsLiveThumb);
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "TRANSMISSION FAILED", body: e.message || "Could not reach the wire." });
     }
+  }
+
+  // ---------------------------------------------------------------
+  // Desktop reader: left pane shows the currently selected story
+  // full-size (image, headline, excerpt, "More" expands the actual
+  // article inline via iframe); right pane is the feed you pick the
+  // next story from, in either RSS (headlines) or post/social style
+  // per the View menu. No "top story"/"latest" badge — the pane just
+  // shows whatever's selected.
+  // ---------------------------------------------------------------
+  function renderReadDesktop(shown, trendingLinks) {
+    const main = document.getElementById("main");
+    main.classList.add("read-layout");
+    if (!selectedDispatch || !shown.some(d => d.id === selectedDispatch.id)) {
+      selectedDispatch = shown[0];
+    }
+    main.innerHTML = `
+      <div class="reader-pane" id="readerPane"></div>
+      <div class="reader-feed" id="readerFeed"></div>`;
+    renderReaderPane(selectedDispatch, trendingLinks.has(selectedDispatch.link));
+    renderReaderFeed(shown, trendingLinks);
+  }
+
+  function renderReaderPane(d, isTrending) {
+    const pane = document.getElementById("readerPane");
+    if (!pane || !d) return;
+    const excerpt = (d.excerpt || "").trim();
+    const title = d.title || d.headline || "";
+    pane.innerHTML = `
+      ${d.image_url ? `<img class="reader-image" src="${escapeHtml(d.image_url)}" alt="" loading="lazy">` : ""}
+      <div class="reader-body">
+        <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></div>
+        <h2 class="reader-title">${escapeHtml(title)}</h2>
+        ${excerpt ? `<p class="reader-excerpt">${escapeHtml(excerpt)}</p>` : ""}
+        <div class="reader-actions">
+          ${d.link ? `<button class="btn primary" id="readerMoreBtn">More →</button>
+          <a class="reader-open-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Open original ↗</a>` : ""}
+        </div>
+        ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
+        <div class="reader-frame-wrap" id="readerFrameWrap" hidden></div>
+      </div>`;
+    const moreBtn = document.getElementById("readerMoreBtn");
+    if (moreBtn) {
+      moreBtn.addEventListener("click", () => {
+        const wrap = document.getElementById("readerFrameWrap");
+        if (!wrap || !d.link) return;
+        wrap.hidden = false;
+        wrap.innerHTML = `
+          <iframe class="reader-frame" src="${escapeHtml(d.link)}" loading="lazy" referrerpolicy="no-referrer"></iframe>
+          <div class="reader-frame-note">If the page above doesn't load, some sites block embedding — <a href="${escapeHtml(d.link)}" target="_blank" rel="noopener">open it directly</a>.</div>`;
+        moreBtn.remove();
+      });
+    }
+    const buzzBtn = pane.querySelector(".buzz-badge");
+    if (buzzBtn) buzzBtn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
+  }
+
+  function renderReaderFeed(shown, trendingLinks) {
+    const feed = document.getElementById("readerFeed");
+    if (!feed) return;
+    const headlinesOnly = getReadDisplay() === "headlines";
+    feed.innerHTML = shown.map(d => {
+      const active = selectedDispatch && d.id === selectedDispatch.id;
+      const title = d.title || d.headline || "";
+      const idAttr = escapeHtml(String(d.id));
+      if (headlinesOnly) {
+        return `
+          <button class="feed-item feed-item-rss${active ? " active" : ""}" data-id="${idAttr}">
+            <span class="feed-item-title">${escapeHtml(title)}</span>
+            <span class="feed-item-meta"><span>${escapeHtml(d.outlet || d.source || "")}</span><span>${relTime(d.date)}</span></span>
+          </button>`;
+      }
+      const excerpt = (d.excerpt || "").trim().slice(0, 140);
+      const hasImage = !!d.image_url;
+      return `
+        <button class="feed-item feed-item-post${active ? " active" : ""}" data-id="${idAttr}">
+          <img class="feed-item-thumb${hasImage ? " loaded" : ""}" id="thumb-${d.id}" alt=""
+            ${hasImage ? `src="${escapeHtml(d.image_url)}"` : ""} loading="lazy"
+            onerror="this.classList.remove('loaded')">
+          <span class="feed-item-text">
+            <span class="feed-item-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></span>
+            <span class="feed-item-title">${escapeHtml(title)}</span>
+            ${excerpt ? `<span class="feed-item-excerpt">${escapeHtml(excerpt)}</span>` : ""}
+          </span>
+        </button>`;
+    }).join("");
+    feed.querySelectorAll(".feed-item").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const d = shown.find(x => String(x.id) === btn.dataset.id);
+        if (!d) return;
+        selectedDispatch = d;
+        renderReaderPane(d, trendingLinks.has(d.link));
+        feed.querySelectorAll(".feed-item").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+      });
+    });
   }
 
   // Trending-on-Bluesky link set, used to badge Read-tab cards. Fails
@@ -206,24 +374,33 @@
   }
 
   function renderDispatchCard(d, isTrending, featured) {
-    const excerpt = (d.excerpt || "").trim().slice(0, 280);
-    const hasImage = !!d.image_url;
+    const headlinesOnly = getReadDisplay() === "headlines";
+    const excerpt = headlinesOnly ? "" : (d.excerpt || "").trim().slice(0, 280);
+    const hasImage = !headlinesOnly && !!d.image_url;
     const title = d.title || d.headline || "";
-    const thumb = `<img class="card-thumb${hasImage ? " loaded" : ""}" id="thumb-${d.id}" alt=""
+    const thumb = headlinesOnly ? "" : `<img class="card-thumb${hasImage ? " loaded" : ""}" id="thumb-${d.id}" alt=""
         ${hasImage ? `src="${escapeHtml(d.image_url)}"` : ""} loading="lazy"
         onerror="this.classList.remove('loaded')">`;
 
     if (featured) {
       return `
-        <div class="card card-featured">
+        <div class="card card-featured${headlinesOnly ? " card-headlines-only" : ""}">
           <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
-            <div class="card-featured-media">
-              ${thumb}
-              <span class="card-featured-tag">Top story</span>
-            </div>
+            ${headlinesOnly ? "" : `<div class="card-featured-media">${thumb}</div>`}
             <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></div>
             <div class="card-title">${escapeHtml(title)}</div>
             ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt)}</div>` : ""}
+          </a>
+          ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
+        </div>`;
+    }
+
+    if (headlinesOnly) {
+      return `
+        <div class="card card-headlines-only">
+          <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
+            <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></div>
+            <div class="card-title">${escapeHtml(title)}</div>
           </a>
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         </div>`;
@@ -443,8 +620,34 @@
   // ---------------------------------------------------------------
   document.addEventListener("DOMContentLoaded", async () => {
     document.body.dataset.layout = getLayoutMode();
-    renderViewToggle();
+    renderLayoutReview();
+    renderViewMenu();
     renderTabBar();
+
+    document.addEventListener("click", () => {
+      const list = document.getElementById("viewMenuList");
+      const btn = document.getElementById("viewMenuBtn");
+      if (list && !list.hidden) {
+        list.hidden = true;
+        if (btn) btn.setAttribute("aria-expanded", "false");
+      }
+    });
+
+    const refreshBtn = document.getElementById("refreshBtn");
+    if (refreshBtn) {
+      refreshBtn.addEventListener("click", async () => {
+        refreshBtn.classList.add("spinning");
+        try {
+          await renderActiveTab();
+          toast("Refreshed");
+        } catch (e) {
+          toast("Couldn't refresh — try again.");
+        } finally {
+          refreshBtn.classList.remove("spinning");
+        }
+      });
+    }
+
     await refreshSession();
     renderActiveTab();
 
