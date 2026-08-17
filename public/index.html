@@ -337,11 +337,12 @@
 
 <header class="masthead">
   <div class="eyebrow-row">
-    <div style="display:flex;align-items:center;flex-wrap:wrap;">
+    <div style="display:flex;align-items:center;flex-wrap:wrap;gap:10px;">
       <span id="datelineLeft">EDITION — LOADING</span>
       <span id="datelineRight"></span>
       <span id="datelineGas" style="display:none;"></span>
-      <span style="margin-left:14px;"><a href="javascript:void(0)" onclick="openViewModal()" id="viewLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;">Edit Layout</a></span>
+      <a href="/spray.html" id="spraysLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;">· Sprays</a>
+      <a href="javascript:void(0)" onclick="openViewModal()" id="viewLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;">· Edit Layout</a>
     </div>
     <a href="https://news-for-38-year-olds.onrender.com/source/" target="_blank" rel="noopener" id="sourceAppLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--wire-red);font-weight:700;text-decoration:underline;white-space:nowrap;">HERE! Escape the algorithm.</a>
   </div>
@@ -1080,7 +1081,7 @@ function updateDateline(){
   const daysToMidterms = Math.ceil((MIDTERM_DATE - now) / 86400000);
   const warDay = Math.floor((now - IRAN_WAR_START) / 86400000) + 1;
   document.getElementById('datelineLeft').textContent = `${daysToMidterms} DAYS TO THE MIDTERMS`;
-  document.getElementById('datelineRight').textContent = `DAY ${warDay} OF THE IRAN WAR`;
+  document.getElementById('datelineRight').textContent = `· DAY ${warDay} OF THE IRAN WAR`;
 }
 updateDateline();
 setInterval(updateDateline, 60000);
@@ -1095,7 +1096,7 @@ function loadGasPrice(){
       const el = document.getElementById('datelineGas');
       if (!el) return;
       if (d && typeof d.price === 'number') {
-        el.textContent = `$${d.price.toFixed(2)}/GAL NATL AVG GAS PRICE`;
+        el.textContent = `· $${d.price.toFixed(2)}/GAL NATL AVG GAS PRICE`;
         el.style.display = '';
       } else {
         el.style.display = 'none';
