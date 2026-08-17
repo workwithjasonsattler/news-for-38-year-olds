@@ -337,11 +337,13 @@
 
 <header class="masthead">
   <div class="eyebrow-row">
-    <span id="datelineLeft">EDITION — LOADING</span>
-    <span id="datelineRight"></span>
-    <span id="datelineGas" style="display:none;"></span>
-    <span style="margin-left:14px;"><a href="javascript:void(0)" onclick="openCustomizeModal()" id="customizeLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;">CUSTOMIZE FEED</a></span>
-    <span style="margin-left:14px;"><a href="javascript:void(0)" onclick="openViewModal()" id="viewLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;">Edit Layout</a></span>
+    <div style="display:flex;align-items:center;flex-wrap:wrap;">
+      <span id="datelineLeft">EDITION — LOADING</span>
+      <span id="datelineRight"></span>
+      <span id="datelineGas" style="display:none;"></span>
+      <span style="margin-left:14px;"><a href="javascript:void(0)" onclick="openViewModal()" id="viewLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.05em;color:var(--wire-blue);text-decoration:underline;">Edit Layout</a></span>
+    </div>
+    <a href="https://news-for-38-year-olds.onrender.com/source/" target="_blank" rel="noopener" id="sourceAppLink" style="font-family:var(--mono);font-size:11px;letter-spacing:.06em;color:var(--wire-red);font-weight:700;text-decoration:underline;white-space:nowrap;">HERE! Escape the algorithm.</a>
   </div>
   <a class="top-banner-ad" href="https://stopthetrillionaires.com/" target="_blank" rel="noopener" aria-label="Stop the Trillionaires">
     <img src="/stop-trillionaires-banner.png" alt="How do you take a trillion dollars? Stop the Trillionaires">
@@ -1149,9 +1151,6 @@ async function checkSession(){
   const res = await fetch(`${API}/api/me`);
   const data = await res.json();
   CURRENT_USER = data.user;
-  document.getElementById('customizeLink').textContent = CURRENT_USER
-    ? `CUSTOMIZE FEED (${CURRENT_USER.email})`
-    : 'CUSTOMIZE FEED';
   if (ALL_SOURCES.length){
     await loadMyThumbs();
     renderSourcesList(document.getElementById('sourcesSearchInput')?.value || '');
@@ -1222,7 +1221,6 @@ async function signOut(){
   await fetch(`${API}/api/auth/logout`, {method:'POST'});
   CURRENT_USER = null;
   MY_THUMBS = new Set();
-  document.getElementById('customizeLink').textContent = 'CUSTOMIZE FEED';
   closeCustomizeModal();
   loadDispatches();
 }
