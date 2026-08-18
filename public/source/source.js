@@ -210,6 +210,8 @@
   function renderActiveTab() {
     const main = document.getElementById("main");
     if (main) main.classList.remove("read-layout");
+    const toggle = document.getElementById("sprayToggle");
+    if (toggle && activeTab !== "read") toggle.hidden = true;
     if (activeTab === "read") return renderRead();
     if (activeTab === "sources") return renderSources();
     if (activeTab === "buzz") return renderBuzz();
@@ -228,12 +230,83 @@
   // falls back to the newest item otherwise.
   let selectedDispatch = null;
 
+  // Shared official flagship Spray slug — matches server.mjs's
+  // OFFICIAL_HEADLINES_SPRAY_SLUG. Used as the "News" fallback for
+  // anonymous readers (who can't hit /api/my/spray-bar) and before the
+  // signed-in reader's own bar has loaded.
+  const OFFICIAL_NEWS_SLUG = "headlines-best-in-the-world";
+  const ACTIVE_SPRAY_KEY = "source_active_spray";
+
+  let sprayBarData = null; // { news: {slug,name}, sprays: [{slug,name}] }
+  let activeSprayKey = localStorage.getItem(ACTIVE_SPRAY_KEY) || "all";
+
+  async function loadSprayBar(force) {
+    if (sprayBarData && !force) return sprayBarData;
+    if (!currentUser) {
+      sprayBarData = { news: { slug: OFFICIAL_NEWS_SLUG, name: "SOURCE! News" }, sprays: [] };
+      return sprayBarData;
+    }
+    try {
+      sprayBarData = await api("/api/my/spray-bar");
+    } catch (e) {
+      sprayBarData = { news: { slug: OFFICIAL_NEWS_SLUG, name: "SOURCE! News" }, sprays: [] };
+    }
+    return sprayBarData;
+  }
+
+  function setActiveSpray(key) {
+    activeSprayKey = key;
+    localStorage.setItem(ACTIVE_SPRAY_KEY, key);
+    selectedDispatch = null;
+    renderRead();
+  }
+
+  async function renderSprayToggle() {
+    const el = document.getElementById("sprayToggle");
+    if (!el) return;
+    if (activeTab !== "read") { el.hidden = true; return; }
+    await loadSprayBar();
+    el.hidden = false;
+    const pills = [
+      { key: "all", label: "All" },
+      { key: sprayBarData.news.slug, label: sprayBarData.news.name || "News" },
+    ].concat(sprayBarData.sprays.map(s => ({ key: s.slug, label: s.name })));
+    el.innerHTML = pills.map(p => `
+      <button class="spray-pill${p.key === activeSprayKey ? " active" : ""}" data-key="${escapeHtml(p.key)}">${escapeHtml(p.label)}</button>
+    `).join("") + `<button class="spray-pill spray-pill-create" data-key="__create">+ Create</button>`;
+    el.querySelectorAll(".spray-pill").forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
+        if (btn.dataset.key !== activeSprayKey) setActiveSpray(btn.dataset.key);
+      });
+    });
+  }
+
+  // Resolves the items to show in Read based on the active toggle
+  // selection. "all" is the full curated wire (today's default). Any
+  // other key is a Spray slug — fetched via the existing single-mix
+  // endpoint and using its live `items`. Falls back to "all" (and
+  // resets the toggle) if the selected Spray no longer exists or went
+  // private out from under the reader.
+  async function fetchReadItems() {
+    if (activeSprayKey === "all") return api("/api/dispatches");
+    try {
+      const mix = await api(`/api/mixes/${encodeURIComponent(activeSprayKey)}`);
+      return Array.isArray(mix.items) ? mix.items : [];
+    } catch (e) {
+      activeSprayKey = "all";
+      localStorage.setItem(ACTIVE_SPRAY_KEY, "all");
+      return api("/api/dispatches");
+    }
+  }
+
   async function renderRead() {
     const main = document.getElementById("main");
+    renderSprayToggle();
     main.innerHTML = stateBlock({ title: "PULLING TRANSMISSION", body: "Fetching latest dispatches...", spin: true });
     try {
       const [items, trendingLinks] = await Promise.all([
-        api("/api/dispatches"),
+        fetchReadItems(),
         getTrendingLinks(),
       ]);
       if (!Array.isArray(items) || items.length === 0) {
@@ -289,15 +362,21 @@
     if (!pane || !d) return;
     const excerpt = (d.excerpt || "").trim();
     const title = d.title || d.headline || "";
+    // No stored image and (as far as we know yet) no article to extract —
+    // rather than leave dead image space, treat this like a headline-only
+    // card: bigger title, no broken/empty media slot. If Reader Mode later
+    // succeeds and returns real content, that swap happens independently
+    // in the More-button handler below and isn't affected by this.
+    const noImage = !d.image_url;
     pane.innerHTML = `
       ${d.image_url ? `<img class="reader-image" src="${escapeHtml(d.image_url)}" alt="" loading="lazy">` : ""}
-      <div class="reader-body">
+      <div class="reader-body${noImage ? " reader-body-textonly" : ""}">
         <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></div>
-        <h2 class="reader-title">${escapeHtml(title)}</h2>
+        <h2 class="reader-title${noImage ? " reader-title-large" : ""}">${escapeHtml(title)}</h2>
         ${excerpt ? `<p class="reader-excerpt">${escapeHtml(excerpt)}</p>` : ""}
         <div class="reader-actions">
-          ${d.link ? `<button class="btn primary" id="readerMoreBtn">More →</button>
-          <a class="reader-open-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Open original ↗</a>` : ""}
+          ${d.link ? `<a class="btn primary reader-open-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Open original ↗</a>
+          <button class="btn" id="readerMoreBtn">Try reader view</button>` : ""}
         </div>
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         <div class="reader-frame-wrap" id="readerFrameWrap" hidden></div>
@@ -461,28 +540,314 @@
   }
 
   // ---------------------------------------------------------------
-  // SOURCES — adjust your reading pane / source tiers. Maps to
-  // /api/sources + /api/my/source-tiers (same shared `feeds` table
-  // as N38YO for v1, per the locked default).
+  // SOURCES — adjust your reading pane / source tiers, manage your
+  // Read-tab Spray bar, and (via "+ New Spray") the guided Create flow.
+  // Maps to /api/sources, /api/my/spray-bar, /api/mixes,
+  // /api/my/custom-sources, /api/spray-suggestions.
   // ---------------------------------------------------------------
+  let sourcesRegistryCache = null; // [{outlet, feed_url, ...}] — fetched once, reused by both the registry list and Create's add-a-source matching
+  let createFlowState = null; // null = not in Create mode
+
   async function renderSources() {
+    if (createFlowState) return renderCreateFlow();
+
     const main = document.getElementById("main");
     main.innerHTML = stateBlock({ title: "LOADING SOURCE LIST", body: "Querying the registry...", spin: true });
     try {
-      const sources = await api("/api/sources");
-      if (!Array.isArray(sources) || sources.length === 0) {
-        main.innerHTML = stateBlock({ glyph: "∅", title: "NO SOURCES", body: "Nothing in the registry yet." });
-        return;
+      const [sources, bar] = await Promise.all([
+        sourcesRegistryCache || api("/api/sources"),
+        loadSprayBar(),
+      ]);
+      sourcesRegistryCache = sources;
+
+      let html = "";
+      if (currentUser) {
+        html += `<div class="section-label">YOUR SPRAYS</div>` + renderYourSpraysSection(bar);
+      } else {
+        html += `<div class="card"><div class="card-title" style="margin-bottom:8px;">Sign in (on the You tab) to save and organize your own Sprays.</div></div>`;
       }
-      main.innerHTML = `
-        <div class="card-meta" style="margin-bottom:10px;">${sources.length} SOURCES IN REGISTRY</div>
-      ` + sources.map(s => `
-        <div class="card">
-          <div class="card-meta"><span>${escapeHtml(s.feed_url ? "ORGANIZATION" : "INDIVIDUAL")}</span></div>
-          <div class="card-title">${escapeHtml(s.outlet || s.name || "")}</div>
-        </div>`).join("");
+      html += `<button class="btn primary" id="newSprayBtn" style="width:100%; margin:14px 0;">+ New Spray</button>`;
+
+      if (!Array.isArray(sources) || sources.length === 0) {
+        html += stateBlock({ glyph: "∅", title: "NO SOURCES", body: "Nothing in the registry yet." });
+      } else {
+        html += `<div class="section-label">ALL SOURCES (${sources.length})</div>` + sources.map(s => `
+          <div class="card">
+            <div class="card-meta"><span>${escapeHtml(s.feed_url ? "ORGANIZATION" : "INDIVIDUAL")}</span></div>
+            <div class="card-title">${escapeHtml(s.outlet || s.name || "")}</div>
+          </div>`).join("");
+      }
+      main.innerHTML = html;
+
+      document.getElementById("newSprayBtn").addEventListener("click", openCreateFlow);
+      wireYourSpraysSection();
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "REGISTRY UNREACHABLE", body: e.message || "Could not load sources." });
+    }
+  }
+
+  // ----- "Your Sprays" bar editor -----
+
+  let newsPickerOpen = false;
+
+  function renderYourSpraysSection(bar) {
+    const newsRow = `
+      <div class="card" style="padding:12px;">
+        <div class="spray-bar-row" style="padding:0;">
+          <span class="spray-bar-name">📰 News: ${escapeHtml(bar.news.name || "SOURCE! News")}</span>
+          <button class="spray-bar-btn" id="changeNewsBtn">${newsPickerOpen ? "Cancel" : "Change"}</button>
+        </div>
+        ${newsPickerOpen ? `
+          <div style="margin-top:10px;">
+            <input class="create-flow-input" id="newsPickerSearch" placeholder="Search public Sprays by name...">
+            <div id="newsPickerResults" style="margin-top:8px;"></div>
+          </div>` : ""}
+      </div>`;
+
+    const barRows = bar.sprays.length === 0
+      ? `<div class="card"><div class="card-meta">Nothing added to your Read toggle yet — add one when you create a Spray, or from any Spray's page.</div></div>`
+      : `<div class="card" style="padding:0;">` + bar.sprays.map((s, i) => `
+        <div class="spray-bar-row${i > 0 ? " " : ""}" style="${i > 0 ? "border-top:1px solid var(--line);" : ""}" data-slug="${escapeHtml(s.slug)}">
+          <span class="spray-bar-name">${escapeHtml(s.name)}</span>
+          <button class="spray-bar-btn" data-action="up" ${i === 0 ? "disabled" : ""}>↑</button>
+          <button class="spray-bar-btn" data-action="down" ${i === bar.sprays.length - 1 ? "disabled" : ""}>↓</button>
+          <button class="spray-bar-btn remove" data-action="remove">×</button>
+        </div>`).join("") + `</div>`;
+
+    return newsRow + barRows;
+  }
+
+  function wireYourSpraysSection() {
+    const changeBtn = document.getElementById("changeNewsBtn");
+    if (changeBtn) {
+      changeBtn.addEventListener("click", () => { newsPickerOpen = !newsPickerOpen; renderSources(); });
+    }
+    const search = document.getElementById("newsPickerSearch");
+    if (search) {
+      search.addEventListener("input", debounce(() => runNewsPickerSearch(search.value), 250));
+      runNewsPickerSearch("");
+    }
+
+    document.querySelectorAll(".spray-bar-row[data-slug]").forEach(row => {
+      const slug = row.dataset.slug;
+      row.querySelectorAll(".spray-bar-btn").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          const action = btn.dataset.action;
+          if (action === "remove") {
+            await api(`/api/my/spray-bar/${encodeURIComponent(slug)}`, { method: "DELETE" });
+            await loadSprayBar(true);
+            renderSources();
+            return;
+          }
+          if (action === "up" || action === "down") {
+            const slugs = sprayBarData.sprays.map(s => s.slug);
+            const idx = slugs.indexOf(slug);
+            const swapWith = action === "up" ? idx - 1 : idx + 1;
+            if (swapWith < 0 || swapWith >= slugs.length) return;
+            [slugs[idx], slugs[swapWith]] = [slugs[swapWith], slugs[idx]];
+            await api("/api/my/spray-bar", { method: "POST", body: JSON.stringify({ sprays: slugs }) });
+            await loadSprayBar(true);
+            renderSources();
+          }
+        });
+      });
+    });
+  }
+
+  async function runNewsPickerSearch(query) {
+    const results = document.getElementById("newsPickerResults");
+    if (!results) return;
+    try {
+      const directory = await api("/api/mixes");
+      const q = query.trim().toLowerCase();
+      const matches = (Array.isArray(directory) ? directory : [])
+        .filter(m => !q || (m.name || "").toLowerCase().includes(q))
+        .slice(0, 8);
+      results.innerHTML = matches.length === 0
+        ? `<div class="card-meta">No Sprays match.</div>`
+        : matches.map(m => `<button class="btn" style="width:100%; margin-bottom:6px; text-align:left;" data-slug="${escapeHtml(m.slug)}">${escapeHtml(m.name)}</button>`).join("");
+      results.querySelectorAll("[data-slug]").forEach(btn => {
+        btn.addEventListener("click", async () => {
+          await api("/api/my/news-pref", { method: "POST", body: JSON.stringify({ slug: btn.dataset.slug }) });
+          newsPickerOpen = false;
+          await loadSprayBar(true);
+          renderSources();
+          toast("News updated.");
+        });
+      });
+    } catch (e) { /* fail soft — leave results untouched */ }
+  }
+
+  function debounce(fn, ms) {
+    let t = null;
+    return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  }
+
+  // ----- Guided Create flow: name -> add one -> suggest 5 -> repeat -----
+
+  function openCreateFlow() {
+    if (!currentUser) { toast("Sign in on the You tab to create a Spray."); return; }
+    createFlowState = { name: "", picked: [], suggestions: [], loadingSuggestions: false, addToBar: true, isPublic: true };
+    renderSources();
+  }
+
+  function closeCreateFlow() {
+    createFlowState = null;
+    renderSources();
+  }
+
+  async function refreshSuggestions() {
+    const outletNames = createFlowState.picked.filter(p => p.source_type === "admin_outlet").map(p => p.outlet);
+    createFlowState.loadingSuggestions = true;
+    renderCreateFlow();
+    try {
+      const params = outletNames.length ? `?sources=${encodeURIComponent(outletNames.join(","))}&limit=5` : "?limit=5";
+      const suggestions = await api(`/api/spray-suggestions${params}`);
+      const pickedNames = new Set(createFlowState.picked.map(p => p.outlet).filter(Boolean));
+      createFlowState.suggestions = (Array.isArray(suggestions) ? suggestions : []).filter(s => !pickedNames.has(s.outlet));
+    } catch (e) {
+      createFlowState.suggestions = [];
+    }
+    createFlowState.loadingSuggestions = false;
+    renderCreateFlow();
+  }
+
+  function addPicked(entry) {
+    if (createFlowState.picked.some(p => (p.outlet && p.outlet === entry.outlet) || (p.custom_source_id && p.custom_source_id === entry.custom_source_id))) return;
+    createFlowState.picked.push(entry);
+  }
+
+  function renderCreateFlow() {
+    const main = document.getElementById("main");
+    const state = createFlowState;
+    const pickedChips = state.picked.map((p, i) => `
+      <span class="outlet-chip" style="background:var(--surface); padding:5px 10px; border-radius:999px; gap:6px; display:inline-flex; align-items:center;">
+        ${escapeHtml(p.label)}
+        <button class="spray-bar-btn remove" data-remove-idx="${i}" style="padding:0; font-size:14px;">×</button>
+      </span>`).join("");
+
+    const suggestionsHtml = state.loadingSuggestions
+      ? `<div class="card-meta">Finding related sources...</div>`
+      : state.suggestions.length === 0
+        ? `<div class="card-meta">No more suggestions right now.</div>`
+        : state.suggestions.map((s, i) => `
+          <div class="create-flow-suggestion">
+            <input type="checkbox" id="sugg-${i}" data-outlet="${escapeHtml(s.outlet)}" data-section="${escapeHtml(s.section || "")}">
+            <label for="sugg-${i}">${escapeHtml(s.outlet)}${s.section ? ` <span class="card-meta" style="display:inline;">— ${escapeHtml(s.section)}</span>` : ""}</label>
+          </div>`).join("");
+
+    main.innerHTML = `
+      <button class="btn" id="cfBack" style="margin-bottom:14px;">‹ Back</button>
+
+      <div class="create-flow-step">
+        <div class="create-flow-label">Name your Spray</div>
+        <input class="create-flow-input" id="cfName" placeholder="e.g. Movies, AI, Local Politics" value="${escapeHtml(state.name)}">
+      </div>
+
+      <div class="create-flow-step">
+        <div class="create-flow-label">Add a source</div>
+        <input class="create-flow-input" id="cfAddSource" list="cfSourceList" placeholder="Type an outlet name, or paste an RSS URL">
+        <datalist id="cfSourceList">${(sourcesRegistryCache || []).map(s => `<option value="${escapeHtml(s.outlet)}">`).join("")}</datalist>
+      </div>
+
+      ${state.picked.length > 0 ? `<div class="create-flow-picked">${pickedChips}</div>` : ""}
+
+      ${state.picked.length > 0 ? `
+        <div class="create-flow-step">
+          <div class="create-flow-label">You might also like</div>
+          ${suggestionsHtml}
+          <div style="display:flex; gap:8px; margin-top:10px;">
+            <button class="btn primary" id="cfAddChecked" style="flex:1;">Add checked</button>
+            <button class="btn" id="cfMoreSuggestions" style="flex:1;">More suggestions</button>
+          </div>
+        </div>` : ""}
+
+      <div class="create-flow-checkbox-row">
+        <input type="checkbox" id="cfAddToBar" ${state.addToBar ? "checked" : ""}>
+        <label for="cfAddToBar">Add to my Read toggle</label>
+      </div>
+      <div class="create-flow-checkbox-row">
+        <input type="checkbox" id="cfPublic" ${state.isPublic ? "checked" : ""}>
+        <label for="cfPublic">Public — visible in the Spray directory</label>
+      </div>
+
+      <button class="btn primary" id="cfSave" style="width:100%; margin-top:6px;">Save Spray</button>
+    `;
+
+    document.getElementById("cfBack").addEventListener("click", closeCreateFlow);
+    document.getElementById("cfName").addEventListener("input", (e) => { state.name = e.target.value; });
+    document.getElementById("cfAddToBar").addEventListener("change", (e) => { state.addToBar = e.target.checked; });
+    document.getElementById("cfPublic").addEventListener("change", (e) => { state.isPublic = e.target.checked; });
+
+    main.querySelectorAll("[data-remove-idx]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        state.picked.splice(Number(btn.dataset.removeIdx), 1);
+        refreshSuggestions();
+      });
+    });
+
+    const addInput = document.getElementById("cfAddSource");
+    addInput.addEventListener("keydown", async (e) => {
+      if (e.key !== "Enter") return;
+      e.preventDefault();
+      await addSourceFromInput(addInput.value.trim());
+      addInput.value = "";
+    });
+
+    const addChecked = document.getElementById("cfAddChecked");
+    if (addChecked) {
+      addChecked.addEventListener("click", () => {
+        main.querySelectorAll(".create-flow-suggestion input:checked").forEach(cb => {
+          addPicked({ source_type: "admin_outlet", outlet: cb.dataset.outlet, label: cb.dataset.outlet });
+        });
+        refreshSuggestions();
+      });
+    }
+    const moreBtn = document.getElementById("cfMoreSuggestions");
+    if (moreBtn) moreBtn.addEventListener("click", refreshSuggestions);
+
+    document.getElementById("cfSave").addEventListener("click", saveCreateFlow);
+  }
+
+  async function addSourceFromInput(value) {
+    if (!value) return;
+    const state = createFlowState;
+    if (/^https?:\/\//i.test(value)) {
+      try {
+        const created = await api("/api/my/custom-sources", { method: "POST", body: JSON.stringify({ feed_url: value }) });
+        addPicked({ source_type: "custom", custom_source_id: created.id, label: created.name || value });
+        toast("Source added.");
+      } catch (e) {
+        toast(e.message || "Couldn't add that RSS URL.");
+        return;
+      }
+    } else {
+      const match = (sourcesRegistryCache || []).find(s => (s.outlet || "").toLowerCase() === value.toLowerCase());
+      if (!match) { toast("No source matches that name — try picking from the list, or paste a full RSS URL."); return; }
+      addPicked({ source_type: "admin_outlet", outlet: match.outlet, label: match.outlet });
+    }
+    refreshSuggestions();
+  }
+
+  async function saveCreateFlow() {
+    const state = createFlowState;
+    const name = state.name.trim();
+    if (!name) { toast("Give your Spray a name first."); return; }
+    if (state.picked.length === 0) { toast("Add at least one source."); return; }
+
+    try {
+      const sources = state.picked.map(p => p.source_type === "admin_outlet"
+        ? { source_type: "admin_outlet", outlet: p.outlet }
+        : { source_type: "custom", custom_source_id: p.custom_source_id });
+      const mix = await api("/api/mixes", { method: "POST", body: JSON.stringify({ name, is_public: state.isPublic, sources }) });
+      if (state.addToBar) {
+        await api("/api/my/spray-bar/add", { method: "POST", body: JSON.stringify({ slug: mix.slug }) });
+      }
+      await loadSprayBar(true);
+      closeCreateFlow();
+      toast(`"${name}" created.`);
+    } catch (e) {
+      toast(e.message || "Couldn't save that Spray.");
     }
   }
 
@@ -589,6 +954,7 @@
       try { await api("/api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
       setToken("");
       currentUser = null;
+      sprayBarData = null;
       renderYou();
     });
   }
@@ -608,7 +974,7 @@
     el.className = "onboarding";
     el.id = "onboarding";
     el.innerHTML = `
-      <div class="ob-wordmark">SOURCE?</div>
+      <div class="ob-wordmark">SOURCE!</div>
       <div class="ob-rule"></div>
       <h1>News first, from the best sources. Escape the billionaires' algorithm.</h1>
       <p>Start with our News Spray, edit it, or pick your own.</p>

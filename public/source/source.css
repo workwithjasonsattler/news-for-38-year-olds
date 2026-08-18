@@ -1,6 +1,6 @@
 :root {
   /* -----------------------------------------------------------------
-     SOURCE? tokens — clean white, modern reader. Retired direction:
+     SOURCE! tokens — clean white, modern reader. Retired direction:
      amber-on-black terminal ("hacked into something"). This is now
      the ONE identity — the mobile/desktop toggle below swaps LAYOUT,
      not theme.
@@ -384,6 +384,108 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 12px;
 }
 
+/* ---------------------------------------------------------------
+   Spray toggle — Read tab's All | News | <your Sprays> | Create bar.
+   Sits between the header and #main, hidden on every tab except Read.
+   --------------------------------------------------------------- */
+.spray-toggle {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.spray-toggle::-webkit-scrollbar { display: none; }
+.spray-pill {
+  flex: 0 0 auto;
+  padding: 7px 14px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink-muted);
+  font-family: var(--body);
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.spray-pill.active {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: var(--ink);
+}
+.spray-pill-create {
+  color: var(--accent-dim);
+  border-color: var(--accent-soft);
+  background: transparent;
+}
+
+/* ---------------------------------------------------------------
+   Sources tab — "Your Sprays" bar editor + guided Create flow
+   --------------------------------------------------------------- */
+.spray-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+}
+.spray-bar-row .spray-bar-name { flex: 1; min-width: 0; font-weight: 600; }
+.spray-bar-row .spray-bar-btn {
+  border: none;
+  background: transparent;
+  color: var(--ink-muted);
+  font-size: 15px;
+  padding: 4px 8px;
+  line-height: 1;
+}
+.spray-bar-row .spray-bar-btn:disabled { opacity: 0.25; }
+.spray-bar-row .spray-bar-btn.remove { color: var(--alert); }
+
+.create-flow-step { margin-bottom: 16px; }
+.create-flow-label {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  margin-bottom: 8px;
+}
+.create-flow-input {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 14px;
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+.create-flow-picked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 10px 0;
+}
+.create-flow-suggestion {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--line);
+}
+.create-flow-suggestion label { flex: 1; font-size: 14px; }
+.create-flow-checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 14px 0;
+  font-size: 14px;
+}
+
 /* section headers within a tab (e.g. Buzz: Actions / Trending) */
 .section-label {
   font-family: var(--display);
@@ -667,6 +769,7 @@ body[data-layout="desktop"] #main.read-layout {
 }
 
 .reader-body { padding: 18px 22px 22px; }
+.reader-body-textonly { padding-top: 24px; }
 
 .reader-title {
   font-family: var(--display);
@@ -676,6 +779,7 @@ body[data-layout="desktop"] #main.read-layout {
   margin: 10px 0 12px;
   color: var(--ink);
 }
+.reader-title-large { font-size: 30px; }
 
 .reader-excerpt {
   font-size: 15.5px;
@@ -687,14 +791,13 @@ body[data-layout="desktop"] #main.read-layout {
 .reader-actions {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   margin-bottom: 4px;
 }
 
 .reader-open-link {
-  font-family: var(--data);
-  font-size: 12px;
-  color: var(--ink-muted);
+  text-decoration: none;
+  text-align: center;
 }
 
 .reader-frame-wrap { margin-top: 18px; }

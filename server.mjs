@@ -235,6 +235,30 @@ async function initSchema() {
       hidden_components TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`,
+    // ---------- SOURCE! Read-tab Spray bar ----------
+    // Which Sprays show up as toggle pills in the Read tab (All | News |
+    // <your sprays> | Create), and their order. A reader adds/removes via
+    // a checkbox at Spray-creation time or later from the Sources tab —
+    // this table is just the saved list + position, same shape as
+    // user_layout_prefs' order concept but scoped to Sprays instead of
+    // homepage sections. "All" and "Create" are NOT stored here — they're
+    // permanent, computed slots the frontend always renders (All first,
+    // Create last).
+    `CREATE TABLE IF NOT EXISTS user_spray_bar (
+      user_id INTEGER NOT NULL,
+      mix_slug TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (user_id, mix_slug)
+    )`,
+    // A reader's personal override for what "News" resolves to. Defaults
+    // to the shared official flagship Spray (OFFICIAL_HEADLINES_SPRAY_SLUG)
+    // when no row exists — a reader can point "News" at any public Spray
+    // instead (including one of their own), and can reset back to the
+    // default by deleting their row.
+    `CREATE TABLE IF NOT EXISTS user_news_pref (
+      user_id INTEGER PRIMARY KEY,
+      mix_slug TEXT NOT NULL
+    )`,
     // ---------- Thumbs-up (personal ranking, Feature B) ----------
     // A reader thumbs-up a source; togglable (thumbs again = remove). Only
     // ever affects THAT reader's own wire ordering (as a same-day tiebreak
@@ -757,6 +781,185 @@ app.post("/api/my/layout-prefs", async (req, res) => {
     [user.id, view, blob]
   );
   res.json({ ok: true });
+});
+
+// ---------- SOURCE! Read-tab Spray bar ----------
+// GET returns the resolved toggle bar for the signed-in reader: which
+// Spray "News" currently points to (their own override, or the shared
+// official flagship Spray by default) and the ordered list of Sprays
+// they've added to their bar. Anonymous readers get a client-side-only
+// default (All/News/Create, no saved list) — these routes are never hit
+// when signed out, same pattern as layout-prefs.
+app.get("/api/my/spray-bar", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  const newsPref = await dbGet(`SELECT mix_slug FROM user_news_pref WHERE user_id = ?`, [user.id]);
+  const newsSlug = newsPref?.mix_slug || OFFICIAL_HEADLINES_SPRAY_SLUG;
+  const newsMix = await dbGet(`SELECT slug, name FROM feed_mixes WHERE slug = ?`, [newsSlug]);
+
+  const barRows = await dbAll(
+    `SELECT b.mix_slug, b.sort_order, fm.name
+     FROM user_spray_bar b JOIN feed_mixes fm ON fm.slug = b.mix_slug
+     WHERE b.user_id = ? ORDER BY b.sort_order ASC`,
+    [user.id]
+  );
+
+  res.json({
+    news: newsMix ? { slug: newsMix.slug, name: newsMix.name } : { slug: OFFICIAL_HEADLINES_SPRAY_SLUG, name: "SOURCE! News" },
+    sprays: barRows.map((r) => ({ slug: r.mix_slug, name: r.name })),
+  });
+});
+
+// Replaces the reader's whole bar list + order in one call — simplest
+// shape for a Sources-tab reorder/add/remove UI to just resend the
+// current list after any change, rather than separate add/remove/reorder
+// endpoints that all have to stay in sync with each other.
+app.post("/api/my/spray-bar", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  const slugs = Array.isArray(req.body?.sprays) ? req.body.sprays.map((s) => String(s).trim()).filter(Boolean).slice(0, 30) : [];
+
+  // Validate every slug is a real, currently-visible Spray before saving —
+  // a stale/typo'd slug should never silently sit in a reader's bar.
+  for (const slug of slugs) {
+    const exists = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [slug]);
+    if (!exists) return res.status(400).json({ error: `Unknown Spray: ${slug}` });
+  }
+
+  await dbRun(`DELETE FROM user_spray_bar WHERE user_id = ?`, [user.id]);
+  for (let i = 0; i < slugs.length; i++) {
+    await dbRun(`INSERT INTO user_spray_bar (user_id, mix_slug, sort_order) VALUES (?, ?, ?)`, [user.id, slugs[i], i]);
+  }
+  res.json({ ok: true });
+});
+
+// Adds ONE Spray to the end of the reader's bar without needing to resend
+// the whole list — this is what Spray creation's "Add to my Read toggle"
+// checkbox calls right after a successful POST /api/mixes.
+app.post("/api/my/spray-bar/add", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const slug = String(req.body?.slug || "").trim();
+  if (!slug) return res.status(400).json({ error: "slug is required" });
+  const exists = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [slug]);
+  if (!exists) return res.status(400).json({ error: "Unknown Spray" });
+
+  const already = await dbGet(`SELECT 1 FROM user_spray_bar WHERE user_id = ? AND mix_slug = ?`, [user.id, slug]);
+  if (!already) {
+    const max = await dbGet(`SELECT MAX(sort_order) AS m FROM user_spray_bar WHERE user_id = ?`, [user.id]);
+    await dbRun(`INSERT INTO user_spray_bar (user_id, mix_slug, sort_order) VALUES (?, ?, ?)`, [user.id, slug, (max?.m ?? -1) + 1]);
+  }
+  res.json({ ok: true });
+});
+
+app.delete("/api/my/spray-bar/:slug", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  await dbRun(`DELETE FROM user_spray_bar WHERE user_id = ? AND mix_slug = ?`, [user.id, req.params.slug]);
+  res.json({ ok: true });
+});
+
+// Sets (or resets) the reader's personal override for what "News" points
+// to. Posting { slug: null } or an empty body resets to the shared
+// official flagship Spray.
+app.post("/api/my/news-pref", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const slug = req.body?.slug ? String(req.body.slug).trim() : null;
+
+  if (!slug) {
+    await dbRun(`DELETE FROM user_news_pref WHERE user_id = ?`, [user.id]);
+    return res.json({ ok: true, slug: OFFICIAL_HEADLINES_SPRAY_SLUG });
+  }
+  const mix = await dbGet(`SELECT slug FROM feed_mixes WHERE slug = ? AND is_public = 1`, [slug]);
+  if (!mix) return res.status(400).json({ error: "Unknown or private Spray" });
+  await dbRun(
+    `INSERT INTO user_news_pref (user_id, mix_slug) VALUES (?, ?)
+     ON CONFLICT(user_id) DO UPDATE SET mix_slug = excluded.mix_slug`,
+    [user.id, slug]
+  );
+  res.json({ ok: true, slug });
+});
+
+// ---------- Spray creation: guided source suggestions ----------
+// Powers the simplified "add one, we suggest five more" Create flow.
+// Given the outlets already picked, suggests up to `limit` more:
+//   1. Real co-occurrence — other admin_outlet sources that show up
+//      alongside any of the given outlets in other PUBLIC Sprays. This is
+//      "readers who follow this also follow..." using data that already
+//      exists (feed_mix_sources), no new tracking needed.
+//   2. Fallback to same-section sources (feeds.fallback_beat) when there
+//      isn't enough co-occurrence data yet to fill the quota — guarantees
+//      useful suggestions even for the very first Sprays ever created,
+//      before any cross-Spray pattern exists.
+app.get("/api/spray-suggestions", async (req, res) => {
+  const picked = String(req.query.sources || "")
+    .split(",").map((s) => s.trim()).filter(Boolean);
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 10);
+
+  if (picked.length === 0) {
+    // Nothing picked yet — just hand back a small starter set from the
+    // most-common sections so the very first suggestion isn't empty.
+    const rows = await dbAll(
+      `SELECT outlet, fallback_beat FROM feeds WHERE submission_status = 'approved' AND outlet IS NOT NULL
+       ORDER BY RANDOM() LIMIT ?`,
+      [limit]
+    );
+    return res.json(rows.map((r) => ({ outlet: r.outlet, section: r.fallback_beat })));
+  }
+
+  const placeholders = picked.map(() => "?").join(",");
+  const coOccurring = await dbAll(
+    `SELECT fms2.outlet AS outlet, COUNT(*) AS score
+     FROM feed_mix_sources fms1
+     JOIN feed_mixes fm ON fm.id = fms1.mix_id AND fm.is_public = 1
+     JOIN feed_mix_sources fms2 ON fms2.mix_id = fms1.mix_id AND fms2.source_type = 'admin_outlet'
+     WHERE fms1.source_type = 'admin_outlet' AND fms1.outlet IN (${placeholders})
+       AND fms2.outlet NOT IN (${placeholders})
+     GROUP BY fms2.outlet
+     ORDER BY score DESC
+     LIMIT ?`,
+    [...picked, ...picked, limit]
+  );
+
+  const suggestions = [];
+  const seen = new Set(picked);
+  for (const row of coOccurring) {
+    if (seen.has(row.outlet)) continue;
+    seen.add(row.outlet);
+    const feed = await dbGet(`SELECT fallback_beat FROM feeds WHERE outlet = ? AND submission_status = 'approved'`, [row.outlet]);
+    if (!feed) continue; // co-occurring outlet no longer exists/approved
+    suggestions.push({ outlet: row.outlet, section: feed.fallback_beat });
+  }
+
+  // Fill any remaining slots from the same section(s) as the picked
+  // sources, when co-occurrence alone didn't reach the quota.
+  if (suggestions.length < limit) {
+    const sectionRows = await dbGet(
+      `SELECT GROUP_CONCAT(DISTINCT fallback_beat) AS beats FROM feeds WHERE outlet IN (${placeholders}) AND submission_status = 'approved'`,
+      picked
+    );
+    const beats = (sectionRows?.beats || "").split(",").filter(Boolean);
+    if (beats.length > 0) {
+      const beatPlaceholders = beats.map(() => "?").join(",");
+      const fallbackRows = await dbAll(
+        `SELECT outlet, fallback_beat FROM feeds
+         WHERE submission_status = 'approved' AND fallback_beat IN (${beatPlaceholders})
+         ORDER BY RANDOM() LIMIT ?`,
+        [...beats, limit * 2]
+      );
+      for (const row of fallbackRows) {
+        if (suggestions.length >= limit) break;
+        if (seen.has(row.outlet)) continue;
+        seen.add(row.outlet);
+        suggestions.push({ outlet: row.outlet, section: row.fallback_beat });
+      }
+    }
+  }
+
+  res.json(suggestions.slice(0, limit));
 });
 
 // ---------- Super RSS Reader: reader-submitted custom sources ----------
