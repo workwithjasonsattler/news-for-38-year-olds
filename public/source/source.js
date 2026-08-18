@@ -275,6 +275,17 @@
   let sprayBarData = null; // { news: {slug,name}, sprays: [{slug,name}] }
   let activeSprayKey = localStorage.getItem(ACTIVE_SPRAY_KEY) || "all";
 
+  // SOURCE!-only display shortener: the shared flagship Spray's real
+  // name ("Headlines: Best in the World") stays unchanged everywhere
+  // else (N38YO homepage, spray.html, the RSS feed title) — this is a
+  // presentation-only override for tab/pill labels in this app, where
+  // the full name is too wordy. Any other Spray's name passes through
+  // untouched.
+  function sprayDisplayName(slug, name) {
+    if (slug === OFFICIAL_NEWS_SLUG) return "Headlines";
+    return name;
+  }
+
   async function loadSprayBar(force) {
     if (sprayBarData && !force) return sprayBarData;
     if (!currentUser) {
@@ -304,8 +315,8 @@
     el.hidden = false;
     const pills = [
       { key: "all", label: "All" },
-      { key: sprayBarData.news.slug, label: sprayBarData.news.name || "News" },
-    ].concat(sprayBarData.sprays.map(s => ({ key: s.slug, label: s.name })));
+      { key: sprayBarData.news.slug, label: sprayDisplayName(sprayBarData.news.slug, sprayBarData.news.name) || "News" },
+    ].concat(sprayBarData.sprays.map(s => ({ key: s.slug, label: sprayDisplayName(s.slug, s.name) })));
     el.innerHTML = pills.map(p => `
       <button class="spray-pill${p.key === activeSprayKey ? " active" : ""}" data-key="${escapeHtml(p.key)}">${escapeHtml(p.label)}</button>
     `).join("") + `<button class="spray-pill spray-pill-create" data-key="__create">+ Create</button>`;
@@ -634,7 +645,7 @@
     const newsRow = `
       <div class="card" style="padding:12px;">
         <div class="spray-bar-row" style="padding:0;">
-          <span class="spray-bar-name">📰 News: ${escapeHtml(bar.news.name || "SOURCE! News")}</span>
+          <span class="spray-bar-name">📰 News: ${escapeHtml(sprayDisplayName(bar.news.slug, bar.news.name) || "SOURCE! News")}</span>
           <button class="spray-bar-btn" id="changeNewsBtn">${newsPickerOpen ? "Cancel" : "Change"}</button>
         </div>
         ${newsPickerOpen ? `

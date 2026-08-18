@@ -407,6 +407,11 @@ button { font-family: inherit; cursor: pointer; }
    --------------------------------------------------------------- */
 .spray-toggle {
   display: flex;
+  /* row-reverse both right-justifies the bar AND mirrors pill order
+     in one move: DOM order stays All -> News/Headlines -> your Sprays
+     -> +Create, but it renders (right to left) Create -> Sprays ->
+     Headlines -> All, packed flush against the right edge. */
+  flex-direction: row-reverse;
   gap: 6px;
   overflow-x: auto;
   padding: 10px 14px;
@@ -992,23 +997,27 @@ body[data-layout="desktop"] #main.read-layout {
   .layout-review {
     display: flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     position: fixed;
-    top: 18px;
-    left: 18px;
+    top: 16px;
+    left: 16px;
     z-index: 50;
     background: rgba(20, 22, 27, 0.85);
     border-radius: 20px;
-    padding: 5px 6px 5px 12px;
+    padding: 5px 6px 5px 10px;
     backdrop-filter: blur(4px);
   }
 
+  /* Label reads as a caption, not a third toggle state: smaller,
+     dimmer, letter-spaced, and separated from the buttons by a
+     hairline divider rather than sitting flush against them. */
   .layout-review-label {
     font-family: var(--data);
-    font-size: 9.5px;
-    letter-spacing: 0.08em;
-    color: rgba(255, 255, 255, 0.55);
-    margin-right: 2px;
+    font-size: 8.5px;
+    letter-spacing: 0.14em;
+    color: rgba(255, 255, 255, 0.4);
+    padding-right: 8px;
+    border-right: 1px solid rgba(255, 255, 255, 0.18);
   }
 
   .layout-review-btn {
@@ -1051,9 +1060,12 @@ body[data-layout="desktop"] #main.read-layout {
     position: relative;
     width: 390px;
     height: 844px;
-    max-height: calc(100vh - 64px);
+    max-height: calc(100vh - 96px);
     min-height: 0;
-    margin: 32px auto;
+    /* 64px top clearance keeps the frame's rounded corner and the
+       wordmark inside it clear of the fixed layout-review pill
+       (top:16px), which previously overlapped the header. */
+    margin: 64px auto 32px;
     border: 10px solid var(--ink);
     border-radius: 46px;
     overflow: hidden;
