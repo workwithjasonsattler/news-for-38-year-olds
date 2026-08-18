@@ -257,6 +257,23 @@ button { font-family: inherit; cursor: pointer; }
   flex-shrink: 0;
 }
 
+/* Per-article paywall label — small badge next to the outlet/timestamp
+   meta line. Hidden by default; only shown once the batched lookup
+   confirms a specific article is soft- or hard-paywalled. */
+.paywall-badge {
+  display: inline-block;
+  font-family: var(--data);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.paywall-badge.paywall-hard { background: var(--alert); color: #fff; }
+.paywall-badge.paywall-soft { background: var(--surface); color: var(--ink-muted); border: 1px solid var(--line); }
+
 .card-body { display: flex; gap: 10px; align-items: flex-start; }
 .card-body .card-text { flex: 1; min-width: 0; }
 

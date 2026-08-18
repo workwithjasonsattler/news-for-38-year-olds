@@ -2116,6 +2116,99 @@ app.get("/api/dispatches/thumbnails", async (req, res) => {
   res.json(out);
 });
 
+// ---------- Per-article paywall labels ----------
+// Detects whether a specific ARTICLE (not just its outlet in general) is
+// paywalled, so a soft-metered piece and a hard-paywalled one from the
+// same outlet can be labeled differently, and a genuinely free piece from
+// an otherwise-paywalled outlet doesn't get mislabeled either.
+//   - "hard": the page's own structured data says so — most major
+//     paywalled outlets (NYT, WaPo, WSJ, etc.) publish a schema.org
+//     NewsArticle/Article `isAccessibleForFree: false` flag specifically
+//     so Google can index paywalled content correctly. Reusing that same
+//     signal here is far more reliable than guessing from markup.
+//   - "soft": no explicit isAccessibleForFree:false, but the page's HTML
+//     contains a common metered/soft-paywall marker (class names, known
+//     paywall-vendor script tags, etc.) — a best-effort fallback for
+//     outlets that don't publish the structured-data flag.
+//   - "none" (never sent to the client — see below): nothing detected,
+//     or the fetch failed. Fails soft like everything else outbound in
+//     this codebase: an undetectable article just shows no badge rather
+//     than a wrong one.
+// Cached by URL, 24h TTL (paywall status on a given article essentially
+// never changes) — same cache shape as the thumbnail cache above.
+const paywallCache = new Map(); // link -> { status: 'hard'|'soft'|'none', ts: number }
+const PAYWALL_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+const PAYWALL_CHECK_MAX_BYTES = 400 * 1024; // paywall signals live in <head>/early <body>, no need to pull a whole page
+
+const SOFT_PAYWALL_MARKERS = /paywall|meter-wall|metered-content|piano-inline|piano\.io|subscriber-only|subscriber-exclusive|premium-content|regwall|tp-modal|piano_offer/i;
+
+async function detectPaywallStatus(url) {
+  const cached = paywallCache.get(url);
+  if (cached && Date.now() - cached.ts < PAYWALL_CACHE_TTL_MS) return cached.status;
+
+  let status = "none";
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 8000);
+    let html;
+    try {
+      const upstream = await fetch(url, {
+        signal: controller.signal,
+        redirect: "follow",
+        headers: {
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+          "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+          "Accept-Language": "en-US,en;q=0.9",
+          "Referer": "https://www.google.com/",
+        },
+      });
+      if (!upstream.ok) throw new Error(`Upstream returned ${upstream.status}`);
+      html = await upstream.text();
+    } finally {
+      clearTimeout(timer);
+    }
+    if (html.length > PAYWALL_CHECK_MAX_BYTES) html = html.slice(0, PAYWALL_CHECK_MAX_BYTES);
+
+    const freeMatch = html.match(/"isAccessibleForFree"\s*:\s*"?(true|false)"?/i);
+    if (freeMatch) {
+      status = freeMatch[1].toLowerCase() === "false" ? "hard" : "none";
+    } else if (SOFT_PAYWALL_MARKERS.test(html)) {
+      status = "soft";
+    }
+  } catch (e) {
+    status = "none"; // fail soft — no badge rather than a guess
+  }
+
+  paywallCache.set(url, { status, ts: Date.now() });
+  return status;
+}
+
+app.get("/api/dispatches/paywall", async (req, res) => {
+  const ids = String(req.query.ids || "")
+    .split(",")
+    .map((s) => parseInt(s.trim(), 10))
+    .filter((n) => Number.isInteger(n))
+    .slice(0, 20);
+  if (ids.length === 0) return res.json({});
+
+  const placeholders = ids.map(() => "?").join(",");
+  const rows = await dbAll(`SELECT id, link FROM dispatches WHERE id IN (${placeholders})`, ids);
+
+  const results = await Promise.allSettled(
+    rows.map(async (row) => [row.id, await detectPaywallStatus(row.link)])
+  );
+
+  // Only "hard"/"soft" are sent back — a "none" result is omitted
+  // entirely, same "hide rather than show an empty/negative state"
+  // convention used everywhere else in this codebase (thumbnails,
+  // Videos box, Bluesky box, etc.).
+  const out = {};
+  results.forEach((r) => {
+    if (r.status === "fulfilled" && r.value[1] !== "none") out[r.value[0]] = r.value[1];
+  });
+  res.json(out);
+});
+
 app.get("/api/sources", async (req, res) => {
   const rows = await dbAll(
     `SELECT outlet, default_author, subscribe_url, tip_url, feed_url, bluesky_handle, feed_type FROM feeds WHERE submission_status = 'approved' ORDER BY outlet ASC`

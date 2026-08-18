@@ -173,6 +173,41 @@
     return `<span class="outlet-chip"><span class="outlet-avatar" style="background:hsl(${outletHue(label)} 55% 42%)">${escapeHtml(initial)}</span>${escapeHtml(label)}</span>`;
   }
 
+  // ---------------------------------------------------------------
+  // Per-article paywall labels — batched, lazy-loaded the same way
+  // thumbnails are: render a hidden placeholder span for each dispatch
+  // up front, then fill in whichever ones turn out to be soft/hard-
+  // paywalled once the batched lookup resolves. A dispatch with no
+  // detected paywall just never gets its placeholder filled in.
+  // ---------------------------------------------------------------
+  let paywallStatusMap = {};
+
+  function paywallBadgePlaceholder(id) {
+    return `<span class="paywall-badge" id="paywall-${id}" hidden></span>`;
+  }
+
+  function applyPaywallBadge(id, status) {
+    const el = document.getElementById(`paywall-${id}`);
+    if (!el || !status) return;
+    el.hidden = false;
+    el.textContent = status === "hard" ? "PAYWALL" : "SOFT PAYWALL";
+    el.classList.add(status === "hard" ? "paywall-hard" : "paywall-soft");
+  }
+
+  async function loadPaywallStatus(ids) {
+    for (let i = 0; i < ids.length; i += 20) {
+      const batch = ids.slice(i, i + 20).filter(id => !(id in paywallStatusMap));
+      if (batch.length === 0) continue;
+      try {
+        const map = await api(`/api/dispatches/paywall?ids=${batch.join(",")}`);
+        batch.forEach(id => { paywallStatusMap[id] = map[id] || null; });
+        Object.entries(map).forEach(([id, status]) => applyPaywallBadge(id, status));
+      } catch (e) {
+        // fail soft — a missing badge is fine, never blocks reading
+      }
+    }
+  }
+
   function stateBlock({ glyph, title, body, spin }) {
     return `<div class="state-block"><div class="terminal-glyph${spin ? " spin" : ""}">${glyph || ">_"}</div>
       <h3>${escapeHtml(title)}</h3><p>${escapeHtml(body)}</p></div>`;
@@ -331,6 +366,7 @@
         ? []
         : shown.filter(d => !d.image_url && typeof d.id === "number").map(d => d.id);
       loadThumbnails(needsLiveThumb);
+      loadPaywallStatus(shown.filter(d => typeof d.id !== "undefined").map(d => d.id));
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "TRANSMISSION FAILED", body: e.message || "Could not reach the wire." });
     }
@@ -371,7 +407,7 @@
     pane.innerHTML = `
       ${d.image_url ? `<img class="reader-image" src="${escapeHtml(d.image_url)}" alt="" loading="lazy">` : ""}
       <div class="reader-body${noImage ? " reader-body-textonly" : ""}">
-        <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></div>
+        <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
         <h2 class="reader-title${noImage ? " reader-title-large" : ""}">${escapeHtml(title)}</h2>
         ${excerpt ? `<p class="reader-excerpt">${escapeHtml(excerpt)}</p>` : ""}
         <div class="reader-actions">
@@ -409,6 +445,10 @@
     }
     const buzzBtn = pane.querySelector(".buzz-badge");
     if (buzzBtn) buzzBtn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
+    if (typeof d.id !== "undefined") {
+      if (d.id in paywallStatusMap) applyPaywallBadge(d.id, paywallStatusMap[d.id]);
+      else loadPaywallStatus([d.id]);
+    }
   }
 
   function renderReaderFeed(shown, trendingLinks) {
@@ -423,7 +463,7 @@
         return `
           <button class="feed-item feed-item-rss${active ? " active" : ""}" data-id="${idAttr}">
             <span class="feed-item-title">${escapeHtml(title)}</span>
-            <span class="feed-item-meta"><span>${escapeHtml(d.outlet || d.source || "")}</span><span>${relTime(d.date)}</span></span>
+            <span class="feed-item-meta"><span>${escapeHtml(d.outlet || d.source || "")}</span><span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</span>
           </button>`;
       }
       const excerpt = (d.excerpt || "").trim().slice(0, 140);
@@ -434,7 +474,7 @@
             ${hasImage ? `src="${escapeHtml(d.image_url)}"` : ""} loading="lazy"
             onerror="this.classList.remove('loaded')">
           <span class="feed-item-text">
-            <span class="feed-item-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></span>
+            <span class="feed-item-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</span>
             <span class="feed-item-title">${escapeHtml(title)}</span>
             ${excerpt ? `<span class="feed-item-excerpt">${escapeHtml(excerpt)}</span>` : ""}
           </span>
@@ -480,7 +520,7 @@
         <div class="card card-featured${headlinesOnly ? " card-headlines-only" : ""}">
           <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
             ${headlinesOnly ? "" : `<div class="card-featured-media">${thumb}</div>`}
-            <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></div>
+            <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
             <div class="card-title">${escapeHtml(title)}</div>
             ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt)}</div>` : ""}
           </a>
@@ -492,7 +532,7 @@
       return `
         <div class="card card-headlines-only">
           <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
-            <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></div>
+            <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
             <div class="card-title">${escapeHtml(title)}</div>
           </a>
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
@@ -501,7 +541,7 @@
 
     return `
       <div class="card">
-        <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span></div>
+        <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
         <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
           <div class="card-body">
             <div class="card-text">
