@@ -519,6 +519,16 @@ async function dropDegenerateArtRss() {
 // ---------- express app ----------
 const app = express();
 app.use(express.json());
+// sw.js must never be cached by the browser — service workers only
+// self-update when the browser fetches a byte-different sw.js, and if
+// an intermediary/browser cache is serving a stale copy of THIS file,
+// the cache-version bump inside it never gets seen, so the app keeps
+// serving old source.css/source.js indefinitely. Force a fresh check
+// on every load, independent of express.static's default headers.
+app.get("/source/sw.js", (req, res) => {
+  res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+  res.sendFile(path.join(__dirname, "public", "source", "sw.js"));
+});
 app.use(express.static(path.join(__dirname, "public")));
 
 function requireAdmin(req, res, next) {
