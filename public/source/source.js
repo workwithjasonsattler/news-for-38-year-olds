@@ -635,7 +635,8 @@
       let html = `
         <div class="sources-intro">
           <div class="sources-intro-title">Improve your sources.</div>
-          <div class="sources-intro-sub">One at a time, or all at once — pick or start a Spray.</div>
+          <div class="sources-intro-sub">One at a time, or all at once — pick or start a Spray<span class="sources-intro-asterisk">*</span>.</div>
+          <div class="sources-intro-footnote"><span class="sources-intro-asterisk">*</span>A handpicked starter pack of ripe feeds</div>
         </div>`;
       if (currentUser) {
         html += `<div class="section-label">YOUR SPRAYS</div>` + renderYourSpraysSection(bar);
@@ -981,15 +982,17 @@
   async function renderBuzz() {
     const main = document.getElementById("main");
     main.innerHTML = stateBlock({ title: "SCANNING CHATTER", body: "Pulling the signal off Bluesky...", spin: true });
-    const [actionsResult, postsResult] = await Promise.allSettled([
+    const [actionsResult, postsResult, videosResult] = await Promise.allSettled([
       api("/api/actions-feed"),
       api("/api/nerve-center/bluesky"),
+      api("/api/video-feed"),
     ]);
 
     const actions = actionsResult.status === "fulfilled" && Array.isArray(actionsResult.value) ? actionsResult.value : [];
     const posts = postsResult.status === "fulfilled" && Array.isArray(postsResult.value) ? postsResult.value : [];
+    const videos = videosResult.status === "fulfilled" && Array.isArray(videosResult.value) ? videosResult.value : [];
 
-    if (actions.length === 0 && posts.length === 0) {
+    if (actions.length === 0 && posts.length === 0 && videos.length === 0) {
       main.innerHTML = stateBlock({ glyph: "∅", title: "QUIET RIGHT NOW", body: "No chatter picked up in the current window." });
       return;
     }
@@ -1000,6 +1003,9 @@
     }
     if (posts.length > 0) {
       html += `<div class="section-label">TRENDING ON BLUESKY</div>` + posts.slice(0, 40).map(renderBluePost).join("");
+    }
+    if (videos.length > 0) {
+      html += `<div class="section-label">BEST OF YOUTUBE</div>` + videos.slice(0, 12).map(renderVideoCard).join("");
     }
     main.innerHTML = html;
   }
@@ -1035,6 +1041,19 @@
       <a class="card card-link" href="${escapeHtml(p.link || p.postUrl || "#")}" target="_blank" rel="noopener" style="display:block;">
         <div class="card-meta"><span>${escapeHtml(p.author || p.outlet || "")}</span><span>${relTime(p.indexedAt || p.date)}</span></div>
         <div class="card-title">${escapeHtml(p.text || p.title || "")}</div>
+      </a>`;
+  }
+
+  function renderVideoCard(v) {
+    return `
+      <a class="card card-link" href="${escapeHtml(v.url || "#")}" target="_blank" rel="noopener" style="display:block;">
+        <div class="card-body">
+          <div class="card-text">
+            <div class="card-meta"><span>${escapeHtml(v.channel || "")}</span><span>${relTime(v.published_at)}</span></div>
+            <div class="card-title">${escapeHtml(v.title || "")}</div>
+          </div>
+          ${v.thumbnail ? `<img class="card-thumb loaded" src="${escapeHtml(v.thumbnail)}" alt="" loading="lazy" onerror="this.classList.remove('loaded')">` : ""}
+        </div>
       </a>`;
   }
 
