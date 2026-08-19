@@ -508,6 +508,23 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 14px;
 }
 
+/* Sources tab intro — sits above Your Sprays / the registry list */
+.sources-intro {
+  margin: 2px 2px 16px;
+}
+.sources-intro-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 21px;
+  color: var(--ink);
+  letter-spacing: -0.01em;
+}
+.sources-intro-sub {
+  font-size: 13.5px;
+  color: var(--ink-muted);
+  margin-top: 3px;
+}
+
 /* section headers within a tab (e.g. Buzz: Actions / Trending) */
 .section-label {
   font-family: var(--display);

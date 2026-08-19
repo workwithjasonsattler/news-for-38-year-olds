@@ -609,9 +609,19 @@
         sourcesRegistryCache || api("/api/sources"),
         loadSprayBar(),
       ]);
-      sourcesRegistryCache = sources;
+      // Sources is for building Sprays out of Organizations — Individuals (Bluesky-only
+      // people) don't produce dispatch items on their own and belong to Buzz, not here.
+      // Filter on feed_type, not feed_url presence — an Organization can have no RSS
+      // (e.g. Degenerate Art, YouTube-only) and still belong here.
+      sourcesRegistryCache = (Array.isArray(sources) ? sources : []).filter(s => s.feed_type !== "journalist");
 
-      let html = "";
+      const orgSources = sourcesRegistryCache;
+
+      let html = `
+        <div class="sources-intro">
+          <div class="sources-intro-title">Improve your sources.</div>
+          <div class="sources-intro-sub">One at a time, or all at once — pick or start a Spray.</div>
+        </div>`;
       if (currentUser) {
         html += `<div class="section-label">YOUR SPRAYS</div>` + renderYourSpraysSection(bar);
       } else {
@@ -619,12 +629,12 @@
       }
       html += `<button class="btn primary" id="newSprayBtn" style="width:100%; margin:14px 0;">+ New Spray</button>`;
 
-      if (!Array.isArray(sources) || sources.length === 0) {
+      if (orgSources.length === 0) {
         html += stateBlock({ glyph: "∅", title: "NO SOURCES", body: "Nothing in the registry yet." });
       } else {
-        html += `<div class="section-label">ALL SOURCES (${sources.length})</div>` + sources.map(s => `
+        html += `<div class="section-label">ALL SOURCES (${orgSources.length})</div>` + orgSources.map(s => `
           <div class="card">
-            <div class="card-meta"><span>${escapeHtml(s.feed_url ? "ORGANIZATION" : "INDIVIDUAL")}</span></div>
+            <div class="card-meta"><span>ORGANIZATION</span></div>
             <div class="card-title">${escapeHtml(s.outlet || s.name || "")}</div>
           </div>`).join("");
       }
