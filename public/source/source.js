@@ -316,6 +316,7 @@
     const pills = [
       { key: "all", label: "All" },
       { key: sprayBarData.news.slug, label: sprayDisplayName(sprayBarData.news.slug, sprayBarData.news.name) || "News" },
+      { key: "__youtube", label: "Best of YouTube" },
     ].concat(sprayBarData.sprays.map(s => ({ key: s.slug, label: sprayDisplayName(s.slug, s.name) })));
     el.innerHTML = pills.map(p => `
       <button class="spray-pill${p.key === activeSprayKey ? " active" : ""}" data-key="${escapeHtml(p.key)}">${escapeHtml(p.label)}</button>
@@ -334,8 +335,30 @@
   // endpoint and using its live `items`. Falls back to "all" (and
   // resets the toggle) if the selected Spray no longer exists or went
   // private out from under the reader.
+  // "__youtube" is a special built-in slot (not a Spray) — same curated
+  // channel list that backs the homepage/app Videos box, normalized into
+  // dispatch shape so the same card/reader-pane rendering just works.
   async function fetchReadItems() {
     if (activeSprayKey === "all") return api("/api/dispatches");
+    if (activeSprayKey === "__youtube") {
+      try {
+        const videos = await api("/api/video-feed");
+        return (Array.isArray(videos) ? videos : []).map((v, i) => ({
+          id: `yt-${i}`,
+          title: v.title,
+          link: v.url,
+          image_url: v.thumbnail,
+          outlet: v.channel,
+          date: v.published_at,
+          excerpt: "",
+          is_video: true,
+        }));
+      } catch (e) {
+        activeSprayKey = "all";
+        localStorage.setItem(ACTIVE_SPRAY_KEY, "all");
+        return api("/api/dispatches");
+      }
+    }
     try {
       const mix = await api(`/api/mixes/${encodeURIComponent(activeSprayKey)}`);
       return Array.isArray(mix.items) ? mix.items : [];
@@ -377,7 +400,7 @@
         ? []
         : shown.filter(d => !d.image_url && typeof d.id === "number").map(d => d.id);
       loadThumbnails(needsLiveThumb);
-      loadPaywallStatus(shown.filter(d => typeof d.id !== "undefined").map(d => d.id));
+      loadPaywallStatus(shown.filter(d => typeof d.id === "number").map(d => d.id));
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "TRANSMISSION FAILED", body: e.message || "Could not reach the wire." });
     }
@@ -422,8 +445,8 @@
         <h2 class="reader-title${noImage ? " reader-title-large" : ""}">${escapeHtml(title)}</h2>
         ${excerpt ? `<p class="reader-excerpt">${escapeHtml(excerpt)}</p>` : ""}
         <div class="reader-actions">
-          ${d.link ? `<a class="btn primary reader-open-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Open original ↗</a>
-          <button class="btn" id="readerMoreBtn">Try reader view</button>` : ""}
+          ${d.link ? `<a class="btn primary reader-open-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">${d.is_video ? "Watch on YouTube ↗" : "Open original ↗"}</a>
+          ${d.is_video ? "" : `<button class="btn" id="readerMoreBtn">Try reader view</button>`}` : ""}
         </div>
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         <div class="reader-frame-wrap" id="readerFrameWrap" hidden></div>
@@ -456,7 +479,7 @@
     }
     const buzzBtn = pane.querySelector(".buzz-badge");
     if (buzzBtn) buzzBtn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
-    if (typeof d.id !== "undefined") {
+    if (typeof d.id === "number") {
       if (d.id in paywallStatusMap) applyPaywallBadge(d.id, paywallStatusMap[d.id]);
       else loadPaywallStatus([d.id]);
     }
@@ -982,17 +1005,15 @@
   async function renderBuzz() {
     const main = document.getElementById("main");
     main.innerHTML = stateBlock({ title: "SCANNING CHATTER", body: "Pulling the signal off Bluesky...", spin: true });
-    const [actionsResult, postsResult, videosResult] = await Promise.allSettled([
+    const [actionsResult, postsResult] = await Promise.allSettled([
       api("/api/actions-feed"),
       api("/api/nerve-center/bluesky"),
-      api("/api/video-feed"),
     ]);
 
     const actions = actionsResult.status === "fulfilled" && Array.isArray(actionsResult.value) ? actionsResult.value : [];
     const posts = postsResult.status === "fulfilled" && Array.isArray(postsResult.value) ? postsResult.value : [];
-    const videos = videosResult.status === "fulfilled" && Array.isArray(videosResult.value) ? videosResult.value : [];
 
-    if (actions.length === 0 && posts.length === 0 && videos.length === 0) {
+    if (actions.length === 0 && posts.length === 0) {
       main.innerHTML = stateBlock({ glyph: "∅", title: "QUIET RIGHT NOW", body: "No chatter picked up in the current window." });
       return;
     }
@@ -1003,9 +1024,6 @@
     }
     if (posts.length > 0) {
       html += `<div class="section-label">TRENDING ON BLUESKY</div>` + posts.slice(0, 40).map(renderBluePost).join("");
-    }
-    if (videos.length > 0) {
-      html += `<div class="section-label">BEST OF YOUTUBE</div>` + videos.slice(0, 12).map(renderVideoCard).join("");
     }
     main.innerHTML = html;
   }
@@ -1041,19 +1059,6 @@
       <a class="card card-link" href="${escapeHtml(p.link || p.postUrl || "#")}" target="_blank" rel="noopener" style="display:block;">
         <div class="card-meta"><span>${escapeHtml(p.author || p.outlet || "")}</span><span>${relTime(p.indexedAt || p.date)}</span></div>
         <div class="card-title">${escapeHtml(p.text || p.title || "")}</div>
-      </a>`;
-  }
-
-  function renderVideoCard(v) {
-    return `
-      <a class="card card-link" href="${escapeHtml(v.url || "#")}" target="_blank" rel="noopener" style="display:block;">
-        <div class="card-body">
-          <div class="card-text">
-            <div class="card-meta"><span>${escapeHtml(v.channel || "")}</span><span>${relTime(v.published_at)}</span></div>
-            <div class="card-title">${escapeHtml(v.title || "")}</div>
-          </div>
-          ${v.thumbnail ? `<img class="card-thumb loaded" src="${escapeHtml(v.thumbnail)}" alt="" loading="lazy" onerror="this.classList.remove('loaded')">` : ""}
-        </div>
       </a>`;
   }
 
