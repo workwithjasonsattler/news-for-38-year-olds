@@ -1036,6 +1036,15 @@ body[data-layout="desktop"] #main.read-layout {
     background: #FFFFFF;
     color: var(--ink);
   }
+
+  /* Desktop layout has no phone-frame to push down (that's a
+     Mobile-layout-only treatment) — its header sits flush at the
+     real document top, which collided with the fixed review pill
+     above. Give it the same kind of clearance the frame's margin
+     already gives Mobile mode. */
+  body[data-layout="desktop"] .source-header {
+    padding-top: 60px;
+  }
 }
 
 /* ---------------------------------------------------------------
