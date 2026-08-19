@@ -598,6 +598,20 @@
   // ---------------------------------------------------------------
   let sourcesRegistryCache = null; // [{outlet, feed_url, ...}] — fetched once, reused by both the registry list and Create's add-a-source matching
   let createFlowState = null; // null = not in Create mode
+  let sourceSuggestCache = null; // [{outlet, section}] — the handful shown by default, before Browse all is opened
+  let sourcesBrowseAllOpen = false;
+  let sourcesBrowseFilter = "";
+
+  async function loadSourceSuggestions() {
+    if (sourceSuggestCache) return sourceSuggestCache;
+    try {
+      const suggestions = await api("/api/spray-suggestions?limit=6");
+      sourceSuggestCache = Array.isArray(suggestions) ? suggestions : [];
+    } catch (e) {
+      sourceSuggestCache = [];
+    }
+    return sourceSuggestCache;
+  }
 
   async function renderSources() {
     if (createFlowState) return renderCreateFlow();
@@ -605,9 +619,10 @@
     const main = document.getElementById("main");
     main.innerHTML = stateBlock({ title: "LOADING SOURCE LIST", body: "Querying the registry...", spin: true });
     try {
-      const [sources, bar] = await Promise.all([
+      const [sources, bar, suggestions] = await Promise.all([
         sourcesRegistryCache || api("/api/sources"),
         loadSprayBar(),
+        loadSourceSuggestions(),
       ]);
       // Sources is for building Sprays out of Organizations — Individuals (Bluesky-only
       // people) don't produce dispatch items on their own and belong to Buzz, not here.
@@ -629,22 +644,68 @@
       }
       html += `<button class="btn primary" id="newSprayBtn" style="width:100%; margin:14px 0;">+ New Spray</button>`;
 
-      if (orgSources.length === 0) {
-        html += stateBlock({ glyph: "∅", title: "NO SOURCES", body: "Nothing in the registry yet." });
-      } else {
-        html += `<div class="section-label">ALL SOURCES (${orgSources.length})</div>` + orgSources.map(s => `
-          <div class="card">
-            <div class="card-meta"><span>ORGANIZATION</span></div>
-            <div class="card-title">${escapeHtml(s.outlet || s.name || "")}</div>
-          </div>`).join("");
+      // Default view is a small handful of suggested sources, not the full
+      // registry — tapping one drops you straight into the Create flow with
+      // that pick already made, then shows deeper suggestions from there.
+      // The full list only shows if a reader explicitly asks for it.
+      if (suggestions.length > 0) {
+        html += `<div class="section-label">SUGGESTED FOR YOU</div>
+          <div class="source-suggest-grid">${suggestions.map(s => `
+            <button class="source-suggest-pill" data-outlet="${escapeHtml(s.outlet)}">
+              ${escapeHtml(s.outlet)}${s.section ? `<span class="source-suggest-sub">${escapeHtml(s.section)}</span>` : ""}
+            </button>`).join("")}
+          </div>`;
       }
+
+      html += `<button class="link-toggle" id="browseAllToggle">${sourcesBrowseAllOpen ? "Hide full list" : `Browse all sources (${orgSources.length}) →`}</button>`;
+
+      if (sourcesBrowseAllOpen) {
+        const filtered = sourcesBrowseFilter
+          ? orgSources.filter(s => (s.outlet || s.name || "").toLowerCase().includes(sourcesBrowseFilter.toLowerCase()))
+          : orgSources;
+        html += `<input class="create-flow-input" id="sourcesBrowseSearch" placeholder="Search sources..." value="${escapeHtml(sourcesBrowseFilter)}" style="margin:10px 0;">`;
+        html += filtered.length === 0
+          ? `<div class="card"><div class="card-meta">No sources match.</div></div>`
+          : filtered.map(s => `
+            <div class="card">
+              <div class="card-title">${escapeHtml(s.outlet || s.name || "")}</div>
+            </div>`).join("");
+      }
+
       main.innerHTML = html;
 
       document.getElementById("newSprayBtn").addEventListener("click", openCreateFlow);
       wireYourSpraysSection();
+
+      main.querySelectorAll(".source-suggest-pill").forEach(btn => {
+        btn.addEventListener("click", () => startFlowFromSuggestion(btn.dataset.outlet));
+      });
+
+      document.getElementById("browseAllToggle").addEventListener("click", () => {
+        sourcesBrowseAllOpen = !sourcesBrowseAllOpen;
+        renderSources();
+      });
+
+      const browseSearch = document.getElementById("sourcesBrowseSearch");
+      if (browseSearch) {
+        browseSearch.addEventListener("input", debounce((e) => {
+          sourcesBrowseFilter = e.target.value;
+          renderSources();
+        }, 200));
+        // keep focus after a debounced re-render triggered by typing
+        browseSearch.focus();
+        browseSearch.setSelectionRange(browseSearch.value.length, browseSearch.value.length);
+      }
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "REGISTRY UNREACHABLE", body: e.message || "Could not load sources." });
     }
+  }
+
+  function startFlowFromSuggestion(outlet) {
+    if (!currentUser) { toast("Sign in on the You tab to create a Spray."); return; }
+    createFlowState = { name: "", picked: [], suggestions: [], loadingSuggestions: false, addToBar: true, isPublic: true };
+    addPicked({ source_type: "admin_outlet", outlet, label: outlet });
+    refreshSuggestions();
   }
 
   // ----- "Your Sprays" bar editor -----
