@@ -273,7 +273,28 @@
   const ACTIVE_SPRAY_KEY = "source_active_spray";
 
   let sprayBarData = null; // { news: {slug,name}, sprays: [{slug,name}] }
-  let activeSprayKey = localStorage.getItem(ACTIVE_SPRAY_KEY) || "all";
+  // Multi-select: a reader can view several Sprays combined at once.
+  // Stored as a JSON array in localStorage, held as a Set at runtime.
+  // "all" is treated as exclusive with everything else — selecting it
+  // clears any other picks, and picking anything else drops "all".
+  let activeSprayKeys = loadStoredSprayKeys();
+
+  function loadStoredSprayKeys() {
+    try {
+      const raw = localStorage.getItem(ACTIVE_SPRAY_KEY);
+      if (!raw) return new Set(["all"]);
+      // Migrate the old single-string format from before multi-select.
+      if (raw[0] !== "[") return new Set([raw]);
+      const arr = JSON.parse(raw);
+      return new Set(Array.isArray(arr) && arr.length ? arr : ["all"]);
+    } catch (e) {
+      return new Set(["all"]);
+    }
+  }
+
+  function persistActiveSprayKeys() {
+    localStorage.setItem(ACTIVE_SPRAY_KEY, JSON.stringify(Array.from(activeSprayKeys)));
+  }
 
   // SOURCE!-only display shortener: the shared flagship Spray's real
   // name ("Headlines: Best in the World") stays unchanged everywhere
@@ -300,9 +321,17 @@
     return sprayBarData;
   }
 
-  function setActiveSpray(key) {
-    activeSprayKey = key;
-    localStorage.setItem(ACTIVE_SPRAY_KEY, key);
+  function toggleActiveSpray(key) {
+    if (key === "all") {
+      activeSprayKeys = new Set(["all"]);
+    } else if (activeSprayKeys.has(key)) {
+      activeSprayKeys.delete(key);
+      if (activeSprayKeys.size === 0) activeSprayKeys.add("all");
+    } else {
+      activeSprayKeys.delete("all");
+      activeSprayKeys.add(key);
+    }
+    persistActiveSprayKeys();
     selectedDispatch = null;
     renderRead();
   }
@@ -318,55 +347,88 @@
       { key: sprayBarData.news.slug, label: sprayDisplayName(sprayBarData.news.slug, sprayBarData.news.name) || "News" },
       { key: "__youtube", label: "Best of YouTube" },
     ].concat(sprayBarData.sprays.map(s => ({ key: s.slug, label: sprayDisplayName(s.slug, s.name) })));
-    el.innerHTML = pills.map(p => `
-      <button class="spray-pill${p.key === activeSprayKey ? " active" : ""}" data-key="${escapeHtml(p.key)}">${escapeHtml(p.label)}</button>
-    `).join("") + `<button class="spray-pill spray-pill-create" data-key="__create">+ Create</button>`;
+    el.innerHTML = pills.map(p => {
+      const active = activeSprayKeys.has(p.key);
+      return `
+        <button class="spray-pill${active ? " active" : ""}" data-key="${escapeHtml(p.key)}">
+          ${escapeHtml(p.label)}${active && p.key !== "all" ? `<span class="spray-pill-x" data-key="${escapeHtml(p.key)}">×</span>` : ""}
+        </button>`;
+    }).join("") + `<button class="spray-pill spray-pill-create" data-key="__create">+ Create</button>`;
+    el.querySelectorAll(".spray-pill-x").forEach(x => {
+      x.addEventListener("click", (e) => {
+        e.stopPropagation();
+        toggleActiveSpray(x.dataset.key);
+      });
+    });
     el.querySelectorAll(".spray-pill").forEach(btn => {
       btn.addEventListener("click", () => {
         if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
-        if (btn.dataset.key !== activeSprayKey) setActiveSpray(btn.dataset.key);
+        toggleActiveSpray(btn.dataset.key);
       });
     });
   }
 
-  // Resolves the items to show in Read based on the active toggle
-  // selection. "all" is the full curated wire (today's default). Any
-  // other key is a Spray slug — fetched via the existing single-mix
-  // endpoint and using its live `items`. Falls back to "all" (and
-  // resets the toggle) if the selected Spray no longer exists or went
-  // private out from under the reader.
-  // "__youtube" is a special built-in slot (not a Spray) — same curated
-  // channel list that backs the homepage/app Videos box, normalized into
-  // dispatch shape so the same card/reader-pane rendering just works.
-  async function fetchReadItems() {
-    if (activeSprayKey === "all") return api("/api/dispatches");
-    if (activeSprayKey === "__youtube") {
-      try {
-        const videos = await api("/api/video-feed");
-        return (Array.isArray(videos) ? videos : []).map((v, i) => ({
-          id: `yt-${i}`,
-          title: v.title,
-          link: v.url,
-          image_url: v.thumbnail,
-          outlet: v.channel,
-          date: v.published_at,
-          excerpt: "",
-          is_video: true,
-        }));
-      } catch (e) {
-        activeSprayKey = "all";
-        localStorage.setItem(ACTIVE_SPRAY_KEY, "all");
-        return api("/api/dispatches");
-      }
+  async function fetchItemsForSprayKey(key) {
+    if (key === "__youtube") {
+      const videos = await api("/api/video-feed");
+      return (Array.isArray(videos) ? videos : []).map((v, i) => ({
+        id: `yt-${i}`,
+        title: v.title,
+        link: v.url,
+        image_url: v.thumbnail,
+        outlet: v.channel,
+        date: v.published_at,
+        excerpt: "",
+        is_video: true,
+      }));
     }
-    try {
-      const mix = await api(`/api/mixes/${encodeURIComponent(activeSprayKey)}`);
-      return Array.isArray(mix.items) ? mix.items : [];
-    } catch (e) {
-      activeSprayKey = "all";
-      localStorage.setItem(ACTIVE_SPRAY_KEY, "all");
+    const mix = await api(`/api/mixes/${encodeURIComponent(key)}`);
+    return Array.isArray(mix.items) ? mix.items : [];
+  }
+
+  // Resolves the items to show in Read based on the active toggle
+  // selection(s). "all" is the full curated wire (today's default) and
+  // is exclusive with everything else. Any other combination of keys —
+  // one or more Spray slugs and/or the built-in "__youtube" slot — is
+  // fetched in parallel and merged: deduped by link (so the same story
+  // showing up in two selected Sprays doesn't double), sorted newest
+  // first. A key that fails (Spray deleted/went private) is silently
+  // dropped from the selection rather than breaking the whole view; if
+  // every key fails, falls back to "all".
+  async function fetchReadItems() {
+    if (activeSprayKeys.has("all")) return api("/api/dispatches");
+    const keys = Array.from(activeSprayKeys);
+    const results = await Promise.allSettled(keys.map(fetchItemsForSprayKey));
+
+    const survivingKeys = [];
+    let combined = [];
+    results.forEach((r, i) => {
+      if (r.status === "fulfilled") {
+        survivingKeys.push(keys[i]);
+        combined = combined.concat(r.value);
+      }
+    });
+
+    if (survivingKeys.length === 0) {
+      activeSprayKeys = new Set(["all"]);
+      persistActiveSprayKeys();
       return api("/api/dispatches");
     }
+    if (survivingKeys.length !== keys.length) {
+      activeSprayKeys = new Set(survivingKeys);
+      persistActiveSprayKeys();
+    }
+
+    const seen = new Set();
+    const deduped = [];
+    for (const d of combined) {
+      const dedupeKey = d.link || d.id;
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      deduped.push(d);
+    }
+    deduped.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    return deduped;
   }
 
   async function renderRead() {

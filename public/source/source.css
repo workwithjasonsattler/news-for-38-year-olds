@@ -438,6 +438,20 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--bg);
   border-color: var(--ink);
 }
+.spray-pill-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 7px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.18);
+  font-size: 11px;
+  line-height: 1;
+  vertical-align: middle;
+}
+.spray-pill-x:hover { background: rgba(255,255,255,0.32); }
 .spray-pill-create {
   color: var(--accent-dim);
   border-color: var(--accent-soft);
