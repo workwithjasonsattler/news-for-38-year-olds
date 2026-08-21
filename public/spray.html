@@ -174,6 +174,13 @@
         </select>
         <div class="s-inline-add" style="margin-top:-4px;">
           <input type="text" id="proposeTopicName" placeholder="Don't see it? Propose a new topic">
+          <select id="proposeTopicCategory">
+            <option value="news">News</option>
+            <option value="fun">Fun</option>
+            <option value="work">Work</option>
+            <option value="local">Local</option>
+            <option value="other">Other</option>
+          </select>
           <button type="button" onclick="proposeTopic()">Propose</button>
         </div>
         <p class="s-create-msg" id="proposeTopicMsg"></p>
@@ -266,7 +273,7 @@ async function loadTopics(){
     const topics = await res.json();
     if (!topics.length){ listEl.innerHTML = '<span style="font-family:var(--mono);font-size:12px;color:var(--text-muted);">No topics yet — propose one below.</span>'; return; }
     listEl.innerHTML = topics.map(t => `
-      <span class="s-topic-chip" onclick="browseTopic('${t.slug}', '${t.name.replace(/'/g,"\\'")}')">${t.name} <span class="s-topic-count">(${t.mix_count})</span></span>
+      <span class="s-topic-chip" onclick="browseTopic('${t.slug}', '${t.name.replace(/'/g,"\\'")}')">${t.name} <span class="s-topic-count">(${t.followers || 0})</span></span>
     `).join('');
   } catch (err) {
     listEl.innerHTML = '<span style="font-family:var(--mono);font-size:12px;color:var(--text-muted);">Couldn\'t load topics.</span>';
@@ -284,12 +291,13 @@ async function loadTopicSelect(){
 
 async function proposeTopic(){
   const name = document.getElementById('proposeTopicName').value.trim();
+  const category = document.getElementById('proposeTopicCategory').value;
   const msg = document.getElementById('proposeTopicMsg');
   if (!name){ msg.textContent = 'Enter a topic name first.'; return; }
   msg.textContent = 'Submitting…';
   try {
     const res = await fetch(`${API}/api/topics`, {
-      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name})
+      method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({name, category})
     });
     const data = await res.json();
     if (res.ok){
@@ -389,7 +397,7 @@ function renderResults(mixes){
   grid.innerHTML = mixes.map(m => `
     <a class="s-mix-card" onclick="openMixDetail('${m.slug}')">
       <span class="s-mix-name">${m.name}</span>
-      <span class="s-mix-meta">${m.topic_name ? m.topic_name : (m.location_label || 'Follow')} · ${m.clone_count} cop${m.clone_count === 1 ? 'y' : 'ies'}</span>
+      <span class="s-mix-meta">${m.topics && m.topics.length ? m.topics.map(t => t.name).join(', ') : (m.location_label || 'Follow')} · ${m.clone_count} cop${m.clone_count === 1 ? 'y' : 'ies'}</span>
     </a>
   `).join('');
 }
@@ -405,7 +413,7 @@ async function openMixDetail(slug){
   detail.classList.add('open');
   document.getElementById('mixDetailName').textContent = mix.is_official ? `🌊 ${mix.name}` : mix.name;
   document.getElementById('mixDetailMeta').textContent =
-    [mix.is_official ? 'Official Spray' : null, mix.topic ? mix.topic.name : null, mix.location_label, `${mix.clone_count} cop${mix.clone_count === 1 ? 'y' : 'ies'}`].filter(Boolean).join(' · ');
+    [mix.is_official ? 'Official Spray' : null, mix.topics && mix.topics.length ? mix.topics.map(t => t.name).join(', ') : null, mix.location_label, `${mix.clone_count} cop${mix.clone_count === 1 ? 'y' : 'ies'}`].filter(Boolean).join(' · ');
   document.getElementById('mixDetailSources').innerHTML = mix.sources.map(s =>
     `<span class="s-mix-source-tag">${s.outlet}${s.pending ? ' (pending)' : ''}</span>`
   ).join('');
@@ -553,7 +561,7 @@ async function submitMix(e){
   try {
     const res = await fetch(`${API}/api/mixes`, {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({name, topic_id: topicId, location_label: location, is_public: isPublic, sources})
+      body: JSON.stringify({name, topic_ids: topicId ? [topicId] : [], location_label: location, is_public: isPublic, sources})
     });
     const data = await res.json();
     if (res.ok){

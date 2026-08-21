@@ -216,13 +216,30 @@ async function initSchema() {
     // land as 'pending' and aren't selectable/browsable until an admin
     // approves, same queue-and-approve pattern as YouTube channels and
     // custom RSS sources.
+    // `category` groups every topic into one of the four Spray-building
+    // branches (news/fun/work/local), or 'other' as the escape hatch for
+    // anything that doesn't cleanly fit. The branch itself is never a
+    // followable tag — only the leaves under it are, so the category is
+    // purely for browsing/navigation, not something a Spray can carry.
     `CREATE TABLE IF NOT EXISTS topics (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
       slug TEXT NOT NULL UNIQUE,
       status TEXT NOT NULL DEFAULT 'pending',
+      category TEXT,
       suggested_by_user_id INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
+    // A Spray can carry several topics at once (a tag cloud, not a single
+    // classification) — this join table replaces feed_mixes.topic_id as
+    // the live source of truth going forward. The old column is left in
+    // place (migrated into this table on startup, see
+    // migrateTopicIdToJoinTable()) rather than dropped, since SQLite can't
+    // cleanly drop a column and nothing else needs it gone.
+    `CREATE TABLE IF NOT EXISTS feed_mix_topics (
+      mix_id INTEGER NOT NULL,
+      topic_id INTEGER NOT NULL,
+      PRIMARY KEY (mix_id, topic_id)
     )`,
     // ---------- View & layout preferences ----------
     // Which visual skin (Drudge-ish/BBS/RSS Reader/Right Wing) and which
@@ -306,6 +323,7 @@ async function initSchema() {
     `ALTER TABLE feed_mixes ADD COLUMN topic_id INTEGER`,
     `ALTER TABLE feed_mixes ADD COLUMN clone_count INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE feed_mixes ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE topics ADD COLUMN category TEXT`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
   }
@@ -466,6 +484,21 @@ const STARTER_YOUTUBE_CHANNELS = [
 // to keep in sync, it always reflects whatever outlets currently have
 // dispatches live.
 const OFFICIAL_HEADLINES_SPRAY_SLUG = "headlines-best-in-the-world";
+// One-time backfill: copy any existing feed_mixes.topic_id values into the
+// new feed_mix_topics join table, so mixes tagged before the multi-tag
+// change keep their topic. Idempotent — INSERT OR IGNORE means a mix
+// already present in the join table (e.g. re-run on restart) is a no-op.
+// The old topic_id column is left in place afterward, just no longer the
+// live source of truth.
+async function migrateTopicIdToJoinTable() {
+  const rows = await dbAll(`SELECT id, topic_id FROM feed_mixes WHERE topic_id IS NOT NULL`);
+  for (const row of rows) {
+    try {
+      await dbRun(`INSERT OR IGNORE INTO feed_mix_topics (mix_id, topic_id) VALUES (?, ?)`, [row.id, row.topic_id]);
+    } catch { /* already migrated */ }
+  }
+}
+
 async function seedOfficialHeadlinesSpray() {
   const existing = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [OFFICIAL_HEADLINES_SPRAY_SLUG]);
   if (existing) return;
@@ -1065,6 +1098,26 @@ app.delete("/api/my/custom-sources/:id", async (req, res) => {
 // directory browsing (GET /api/mixes?location=) is Session 3 — this session
 // covers save / view / clone only, per the locked scoping doc.
 const MIX_SOURCE_CAP = 25; // per mix, Jason's call
+const MIX_TOPIC_CAP = 6; // per mix — a Spray can carry several tags, but capped so tags stay meaningful, not spammed
+// The four Spray-building branches, plus "other" as the escape hatch for
+// anything that doesn't cleanly fit one. A branch is never itself a
+// followable tag — only topics filed under one are. Every topic (admin- or
+// reader-proposed) must declare one of these.
+const TOPIC_CATEGORIES = new Set(["news", "fun", "work", "local", "other"]);
+
+// Validates a plain array of topic ids: every one must reference an
+// APPROVED topic. Returns the deduped, validated array, or null if any
+// entry is unknown/unapproved (caller treats null as a 400).
+async function validateTopicIds(arr) {
+  const unique = Array.from(new Set(arr.map(Number).filter(n => Number.isInteger(n) && n > 0)));
+  const validated = [];
+  for (const id of unique) {
+    const topic = await dbGet(`SELECT id FROM topics WHERE id = ? AND status = 'approved'`, [id]);
+    if (!topic) return null;
+    validated.push(topic.id);
+  }
+  return validated;
+}
 
 function slugify(name) {
   return String(name || "")
@@ -1179,15 +1232,13 @@ app.post("/api/mixes", async (req, res) => {
   if (sources.length === 0) return res.status(400).json({ error: "a mix needs at least one source" });
   if (sources.length > MIX_SOURCE_CAP) return res.status(400).json({ error: `mixes are capped at ${MIX_SOURCE_CAP} sources` });
 
-  // Topic is optional (a mix can be Local, Topical, or neither), but if
-  // given, must reference an APPROVED topic — a pending/proposed topic
-  // can't be tagged onto a mix until an admin has signed off on it.
-  let topicId = null;
-  if (req.body?.topic_id !== undefined && req.body.topic_id !== null) {
-    const topic = await dbGet(`SELECT id FROM topics WHERE id = ? AND status = 'approved'`, [req.body.topic_id]);
-    if (!topic) return res.status(400).json({ error: "Unknown or unapproved topic" });
-    topicId = topic.id;
-  }
+  // Topics are optional (a mix can carry several, or none), but every one
+  // given must reference an APPROVED topic — a pending/proposed topic can't
+  // be tagged onto a mix until an admin has signed off on it.
+  const rawTopicIds = Array.isArray(req.body?.topic_ids) ? req.body.topic_ids : [];
+  if (rawTopicIds.length > MIX_TOPIC_CAP) return res.status(400).json({ error: `mixes are capped at ${MIX_TOPIC_CAP} topics` });
+  const topicIds = await validateTopicIds(rawTopicIds);
+  if (topicIds === null) return res.status(400).json({ error: "Unknown or unapproved topic" });
 
   // Validate every source up front so a mix never half-saves.
   const validated = [];
@@ -1211,8 +1262,8 @@ app.post("/api/mixes", async (req, res) => {
 
   const slug = await generateUniqueMixSlug(name);
   const info = await dbRun(
-    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, topic_id) VALUES (?, ?, ?, ?, ?, ?)`,
-    [slug, name, user.id, locationLabel, isPublic, topicId]
+    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public) VALUES (?, ?, ?, ?, ?)`,
+    [slug, name, user.id, locationLabel, isPublic]
   );
   for (let i = 0; i < validated.length; i++) {
     const v = validated[i];
@@ -1221,7 +1272,10 @@ app.post("/api/mixes", async (req, res) => {
       [info.lastInsertRowid, v.source_type, v.outlet, v.custom_source_id, i]
     );
   }
-  res.json({ id: info.lastInsertRowid, slug, name, location_label: locationLabel, is_public: !!isPublic, topic_id: topicId });
+  for (const tid of topicIds) {
+    await dbRun(`INSERT OR IGNORE INTO feed_mix_topics (mix_id, topic_id) VALUES (?, ?)`, [info.lastInsertRowid, tid]);
+  }
+  res.json({ id: info.lastInsertRowid, slug, name, location_label: locationLabel, is_public: !!isPublic, topic_ids: topicIds });
 });
 
 app.put("/api/mixes/:slug", async (req, res) => {
@@ -1239,21 +1293,23 @@ app.put("/api/mixes/:slug", async (req, res) => {
   const isPublic = req.body?.is_public !== undefined ? (req.body.is_public ? 1 : 0) : mix.is_public;
   if (!name) return res.status(400).json({ error: "name is required" });
 
-  let topicId = mix.topic_id;
-  if (req.body?.topic_id !== undefined) {
-    if (req.body.topic_id === null) {
-      topicId = null;
-    } else {
-      const topic = await dbGet(`SELECT id FROM topics WHERE id = ? AND status = 'approved'`, [req.body.topic_id]);
-      if (!topic) return res.status(400).json({ error: "Unknown or unapproved topic" });
-      topicId = topic.id;
+  await dbRun(
+    `UPDATE feed_mixes SET name = ?, location_label = ?, is_public = ?, updated_at = datetime('now') WHERE id = ?`,
+    [name, locationLabel, isPublic, mix.id]
+  );
+
+  // Topics are optional on edit — only replace them if the caller sent a
+  // topic_ids array at all, so a plain "rename this mix" call doesn't need
+  // to re-send the whole tag list. An empty array explicitly clears tags.
+  if (Array.isArray(req.body?.topic_ids)) {
+    if (req.body.topic_ids.length > MIX_TOPIC_CAP) return res.status(400).json({ error: `mixes are capped at ${MIX_TOPIC_CAP} topics` });
+    const topicIds = await validateTopicIds(req.body.topic_ids);
+    if (topicIds === null) return res.status(400).json({ error: "Unknown or unapproved topic" });
+    await dbRun(`DELETE FROM feed_mix_topics WHERE mix_id = ?`, [mix.id]);
+    for (const tid of topicIds) {
+      await dbRun(`INSERT OR IGNORE INTO feed_mix_topics (mix_id, topic_id) VALUES (?, ?)`, [mix.id, tid]);
     }
   }
-
-  await dbRun(
-    `UPDATE feed_mixes SET name = ?, location_label = ?, is_public = ?, topic_id = ?, updated_at = datetime('now') WHERE id = ?`,
-    [name, locationLabel, isPublic, topicId, mix.id]
-  );
 
   // Sources are optional on edit — only replace them if the caller sent a
   // sources array at all, so a plain "rename this mix" call doesn't need to
@@ -1299,7 +1355,10 @@ app.get("/api/mixes/:slug", async (req, res) => {
   const isOwner = !!(user && user.id === mix.creator_user_id);
   if (!mix.is_public && !isOwner) return res.status(404).json({ error: "mix not found" });
 
-  const topic = mix.topic_id ? await dbGet(`SELECT name, slug FROM topics WHERE id = ?`, [mix.topic_id]) : null;
+  const topics = await dbAll(
+    `SELECT t.name, t.slug, t.category FROM feed_mix_topics fmt JOIN topics t ON t.id = fmt.topic_id WHERE fmt.mix_id = ?`,
+    [mix.id]
+  );
   const { sources, items } = await resolveMixSources(mix, { includePending: isOwner });
   res.json({
     slug: mix.slug,
@@ -1310,7 +1369,7 @@ app.get("/api/mixes/:slug", async (req, res) => {
     is_official: !!mix.is_official,
     created_at: mix.created_at,
     clone_count: mix.clone_count,
-    topic: topic ? { name: topic.name, slug: topic.slug } : null,
+    topics,
     sources,
     items,
   });
@@ -1893,12 +1952,20 @@ app.get("/api/my/mixes", async (req, res) => {
 // when creating/editing a Mix, and not shown in the public browse list,
 // until approved.
 app.get("/api/topics", async (req, res) => {
+  // Follower-count ranking: sum of clone_count across every public Spray
+  // carrying the topic, not "how many Sprays used this label" — a tag gets
+  // big because people are actually following things tagged with it, not
+  // because a few Sprays happened to get labeled that way. Same "no
+  // algorithm you can't see" spirit as everything else: one visible,
+  // eyeball-able number, no hidden weighting.
   const rows = await dbAll(
-    `SELECT t.id, t.name, t.slug, COUNT(fm.id) AS mix_count
-     FROM topics t LEFT JOIN feed_mixes fm ON fm.topic_id = t.id AND fm.is_public = 1
+    `SELECT t.id, t.name, t.slug, t.category, COALESCE(SUM(fm.clone_count), 0) AS followers
+     FROM topics t
+     LEFT JOIN feed_mix_topics fmt ON fmt.topic_id = t.id
+     LEFT JOIN feed_mixes fm ON fm.id = fmt.mix_id AND fm.is_public = 1
      WHERE t.status = 'approved'
      GROUP BY t.id
-     ORDER BY mix_count DESC, t.name ASC`
+     ORDER BY followers DESC, t.name ASC`
   );
   res.json(rows);
 });
@@ -1910,6 +1977,11 @@ app.post("/api/topics", async (req, res) => {
   const name = String(req.body?.name || "").trim().slice(0, 60);
   if (!name) return res.status(400).json({ error: "name is required" });
 
+  const category = String(req.body?.category || "").trim().toLowerCase();
+  if (!TOPIC_CATEGORIES.has(category)) {
+    return res.status(400).json({ error: `category must be one of: ${Array.from(TOPIC_CATEGORIES).join(", ")}` });
+  }
+
   const slug = slugify(name);
   const existing = await dbGet(`SELECT id, status FROM topics WHERE slug = ?`, [slug]);
   if (existing) {
@@ -1917,15 +1989,15 @@ app.post("/api/topics", async (req, res) => {
   }
 
   await dbRun(
-    `INSERT INTO topics (name, slug, status, suggested_by_user_id) VALUES (?, ?, 'pending', ?)`,
-    [name, slug, user.id]
+    `INSERT INTO topics (name, slug, status, category, suggested_by_user_id) VALUES (?, ?, 'pending', ?, ?)`,
+    [name, slug, category, user.id]
   );
-  res.json({ ok: true, slug, status: "pending" });
+  res.json({ ok: true, slug, status: "pending", category });
 });
 
 app.get("/api/admin/pending-topics", requireAdmin, async (req, res) => {
   const rows = await dbAll(
-    `SELECT t.id, t.name, t.slug, t.created_at, u.email AS suggested_by
+    `SELECT t.id, t.name, t.slug, t.category, t.created_at, u.email AS suggested_by
      FROM topics t LEFT JOIN users u ON u.id = t.suggested_by_user_id
      WHERE t.status = 'pending' ORDER BY t.created_at ASC`
   );
@@ -1938,6 +2010,7 @@ app.post("/api/admin/topics/:id/approve", requireAdmin, async (req, res) => {
 });
 
 app.delete("/api/admin/topics/:id", requireAdmin, async (req, res) => {
+  await dbRun(`DELETE FROM feed_mix_topics WHERE topic_id = ?`, [req.params.id]);
   await dbRun(`DELETE FROM topics WHERE id = ?`, [req.params.id]);
   res.json({ ok: true });
 });
@@ -1952,7 +2025,7 @@ app.get("/api/mixes", async (req, res) => {
   const params = [];
 
   if (topic) {
-    conditions.push(`t.slug = ?`);
+    conditions.push(`EXISTS (SELECT 1 FROM feed_mix_topics fmt JOIN topics t ON t.id = fmt.topic_id WHERE fmt.mix_id = fm.id AND t.slug = ?)`);
     params.push(String(topic));
   }
   if (location) {
@@ -1961,15 +2034,22 @@ app.get("/api/mixes", async (req, res) => {
   }
 
   const rows = await dbAll(
-    `SELECT fm.slug, fm.name, fm.location_label, fm.created_at, fm.clone_count,
-            t.name AS topic_name, t.slug AS topic_slug
+    `SELECT fm.slug, fm.name, fm.location_label, fm.created_at, fm.clone_count
      FROM feed_mixes fm
-     LEFT JOIN topics t ON t.id = fm.topic_id
      WHERE ${conditions.join(" AND ")}
      ORDER BY fm.clone_count DESC, fm.created_at DESC
      LIMIT 60`,
     params
   );
+  // Topics are attached per-row after the fact (a mix can carry several) —
+  // one extra query per result page rather than a join that would
+  // duplicate rows per topic. 60-row cap keeps this cheap.
+  for (const row of rows) {
+    row.topics = await dbAll(
+      `SELECT t.name, t.slug, t.category FROM feed_mix_topics fmt JOIN topics t ON t.id = fmt.topic_id WHERE fmt.mix_id = (SELECT id FROM feed_mixes WHERE slug = ?)`,
+      [row.slug]
+    );
+  }
   res.json(rows);
 });
 
@@ -3422,6 +3502,7 @@ async function start() {
       await migrateFeedsJsonIfNeeded();
       await migrateDateFormats();
       await autoSeedIfEmpty();
+      await migrateTopicIdToJoinTable();
       await seedYoutubeChannels();
       await dropDegenerateArtRss();
       await seedOfficialHeadlinesSpray();

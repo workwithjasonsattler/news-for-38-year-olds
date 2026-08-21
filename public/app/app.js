@@ -210,7 +210,7 @@
       </div>
       ${topics && topics.length ? `<div class="chip-row" id="topicChips">
         <button class="chip" data-topic="">All</button>
-        ${topics.map((t) => `<button class="chip" data-topic="${escapeHtml(t.slug)}">${escapeHtml(t.name)}<span class="chip-count">${t.mix_count || 0}</span></button>`).join("")}
+        ${topics.map((t) => `<button class="chip" data-topic="${escapeHtml(t.slug)}">${escapeHtml(t.name)}<span class="chip-count">${t.followers || 0}</span></button>`).join("")}
       </div>` : `<p style="color:var(--muted);font-size:13px;margin:0 0 16px;">No topics yet — be the first to propose one below.</p>`}
       <button class="btn secondary small" id="createFollowBtn" style="margin-bottom:16px;">+ Create a Follow</button>
       <div id="mixDirectory"></div>
@@ -263,7 +263,7 @@
     return `<div class="card mix-card" data-mix-slug="${escapeHtml(m.slug)}" style="cursor:pointer;">
       <h3 class="mix-name">${escapeHtml(m.name)}</h3>
       <div class="mix-meta">
-        ${m.topic ? `<span>${escapeHtml(m.topic.name)}</span>` : ""}
+        ${m.topics && m.topics.length ? `<span>${escapeHtml(m.topics.map(t => t.name).join(", "))}</span>` : ""}
         ${m.location_label ? `<span>${escapeHtml(m.location_label)}</span>` : ""}
         <span>${m.clone_count || 0} clones</span>
       </div>
@@ -284,7 +284,7 @@
         : `<p style="color:var(--muted);font-size:13px;">Sign in from the Account tab to copy this Follow.</p>`;
       overlay.body.innerHTML = `
         <div class="mix-meta" style="margin-bottom:16px;">
-          ${mix.topic ? `<span>${escapeHtml(mix.topic.name)}</span>` : ""}
+          ${mix.topics && mix.topics.length ? `<span>${escapeHtml(mix.topics.map(t => t.name).join(", "))}</span>` : ""}
           ${mix.location_label ? `<span>${escapeHtml(mix.location_label)}</span>` : ""}
           <span>${mix.clone_count || 0} clones</span>
         </div>
@@ -366,9 +366,10 @@
       if (!name) { toast("Give this Follow a name first."); return; }
       const checked = [...overlay.body.querySelectorAll("#sourceChecks input:checked")].map((el) => el.value);
       if (checked.length === 0) { toast("Pick at least one source."); return; }
+      const mixTopicVal = overlay.body.querySelector("#mixTopic").value || null;
       const body = {
         name,
-        topic_id: overlay.body.querySelector("#mixTopic").value || null,
+        topic_ids: mixTopicVal ? [mixTopicVal] : [],
         location_label: overlay.body.querySelector("#mixLocation").value.trim() || null,
         is_public: overlay.body.querySelector("#mixPublic").checked,
         sources: checked.map((v) => {

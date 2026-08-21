@@ -118,7 +118,7 @@
       <div id="pendingTopicsTab" class="pending-tab-panel" style="display:none;">
         <p style="font-size:12px;color:#666;margin:0 0 10px;">A reader proposed this as a new Topic. Approving makes it selectable when creating a Mix and visible in the public Topic directory.</p>
         <table style="margin:0;">
-          <thead><tr><th>Name</th><th>Suggested by</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Category</th><th>Suggested by</th><th></th></tr></thead>
           <tbody id="pendingTopicRows"></tbody>
         </table>
       </div>
@@ -436,6 +436,7 @@ async function loadPendingTopics(){
   rows.innerHTML = pending.map(t => `
     <tr>
       <td>${t.name}</td>
+      <td style="color:#666;">${t.category || '—'}</td>
       <td style="color:#666;">${t.suggested_by || '—'}</td>
       <td>
         <button class="btn-primary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="approveTopic(${t.id})">Approve</button>

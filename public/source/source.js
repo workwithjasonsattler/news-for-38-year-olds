@@ -683,7 +683,8 @@
   // ---------------------------------------------------------------
   let sourcesRegistryCache = null; // [{outlet, feed_url, ...}] — fetched once, reused by both the registry list and Create's add-a-source matching
   let createFlowState = null; // null = not in Create mode
-  let sourceSuggestCache = null; // [{outlet, section}] — the handful shown by default, before Browse all is opened
+  let sourceSuggestCache = null; // [{outlet, section}] — the handful shown as "starter packs"
+  let sourcesShowStarterPacks = false; // collapsed by default — tapping the Starter packs door reveals these inline
   let sourcesBrowseAllOpen = false;
   let sourcesBrowseFilter = "";
 
@@ -717,30 +718,37 @@
 
       const orgSources = sourcesRegistryCache;
 
+      // Two doors, not a busy dashboard: pick a starter pack (today's
+      // suggestion engine, reframed) or jump straight into Create. Your
+      // Sprays and the full registry both still exist, just tucked below,
+      // lighter-weight, not competing with the two doors for attention.
       let html = `
         <div class="sources-intro">
-          <div class="sources-intro-title">Improve your sources.</div>
-          <div class="sources-intro-sub">One at a time, or all at once — pick or start a Spray<span class="sources-intro-asterisk">*</span>.</div>
-          <div class="sources-intro-footnote"><span class="sources-intro-asterisk">*</span>A handpicked starter pack of ripe feeds</div>
+          <div class="sources-intro-title">Pick a starter pack of feeds or create your own.</div>
+        </div>
+        <div class="sources-doors">
+          <button class="sources-door${sourcesShowStarterPacks ? " active" : ""}" id="doorStarterPacks">
+            <span class="sources-door-title">Starter packs</span>
+            <span class="sources-door-sub">A few to try right now</span>
+          </button>
+          <button class="sources-door" id="doorCreateOwn">
+            <span class="sources-door-title">Create your own</span>
+            <span class="sources-door-sub">Add sources one at a time</span>
+          </button>
         </div>`;
-      if (currentUser) {
-        html += `<div class="section-label">YOUR SPRAYS</div>` + renderYourSpraysSection(bar);
-      } else {
-        html += `<div class="card"><div class="card-title" style="margin-bottom:8px;">Sign in (on the You tab) to save and organize your own Sprays.</div></div>`;
-      }
-      html += `<button class="btn primary" id="newSprayBtn" style="width:100%; margin:14px 0;">+ New Spray</button>`;
 
-      // Default view is a small handful of suggested sources, not the full
-      // registry — tapping one drops you straight into the Create flow with
-      // that pick already made, then shows deeper suggestions from there.
-      // The full list only shows if a reader explicitly asks for it.
-      if (suggestions.length > 0) {
-        html += `<div class="section-label">SUGGESTED FOR YOU</div>
-          <div class="source-suggest-grid">${suggestions.map(s => `
+      if (sourcesShowStarterPacks && suggestions.length > 0) {
+        html += `<div class="source-suggest-grid" style="margin-top:10px;">${suggestions.map(s => `
             <button class="source-suggest-pill" data-outlet="${escapeHtml(s.outlet)}">
               ${escapeHtml(s.outlet)}${s.section ? `<span class="source-suggest-sub">${escapeHtml(s.section)}</span>` : ""}
             </button>`).join("")}
           </div>`;
+      }
+
+      if (currentUser) {
+        html += `<div class="section-label" style="margin-top:22px;">Your Sprays</div>` + renderYourSpraysSection(bar);
+      } else {
+        html += `<p class="sources-signin-hint">Sign in (on the You tab) to save and organize your own Sprays.</p>`;
       }
 
       html += `<button class="link-toggle" id="browseAllToggle">${sourcesBrowseAllOpen ? "Hide full list" : `Browse all sources (${orgSources.length}) →`}</button>`;
@@ -760,7 +768,11 @@
 
       main.innerHTML = html;
 
-      document.getElementById("newSprayBtn").addEventListener("click", openCreateFlow);
+      document.getElementById("doorStarterPacks").addEventListener("click", () => {
+        sourcesShowStarterPacks = !sourcesShowStarterPacks;
+        renderSources();
+      });
+      document.getElementById("doorCreateOwn").addEventListener("click", openCreateFlow);
       wireYourSpraysSection();
 
       main.querySelectorAll(".source-suggest-pill").forEach(btn => {
