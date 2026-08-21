@@ -889,6 +889,53 @@ body[data-layout="desktop"] #main.read-layout {
   }
 }
 
+/* ---------------------------------------------------------------
+   Desktop right rail — fills the dead space beyond the centered main
+   column (720/960px) on wide screens with a compact Most Popular on
+   Bluesky panel. Desktop layout only, and only once there's real room
+   for it — narrower desktop widths keep the space collapsed rather
+   than cramming a rail in.
+   --------------------------------------------------------------- */
+.desktop-bsky-rail { display: none; }
+@media (min-width: 1180px) {
+  body[data-layout="desktop"] .desktop-bsky-rail:not([hidden]) {
+    display: block;
+    position: fixed;
+    top: 110px;
+    right: 28px;
+    width: 260px;
+    max-height: calc(100vh - 130px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+}
+.desktop-bsky-rail-head {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-muted);
+  margin: 0 0 10px 2px;
+}
+.desktop-bsky-rail .card {
+  margin-bottom: 8px;
+  padding: 10px 12px;
+}
+.desktop-bsky-rail-more {
+  display: block;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-dim);
+  padding: 10px 0 4px;
+}
+.state-block-mini {
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  padding: 4px 2px;
+}
+
 .reader-pane {
   border: 1px solid var(--line);
   border-radius: 14px;

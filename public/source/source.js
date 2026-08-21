@@ -63,6 +63,7 @@
     document.body.dataset.layout = mode;
     renderLayoutReview();
     renderActiveTab();
+    renderDesktopBskyRail();
   }
 
   function renderLayoutReview() {
@@ -1076,6 +1077,37 @@
   // List) up top, then Trending on Bluesky. Maps to the existing
   // Nerve Center panels + the Actions SIMPLE_FEED.
   // ---------------------------------------------------------------
+  let desktopBskyRailCache = null; // [{...post}] — same shape/endpoint as Buzz's Trending on Bluesky
+
+  // Desktop-only right rail: fills the dead space beyond the centered main
+  // column on wide screens with a compact Most Popular on Bluesky panel.
+  // Same data/ranking/per-person cap as the Nerve Center panel (reuses
+  // /api/nerve-center/bluesky, no new backend) — styled in SOURCE!'s own
+  // card language rather than Nerve Center's BuzzFeed reskin, since those
+  // are deliberately distinct brand identities. Only fetches/renders when
+  // the layout is actually Desktop; CSS hides the rail entirely otherwise,
+  // so there's no point spending a request on it in Mobile mode.
+  async function renderDesktopBskyRail() {
+    const el = document.getElementById("desktopBskyRail");
+    if (!el) return;
+    if (getLayoutMode() !== "desktop") { el.hidden = true; return; }
+    el.hidden = false;
+    if (!desktopBskyRailCache) {
+      el.innerHTML = `<div class="desktop-bsky-rail-head">Most Popular on Bluesky</div><div class="state-block-mini">Loading…</div>`;
+      try {
+        const posts = await api("/api/nerve-center/bluesky");
+        desktopBskyRailCache = Array.isArray(posts) ? posts.slice(0, 8) : [];
+      } catch (e) {
+        desktopBskyRailCache = [];
+      }
+    }
+    if (desktopBskyRailCache.length === 0) { el.hidden = true; return; }
+    el.innerHTML = `
+      <div class="desktop-bsky-rail-head">Most Popular on Bluesky</div>
+      ${desktopBskyRailCache.map(renderBluePost).join("")}
+      <a class="desktop-bsky-rail-more" href="/nerve-center.html" target="_blank" rel="noopener">More on Nerve Center →</a>`;
+  }
+
   async function renderBuzz() {
     const main = document.getElementById("main");
     main.innerHTML = stateBlock({ title: "SCANNING CHATTER", body: "Pulling the signal off Bluesky...", spin: true });
@@ -1250,6 +1282,7 @@
 
     await refreshSession();
     renderActiveTab();
+    renderDesktopBskyRail();
 
     if (!localStorage.getItem(ONBOARDED_KEY)) {
       showOnboarding();
