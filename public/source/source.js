@@ -96,6 +96,7 @@
     localStorage.setItem(READ_DISPLAY_KEY, mode);
     renderViewMenu();
     if (activeTab === "read") renderRead();
+    if (activeTab === "buzz") renderBuzz();
   }
 
   function renderViewMenu() {
@@ -107,6 +108,7 @@
       <div class="view-menu-list" id="viewMenuList" hidden>
         <button class="view-menu-item${mode === "headlines" ? " active" : ""}" data-action="headlines">Headlines Only</button>
         <button class="view-menu-item${mode === "expanded" ? " active" : ""}" data-action="expanded">Expanded</button>
+        <button class="view-menu-item${mode === "scroll" ? " active" : ""}" data-action="scroll">Scroll</button>
         <div class="view-menu-sep"></div>
         <button class="view-menu-item" data-action="customize">Customize</button>
       </div>`;
@@ -483,7 +485,7 @@
       if (getLayoutMode() === "desktop") {
         renderReadDesktop(shown, trendingLinks);
       } else {
-        main.innerHTML = shown.map((d, i) => renderDispatchCard(d, trendingLinks.has(d.link), i === 0)).join("");
+        main.innerHTML = shown.map((d, i) => renderDispatchCard(d, trendingLinks.has(d.link), i === 0, trendingLinks.get(d.link))).join("");
         main.querySelectorAll(".buzz-badge").forEach(btn => {
           btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
         });
@@ -620,25 +622,56 @@
     });
   }
 
-  // Trending-on-Bluesky link set, used to badge Read-tab cards. Fails
-  // soft to an empty set — Bluesky being unreachable should never break
-  // the Read tab, it just means no badges show.
+  // Trending-on-Bluesky link set, used to badge Read-tab cards, AND now
+  // to power Scroll mode's "join the conversation" link — a Map from the
+  // dispatch's own article link to the actual Bluesky post that shared
+  // it, so Scroll can point at where people are actually talking about a
+  // story without ever showing a like/reply count. Fails soft to an
+  // empty Map — Bluesky being unreachable should never break the Read
+  // tab, it just means no badges/links show.
   async function getTrendingLinks() {
     try {
       const posts = await api("/api/nerve-center/bluesky");
-      const set = new Set();
-      (Array.isArray(posts) ? posts : []).forEach(p => { if (p.hasLink && p.link) set.add(p.link); });
-      return set;
+      const map = new Map();
+      (Array.isArray(posts) ? posts : []).forEach(p => { if (p.hasLink && p.link) map.set(p.link, p.blueskyUrl); });
+      return map;
     } catch (e) {
-      return new Set();
+      return new Map();
     }
   }
 
-  function renderDispatchCard(d, isTrending, featured) {
-    const headlinesOnly = getReadDisplay() === "headlines";
+  function renderDispatchCard(d, isTrending, featured, discussUrl) {
+    const mode = getReadDisplay();
+    const headlinesOnly = mode === "headlines";
+    const title = d.title || d.headline || "";
+
+    // Scroll — every card gets the full-bleed, one-story-at-a-time
+    // treatment (not just the first item, unlike the older "featured"
+    // idea it's built from). Same data, same reverse-chronological
+    // order as Digest — this is presentation only, never a reorder.
+    // No like/repost/reply counts anywhere in this card, by design —
+    // the only nod to "what's being said" is a plain link to the
+    // actual Bluesky post when one exists, never a number.
+    if (mode === "scroll") {
+      const excerpt = (d.excerpt || "").trim().slice(0, 500);
+      const hasImage = !!d.image_url;
+      return `
+        <div class="card card-scroll">
+          <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
+            ${hasImage ? `<div class="card-scroll-media"><img class="card-thumb loaded" id="thumb-${d.id}" src="${escapeHtml(d.image_url)}" alt="" loading="lazy" onerror="this.closest('.card-scroll-media').remove()"></div>` : `<img class="card-thumb" id="thumb-${d.id}" alt="" loading="lazy" onerror="this.remove()" style="display:none;">`}
+            <div class="card-scroll-body${hasImage ? "" : " card-scroll-body-textonly"}">
+              <div class="card-scroll-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
+              <div class="card-scroll-title">${escapeHtml(title)}</div>
+              ${excerpt ? `<div class="card-scroll-excerpt">${escapeHtml(excerpt)}</div>` : ""}
+            </div>
+          </a>
+          ${tipSubscribeBadge(d)}
+          ${discussUrl ? `<a class="card-scroll-discuss" href="${escapeHtml(discussUrl)}" target="_blank" rel="noopener">See the conversation on Bluesky ↗</a>` : ""}
+        </div>`;
+    }
+
     const excerpt = headlinesOnly ? "" : (d.excerpt || "").trim().slice(0, 280);
     const hasImage = !headlinesOnly && !!d.image_url;
-    const title = d.title || d.headline || "";
     const thumb = headlinesOnly ? "" : `<img class="card-thumb${hasImage ? " loaded" : ""}" id="thumb-${d.id}" alt=""
         ${hasImage ? `src="${escapeHtml(d.image_url)}"` : ""} loading="lazy"
         onerror="this.classList.remove('loaded')">`;
@@ -1521,7 +1554,8 @@
       html += `<div class="section-label">WHAT YOU CAN DO</div>` + renderActionsSection(actions);
     }
     if (posts.length > 0) {
-      html += `<div class="section-label">TRENDING ON BLUESKY</div>` + posts.slice(0, 40).map(p => renderBluePost(p)).join("");
+      const scrollMode = getReadDisplay() === "scroll";
+      html += `<div class="section-label">TRENDING ON BLUESKY</div>` + posts.slice(0, 40).map(p => renderBluePost(p, scrollMode ? "card-scroll-post" : "")).join("");
     }
     main.innerHTML = html;
   }
@@ -1621,12 +1655,9 @@
     el.innerHTML = `
       <div class="ob-wordmark">SOURCE!</div>
       <div class="ob-rule"></div>
-      <h1>News first, from the best sources. Escape the billionaires' algorithm.</h1>
-      <p>Start with our News Spray, edit it, or pick your own.</p>
-      <button class="ob-btn" id="obStart">Start with our News Spray
-        <span class="ob-btn-sub">Best in the World — live, unfiltered, always current</span></button>
-      <button class="ob-btn secondary" id="obOwn">Pick my own sources
-        <span class="ob-btn-sub">Build a Spray from scratch</span></button>
+      <h1>Take Back Your Mind.</h1>
+      <button class="ob-btn" id="obStart">Start with News</button>
+      <button class="ob-btn secondary" id="obOwn">Pick my own sources</button>
     `;
     document.body.appendChild(el);
     document.getElementById("obStart").addEventListener("click", () => dismissOnboarding("read"));

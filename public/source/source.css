@@ -386,6 +386,87 @@ button { font-family: inherit; cursor: pointer; }
   margin: 10px 14px 14px;
 }
 
+/* ---------------------------------------------------------------
+   Scroll — the third View-menu density tier, built as "Expanded,
+   taken further." Every card (not just the first) gets the full-
+   bleed one-story-fills-the-screen treatment: bigger image, bigger
+   type, full excerpt, generous whitespace, outlet identity reading
+   like a poster credit. Same reverse-chronological order as every
+   other mode — this is presentation only, never a reorder. No like/
+   repost/reply counts anywhere; the only nod to "what people are
+   saying" is a plain text link to the matched Bluesky post, when one
+   exists — social feel, without the algorithm.
+   --------------------------------------------------------------- */
+.card-scroll {
+  padding: 0;
+  overflow: hidden;
+  margin-bottom: 20px;
+}
+
+.card-scroll .card-link { display: block; }
+
+.card-scroll-media {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.card-scroll-media .card-thumb {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+}
+
+.card-scroll-body { padding: 16px; }
+
+.card-scroll-body-textonly { padding-top: 22px; }
+
+.card-scroll-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-bottom: 10px;
+}
+
+.card-scroll-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 22px;
+  line-height: 1.25;
+  margin-bottom: 10px;
+}
+
+.card-scroll-body-textonly .card-scroll-title { font-size: 26px; }
+
+.card-scroll-excerpt {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--ink-muted);
+}
+
+.card-scroll-discuss {
+  display: block;
+  padding: 10px 16px 16px;
+  font-size: 13px;
+  color: var(--accent-dim);
+  text-decoration: underline;
+}
+
+/* Buzz tab, Scroll mode — same underlying Trending-on-Bluesky cards,
+   just roomier: no new data, just more breathing room per post. */
+.card-scroll-post {
+  padding: 18px !important;
+  margin-bottom: 12px;
+}
+
+.card-scroll-post .card-title { font-size: 17px; }
+
 /* trending-on-Bluesky badge, links out to Buzz */
 .buzz-badge {
   display: block;
