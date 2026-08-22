@@ -1215,7 +1215,7 @@
         return `<div class="panel-stat"><span class="panel-stat-value">${data.disasters}</span><span class="panel-stat-label">billion-dollar disasters this year</span></div>`;
       case "topbluesky":
         if (!data.topPost) return null;
-        return `<div class="panel-stat-label" style="margin-bottom:6px;">Top on Bluesky</div>${renderBluePost(data.topPost)}<a class="desktop-bsky-rail-more" href="/nerve-center.html" target="_blank" rel="noopener">More on Nerve Center →</a>`;
+        return `<div class="panel-stat-label" style="margin-bottom:6px;">Top on Bluesky</div>${renderBluePost(data.topPost, "panel-top-post")}<a class="desktop-bsky-rail-more" href="/nerve-center.html" target="_blank" rel="noopener">More on Nerve Center →</a>`;
       default:
         return null;
     }
@@ -1338,7 +1338,7 @@
       html += `<div class="section-label">WHAT YOU CAN DO</div>` + renderActionsSection(actions);
     }
     if (posts.length > 0) {
-      html += `<div class="section-label">TRENDING ON BLUESKY</div>` + posts.slice(0, 40).map(renderBluePost).join("");
+      html += `<div class="section-label">TRENDING ON BLUESKY</div>` + posts.slice(0, 40).map(p => renderBluePost(p)).join("");
     }
     main.innerHTML = html;
   }
@@ -1369,9 +1369,10 @@
     return html;
   }
 
-  function renderBluePost(p) {
+  function renderBluePost(p, extraClass) {
+    const cls = typeof extraClass === "string" ? ` ${extraClass}` : "";
     return `
-      <a class="card card-link" href="${escapeHtml(p.link || p.postUrl || "#")}" target="_blank" rel="noopener" style="display:block;">
+      <a class="card card-link${cls}" href="${escapeHtml(p.link || p.postUrl || "#")}" target="_blank" rel="noopener" style="display:block;">
         <div class="card-meta"><span>${escapeHtml(p.author || p.outlet || "")}</span><span>${relTime(p.indexedAt || p.date)}</span></div>
         <div class="card-title">${escapeHtml(p.text || p.title || "")}</div>
       </a>`;

@@ -944,6 +944,19 @@ body[data-layout="desktop"] #main.read-layout {
   margin-bottom: 8px;
   padding: 10px 12px;
 }
+.desktop-side-panel .card.panel-top-post {
+  padding: 15px 16px;
+}
+.desktop-side-panel .card.panel-top-post .card-meta {
+  font-size: 11.5px;
+  margin-bottom: 8px;
+}
+.desktop-side-panel .card.panel-top-post .card-title {
+  font-size: 18px;
+  line-height: 1.32;
+  font-weight: 700;
+  -webkit-line-clamp: 4;
+}
 .desktop-bsky-rail-more {
   display: block;
   text-align: center;
