@@ -380,7 +380,8 @@ button { font-family: inherit; cursor: pointer; }
 .card-featured .card-excerpt:last-child { padding-bottom: 14px; }
 .card-featured .card-title:last-child { padding-bottom: 14px; }
 
-.card-featured .buzz-badge {
+.card-featured .buzz-badge,
+.card-featured .tip-badge {
   width: auto;
   margin: 10px 14px 14px;
 }
@@ -399,6 +400,25 @@ button { font-family: inherit; cursor: pointer; }
   font-family: var(--body);
   font-weight: 600;
   font-size: 12px;
+}
+
+/* tip/subscribe support link — outline treatment (vs. buzz-badge's
+   filled amber) so the two block badges read as distinct actions when
+   both appear on the same card. */
+.tip-badge {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin-top: 9px;
+  padding: 6px 10px;
+  background: transparent;
+  color: var(--accent-dim);
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  font-family: var(--body);
+  font-weight: 600;
+  font-size: 12px;
+  text-decoration: none;
 }
 
 /* ---------------------------------------------------------------
@@ -983,6 +1003,13 @@ body[data-layout="desktop"] #main.read-layout {
 .reader-open-link {
   text-decoration: none;
   text-align: center;
+}
+
+.tip-btn {
+  text-decoration: none;
+  text-align: center;
+  border-color: var(--accent);
+  color: var(--accent-dim);
 }
 
 .reader-frame-wrap { margin-top: 18px; }

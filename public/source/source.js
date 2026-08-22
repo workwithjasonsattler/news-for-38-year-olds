@@ -174,6 +174,36 @@
     return `<span class="outlet-chip"><span class="outlet-avatar" style="background:hsl(${outletHue(label)} 55% 42%)">${escapeHtml(initial)}</span>${escapeHtml(label)}</span>`;
   }
 
+  // Per-article tip/subscribe support link. Tip beats subscribe — only
+  // one ever shown, since a tip_url usually implies a subscribe path
+  // exists too and showing both is redundant (same priority rule
+  // already used by the homepage Sources box and the Bluesky headline
+  // bot's post format). Returns null when a dispatch has neither, so
+  // callers can skip rendering entirely rather than showing an empty/
+  // disabled state.
+  function tipSubscribeInfo(d) {
+    const outlet = (d.outlet || d.source || "").trim();
+    if (d.tip_url) return { url: d.tip_url, label: outlet ? `Tip ${outlet}` : "Tip the reporter" };
+    if (d.subscribe_url) return { url: d.subscribe_url, label: outlet ? `Subscribe to ${outlet}` : "Subscribe" };
+    return null;
+  }
+
+  // Block-style badge for card lists (mobile cards, matches the visual
+  // language of the existing .buzz-badge trending pill).
+  function tipSubscribeBadge(d) {
+    const info = tipSubscribeInfo(d);
+    if (!info) return "";
+    return `<a class="tip-badge" href="${escapeHtml(info.url)}" target="_blank" rel="noopener">💛 ${escapeHtml(info.label)}</a>`;
+  }
+
+  // Inline .btn-style link for the reader pane's action row, alongside
+  // Open original / Try reader view.
+  function tipSubscribeButton(d) {
+    const info = tipSubscribeInfo(d);
+    if (!info) return "";
+    return `<a class="btn tip-btn" href="${escapeHtml(info.url)}" target="_blank" rel="noopener">💛 ${escapeHtml(info.label)}</a>`;
+  }
+
   // ---------------------------------------------------------------
   // Per-article paywall labels — batched, lazy-loaded the same way
   // thumbnails are: render a hidden placeholder span for each dispatch
@@ -510,6 +540,7 @@
         <div class="reader-actions">
           ${d.link ? `<a class="btn primary reader-open-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">${d.is_video ? "Watch on YouTube ↗" : "Open original ↗"}</a>
           ${d.is_video ? "" : `<button class="btn" id="readerMoreBtn">Try reader view</button>`}` : ""}
+          ${tipSubscribeButton(d)}
         </div>
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         <div class="reader-frame-wrap" id="readerFrameWrap" hidden></div>
@@ -621,6 +652,7 @@
             <div class="card-title">${escapeHtml(title)}</div>
             ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt)}</div>` : ""}
           </a>
+          ${tipSubscribeBadge(d)}
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         </div>`;
     }
@@ -632,6 +664,7 @@
             <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
             <div class="card-title">${escapeHtml(title)}</div>
           </a>
+          ${tipSubscribeBadge(d)}
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         </div>`;
     }
@@ -648,6 +681,7 @@
             ${thumb}
           </div>
         </a>
+        ${tipSubscribeBadge(d)}
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
       </div>`;
   }
