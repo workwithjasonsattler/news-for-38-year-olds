@@ -718,6 +718,21 @@
   // ---------------------------------------------------------------
   let sourcesRegistryCache = null; // [{outlet, feed_url, ...}] — fetched once, reused by both the registry list and Create's add-a-source matching
   let createFlowState = null; // null = not in Create mode
+
+  // Branch/leaf tag picker state lives inside createFlowState. Branches
+  // (News/Fun/Work/Local) are never taggable themselves — only leaf topics
+  // filed under News/Fun/Work are, and Local uses the existing free-text
+  // location field on a Spray instead of a topic tag at all.
+  function newCreateFlowState() {
+    return {
+      name: "", picked: [], suggestions: [], loadingSuggestions: false, addToBar: true, isPublic: true,
+      topicIds: [], topicLabels: {}, // id -> display name, for chip rendering without a lookup
+      location: "",
+      openBranch: null, // 'news' | 'fun' | 'work' | 'local' | null
+      branchLeaves: {}, // category -> [{id,name,slug}], cached per branch once loaded
+      workQuery: "", workResults: [], workLoading: false,
+    };
+  }
   let sourceSuggestCache = null; // [{outlet, section}] — the handful shown as "starter packs"
   let sourcesShowStarterPacks = false; // collapsed by default — tapping the Starter packs door reveals these inline
   let sourcesBrowseAllOpen = false;
@@ -836,7 +851,7 @@
 
   function startFlowFromSuggestion(outlet) {
     if (!currentUser) { toast("Sign in on the You tab to create a Spray."); return; }
-    createFlowState = { name: "", picked: [], suggestions: [], loadingSuggestions: false, addToBar: true, isPublic: true };
+    createFlowState = newCreateFlowState();
     addPicked({ source_type: "admin_outlet", outlet, label: outlet });
     refreshSuggestions();
   }
@@ -942,7 +957,7 @@
 
   function openCreateFlow() {
     if (!currentUser) { toast("Sign in on the You tab to create a Spray."); return; }
-    createFlowState = { name: "", picked: [], suggestions: [], loadingSuggestions: false, addToBar: true, isPublic: true };
+    createFlowState = newCreateFlowState();
     renderSources();
   }
 
@@ -972,6 +987,167 @@
     createFlowState.picked.push(entry);
   }
 
+  const MIX_TOPIC_CAP = 6; // matches the server-side cap — keep the client warning consistent
+
+  async function toggleBranch(cat) {
+    const state = createFlowState;
+    if (state.openBranch === cat) { state.openBranch = null; renderCreateFlow(); return; }
+    state.openBranch = cat;
+    if (cat !== "local" && !state.branchLeaves[cat]) {
+      renderCreateFlow(); // show the branch open immediately, leaves fill in once loaded
+      try {
+        const leaves = await api(`/api/topics?category=${encodeURIComponent(cat)}`);
+        state.branchLeaves[cat] = Array.isArray(leaves) ? leaves : [];
+      } catch (e) {
+        state.branchLeaves[cat] = [];
+      }
+    }
+    renderCreateFlow();
+  }
+
+  function toggleTopic(id, name) {
+    const state = createFlowState;
+    if (state.topicIds.includes(id)) {
+      state.topicIds = state.topicIds.filter(t => t !== id);
+    } else {
+      if (state.topicIds.length >= MIX_TOPIC_CAP) { toast(`Sprays can carry up to ${MIX_TOPIC_CAP} tags.`); return; }
+      state.topicIds.push(id);
+      state.topicLabels[id] = name;
+    }
+    renderCreateFlow();
+  }
+
+  async function runWorkQuery() {
+    const state = createFlowState;
+    const q = state.workQuery.trim();
+    if (!q) return;
+    state.workLoading = true;
+    renderCreateFlow();
+    try {
+      const results = await api(`/api/spray-suggestions?query=${encodeURIComponent(q)}&limit=6`);
+      const pickedNames = new Set(state.picked.map(p => p.outlet).filter(Boolean));
+      state.workResults = (Array.isArray(results) ? results : []).filter(s => !pickedNames.has(s.outlet));
+    } catch (e) {
+      state.workResults = [];
+    }
+    state.workLoading = false;
+    renderCreateFlow();
+  }
+
+  function renderBranchTiles(state) {
+    const BRANCHES = [
+      { key: "news", label: "News" },
+      { key: "fun", label: "Fun" },
+      { key: "work", label: "Work" },
+      { key: "local", label: "Local" },
+    ];
+    const tiles = BRANCHES.map(b => `
+      <button class="cf-branch-tile${state.openBranch === b.key ? " open" : ""}" data-branch="${b.key}">${b.label}</button>
+    `).join("");
+
+    let expanded = "";
+    if (state.openBranch === "local") {
+      expanded = `
+        <div class="create-flow-step" style="margin-top:2px;">
+          <div class="create-flow-label">Place (any granularity — town, state, region)</div>
+          <input class="create-flow-input" id="cfLocation" placeholder="e.g. Ann Arbor, MI" value="${escapeHtml(state.location)}">
+        </div>`;
+    } else if (state.openBranch === "work") {
+      const leaves = state.branchLeaves.work;
+      const leafChips = leaves === undefined
+        ? `<div class="card-meta">Loading...</div>`
+        : leaves.map(t => `
+            <button class="cf-leaf-chip${state.topicIds.includes(t.id) ? " selected" : ""}" data-topic-id="${t.id}" data-topic-name="${escapeHtml(t.name)}">${escapeHtml(t.name)}</button>
+          `).join("");
+      const workResultsHtml = state.workLoading
+        ? `<div class="card-meta">Searching the registry...</div>`
+        : state.workResults.length === 0
+          ? ""
+          : state.workResults.map((s, i) => `
+            <div class="create-flow-suggestion">
+              <input type="checkbox" id="workres-${i}" data-outlet="${escapeHtml(s.outlet)}">
+              <label for="workres-${i}">${escapeHtml(s.outlet)}${s.section ? ` <span class="card-meta" style="display:inline;">— ${escapeHtml(s.section)}</span>` : ""}</label>
+            </div>`).join("");
+      expanded = `
+        <div class="create-flow-step" style="margin-top:2px;">
+          <div class="cf-leaf-chips">${leafChips}</div>
+          <div class="create-flow-label">What do you do? We'll match sources already in the registry — no AI, just keyword search.</div>
+          <div style="display:flex; gap:8px;">
+            <input class="create-flow-input" id="cfWorkQuery" placeholder="e.g. freelance writing, product management" value="${escapeHtml(state.workQuery)}">
+            <button class="btn" id="cfWorkSearch">Find</button>
+          </div>
+          ${state.workResults.length > 0 || state.workLoading ? `<div style="margin-top:8px;">${workResultsHtml}</div>
+            <button class="btn primary" id="cfAddWorkResults" style="width:100%; margin-top:8px;">Add checked</button>` : ""}
+        </div>`;
+    } else if (state.openBranch === "news" || state.openBranch === "fun") {
+      const leaves = state.branchLeaves[state.openBranch];
+      const leafChips = leaves === undefined
+        ? `<div class="card-meta">Loading...</div>`
+        : leaves.map(t => `
+            <button class="cf-leaf-chip${state.topicIds.includes(t.id) ? " selected" : ""}" data-topic-id="${t.id}" data-topic-name="${escapeHtml(t.name)}">${escapeHtml(t.name)}</button>
+          `).join("");
+      expanded = `<div class="cf-leaf-chips" style="margin-top:2px;">${leafChips}</div>`;
+    }
+
+    const pickedTagChips = Object.entries(state.topicLabels)
+      .filter(([id]) => state.topicIds.includes(Number(id)))
+      .map(([id, name]) => `
+        <span class="outlet-chip" style="background:var(--surface); padding:5px 10px; border-radius:999px; gap:6px; display:inline-flex; align-items:center;">
+          ${escapeHtml(name)}
+          <button class="spray-bar-btn remove" data-remove-topic="${id}" style="padding:0; font-size:14px;">×</button>
+        </span>`).join("");
+    const locationChip = state.location ? `
+        <span class="outlet-chip" style="background:var(--surface); padding:5px 10px; border-radius:999px; gap:6px; display:inline-flex; align-items:center;">
+          📍 ${escapeHtml(state.location)}
+          <button class="spray-bar-btn remove" id="cfRemoveLocation" style="padding:0; font-size:14px;">×</button>
+        </span>` : "";
+
+    return `
+      <div class="create-flow-step">
+        <div class="create-flow-label">Tag it (optional)</div>
+        <div class="cf-branch-tiles">${tiles}</div>
+        ${expanded}
+        ${(pickedTagChips || locationChip) ? `<div class="cf-tags-picked">${pickedTagChips}${locationChip}</div>` : ""}
+      </div>`;
+  }
+
+  function wireBranchTiles(main) {
+    const state = createFlowState;
+    main.querySelectorAll("[data-branch]").forEach(btn => {
+      btn.addEventListener("click", () => toggleBranch(btn.dataset.branch));
+    });
+    main.querySelectorAll("[data-topic-id]").forEach(btn => {
+      btn.addEventListener("click", () => toggleTopic(Number(btn.dataset.topicId), btn.dataset.topicName));
+    });
+    main.querySelectorAll("[data-remove-topic]").forEach(btn => {
+      btn.addEventListener("click", () => toggleTopic(Number(btn.dataset.removeTopic), state.topicLabels[btn.dataset.removeTopic]));
+    });
+    const locInput = document.getElementById("cfLocation");
+    if (locInput) locInput.addEventListener("input", (e) => { state.location = e.target.value; });
+    const removeLoc = document.getElementById("cfRemoveLocation");
+    if (removeLoc) removeLoc.addEventListener("click", () => { state.location = ""; renderCreateFlow(); });
+    const workInput = document.getElementById("cfWorkQuery");
+    if (workInput) {
+      workInput.addEventListener("input", (e) => { state.workQuery = e.target.value; });
+      workInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); runWorkQuery(); } });
+    }
+    const workSearchBtn = document.getElementById("cfWorkSearch");
+    if (workSearchBtn) workSearchBtn.addEventListener("click", runWorkQuery);
+    const addWorkBtn = document.getElementById("cfAddWorkResults");
+    if (addWorkBtn) {
+      addWorkBtn.addEventListener("click", () => {
+        main.querySelectorAll("[data-outlet]").forEach(cb => {
+          if (cb.type === "checkbox" && cb.checked && cb.id.startsWith("workres-")) {
+            addPicked({ source_type: "admin_outlet", outlet: cb.dataset.outlet, label: cb.dataset.outlet });
+          }
+        });
+        state.workResults = [];
+        state.workQuery = "";
+        refreshSuggestions();
+      });
+    }
+  }
+
   function renderCreateFlow() {
     const main = document.getElementById("main");
     const state = createFlowState;
@@ -998,6 +1174,8 @@
         <div class="create-flow-label">Name your Spray</div>
         <input class="create-flow-input" id="cfName" placeholder="e.g. Movies, AI, Local Politics" value="${escapeHtml(state.name)}">
       </div>
+
+      ${renderBranchTiles(state)}
 
       <div class="create-flow-step">
         <div class="create-flow-label">Add a source</div>
@@ -1061,6 +1239,8 @@
     const moreBtn = document.getElementById("cfMoreSuggestions");
     if (moreBtn) moreBtn.addEventListener("click", refreshSuggestions);
 
+    wireBranchTiles(main);
+
     document.getElementById("cfSave").addEventListener("click", saveCreateFlow);
   }
 
@@ -1094,7 +1274,10 @@
       const sources = state.picked.map(p => p.source_type === "admin_outlet"
         ? { source_type: "admin_outlet", outlet: p.outlet }
         : { source_type: "custom", custom_source_id: p.custom_source_id });
-      const mix = await api("/api/mixes", { method: "POST", body: JSON.stringify({ name, is_public: state.isPublic, sources }) });
+      const body = { name, is_public: state.isPublic, sources };
+      if (state.topicIds.length > 0) body.topic_ids = state.topicIds;
+      if (state.location.trim()) body.location_label = state.location.trim();
+      const mix = await api("/api/mixes", { method: "POST", body: JSON.stringify(body) });
       if (state.addToBar) {
         await api("/api/my/spray-bar/add", { method: "POST", body: JSON.stringify({ slug: mix.slug }) });
       }

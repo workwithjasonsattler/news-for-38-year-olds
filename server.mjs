@@ -523,6 +523,33 @@ async function seedOfficialHeadlinesSpray() {
   );
 }
 
+// Idempotent starter set for the News/Fun/Work leaf topics under the
+// four-branch taxonomy (News/Fun/Work/Local). Local has NO fixed leaves —
+// it uses the existing free-text location_label field on a Spray instead
+// of a topic tag. Matches by slug first (INSERT OR IGNORE), so this is
+// safe to run on every boot and safe if Jason later renames/removes one
+// via admin — it will never resurrect a deleted topic under a different
+// row, only skip re-inserting a slug that already exists.
+const STARTER_LEAF_TOPICS = [
+  ["Politics", "news"], ["Climate Change", "news"], ["Workers' Rights", "news"],
+  ["Voting Rights", "news"], ["Data Centers", "news"], ["Indie Media", "news"],
+  ["Sports", "fun"], ["Music", "fun"], ["Travel", "fun"], ["Fandom", "fun"],
+  ["Literature", "fun"], ["History", "fun"], ["Science", "fun"],
+  ["Productivity", "work"], ["Stocks & Investing", "work"], ["Social Investing", "work"],
+  ["Journalist Profile-Building", "work"], ["Individual Brand-Building", "work"],
+];
+async function seedLeafTopics() {
+  for (const [name, category] of STARTER_LEAF_TOPICS) {
+    const slug = slugify(name);
+    const existing = await dbGet(`SELECT id FROM topics WHERE slug = ?`, [slug]);
+    if (existing) continue;
+    await dbRun(
+      `INSERT INTO topics (name, slug, status, category, suggested_by_user_id) VALUES (?, ?, 'approved', ?, NULL)`,
+      [name, slug, category]
+    );
+  }
+}
+
 // a duplicate row. Only inserts a new row when no matching outlet exists.
 async function seedYoutubeChannels() {
   const existingFeeds = await dbAll(`SELECT id, outlet, youtube_channel_id FROM feeds`);
@@ -987,6 +1014,30 @@ app.get("/api/spray-suggestions", async (req, res) => {
   const picked = String(req.query.sources || "")
     .split(",").map((s) => s.trim()).filter(Boolean);
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 10);
+
+  // Work branch's free-text field ("what do you do?") — deliberately NOT
+  // an AI call. Plain keyword LIKE-matching against the existing outlet
+  // names and fallback_beat, same "no algorithm you can't see" spirit as
+  // the rest of this endpoint: readers can see exactly why a source
+  // matched (its name or section contains a word they typed), nothing
+  // inferred or guessed on their behalf. Registry-only, per the locked
+  // scoping decision — this can never suggest a source that isn't already
+  // curated.
+  const query = String(req.query.query || "").trim();
+  if (query && picked.length === 0) {
+    const words = query.toLowerCase().split(/\s+/).filter((w) => w.length >= 3).slice(0, 6);
+    if (words.length === 0) return res.json([]);
+    const clauses = words.map(() => `(LOWER(outlet) LIKE ? OR LOWER(fallback_beat) LIKE ?)`).join(" OR ");
+    const params = [];
+    for (const w of words) params.push(`%${w}%`, `%${w}%`);
+    const rows = await dbAll(
+      `SELECT outlet, fallback_beat FROM feeds
+       WHERE submission_status = 'approved' AND outlet IS NOT NULL AND (${clauses})
+       LIMIT ?`,
+      [...params, limit]
+    );
+    return res.json(rows.map((r) => ({ outlet: r.outlet, section: r.fallback_beat })));
+  }
 
   if (picked.length === 0) {
     // Nothing picked yet — just hand back a small starter set from the
@@ -2004,14 +2055,26 @@ app.get("/api/topics", async (req, res) => {
   // because a few Sprays happened to get labeled that way. Same "no
   // algorithm you can't see" spirit as everything else: one visible,
   // eyeball-able number, no hidden weighting.
+  // Optional ?category= filter — powers the branch/leaf picker (News/Fun/
+  // Work tiles each just ask for their own category's leaves), but the
+  // param is optional so the existing tag-cloud/browse callers that want
+  // everything keep working unchanged.
+  const category = req.query.category ? String(req.query.category).trim().toLowerCase() : null;
+  const params = [];
+  let where = `t.status = 'approved'`;
+  if (category) {
+    where += ` AND t.category = ?`;
+    params.push(category);
+  }
   const rows = await dbAll(
     `SELECT t.id, t.name, t.slug, t.category, COALESCE(SUM(fm.clone_count), 0) AS followers
      FROM topics t
      LEFT JOIN feed_mix_topics fmt ON fmt.topic_id = t.id
      LEFT JOIN feed_mixes fm ON fm.id = fmt.mix_id AND fm.is_public = 1
-     WHERE t.status = 'approved'
+     WHERE ${where}
      GROUP BY t.id
-     ORDER BY followers DESC, t.name ASC`
+     ORDER BY followers DESC, t.name ASC`,
+    params
   );
   res.json(rows);
 });
@@ -3713,6 +3776,7 @@ async function start() {
       await seedYoutubeChannels();
       await dropDegenerateArtRss();
       await seedOfficialHeadlinesSpray();
+      await seedLeafTopics();
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Post once shortly after boot (not immediately — give the process a
       // moment to settle) so a fresh deploy doesn't cost up to a full

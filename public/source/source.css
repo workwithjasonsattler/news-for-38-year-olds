@@ -542,6 +542,58 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 14px;
 }
 
+/* Create-flow tag picker — four branch tiles (News/Fun/Work/Local), each
+   expanding into leaf chips (News/Fun/Work) or a location field (Local).
+   Branches themselves are never taggable — only what's inside them is. */
+.cf-branch-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.cf-branch-tile {
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--ink);
+  cursor: pointer;
+  text-align: left;
+}
+.cf-branch-tile.open {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.cf-leaf-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 12px;
+}
+.cf-leaf-chip {
+  padding: 6px 12px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  font-size: 13px;
+  color: var(--ink);
+  cursor: pointer;
+}
+.cf-leaf-chip.selected {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink, #fff);
+}
+.cf-tags-picked {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 12px;
+}
+
 /* Sources tab intro — sits above the two entry doors */
 .sources-intro {
   margin: 2px 2px 16px;
