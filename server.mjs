@@ -3293,6 +3293,24 @@ app.post("/api/feeds/:id/approve", requireAdmin, async (req, res) => {
 // submitting reader's own wire regardless of status. Rejecting reuses the
 // existing per-owner DELETE route below (no separate admin-delete endpoint —
 // an admin rejecting one is functionally the same row removal).
+// Quick one-off diagnostic: how many reader-submitted custom sources
+// actually exist right now, and how spread out across readers — informs
+// whether a "Rest of the World" pooled-search tab launches with real
+// content or starts empty (same call already made once for the Topics
+// taxonomy). Not wired to any UI, just a number to check via curl.
+app.get("/api/admin/custom-sources-count", requireAdmin, async (req, res) => {
+  const total = await dbGet(`SELECT COUNT(*) AS n FROM user_custom_sources`);
+  const approved = await dbGet(`SELECT COUNT(*) AS n FROM user_custom_sources WHERE submission_status = 'approved'`);
+  const pending = await dbGet(`SELECT COUNT(*) AS n FROM user_custom_sources WHERE submission_status = 'pending'`);
+  const distinctUsers = await dbGet(`SELECT COUNT(DISTINCT user_id) AS n FROM user_custom_sources`);
+  res.json({
+    total: total.n,
+    approved: approved.n,
+    pending: pending.n,
+    distinct_readers: distinctUsers.n,
+  });
+});
+
 app.get("/api/admin/pending-custom-sources", requireAdmin, async (req, res) => {
   const rows = await dbAll(
     `SELECT ucs.id, ucs.name, ucs.feed_url, ucs.created_at, u.email AS submitted_by
