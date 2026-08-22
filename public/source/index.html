@@ -26,13 +26,15 @@
 
   <div class="spray-toggle" id="sprayToggle" hidden></div>
 
-  <!-- Desktop-only: persistent right-hand rail filling the dead space
-       beyond the centered main column on wide screens. Shows a compact
-       Most Popular on Bluesky panel (same data/ranking/cap as the
-       Nerve Center panel, styled in SOURCE!'s own card language, not a
-       reskin) — hidden entirely on Mobile layout and narrower widths
-       via CSS. -->
-  <aside class="desktop-bsky-rail" id="desktopBskyRail" hidden></aside>
+  <!-- Desktop-only: persistent right-hand side panel filling the dead
+       space beyond the centered main column on wide screens. A stack of
+       small stat/context modules (midterms countdown, Iran War day
+       counter, gas price, climate metrics, top Bluesky post) — hidden
+       entirely on Mobile layout and narrower widths via CSS. Reader can
+       hide the whole panel or individual modules via the gear icon;
+       always collapses to just its header (never fully vanishes) so
+       that control stays reachable. -->
+  <aside class="desktop-side-panel" id="desktopSidePanel" hidden></aside>
 
   <main class="source-main" id="main"></main>
 

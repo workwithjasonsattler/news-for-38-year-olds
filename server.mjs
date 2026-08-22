@@ -306,6 +306,18 @@ async function initSchema() {
       key TEXT PRIMARY KEY,
       value TEXT
     )`,
+    // ---------- SOURCE! Desktop side panel prefs ----------
+    // Which stat/module rows a signed-in reader has hidden from the
+    // Desktop right-side panel, plus whether they've hidden the whole
+    // panel. Anonymous readers get this via localStorage only (frontend-
+    // only, no row here) — same "hide is always local, sync only if
+    // signed in" pattern as user_layout_prefs.
+    `CREATE TABLE IF NOT EXISTS user_panel_prefs (
+      user_id INTEGER PRIMARY KEY,
+      panel_hidden INTEGER NOT NULL DEFAULT 0,
+      hidden_modules TEXT NOT NULL DEFAULT '[]',
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
   ];
   for (const sql of statements) await dbRun(sql);
 
@@ -822,6 +834,40 @@ app.post("/api/my/layout-prefs", async (req, res) => {
     `INSERT INTO user_layout_prefs (user_id, view, hidden_components, updated_at) VALUES (?, ?, ?, datetime('now'))
      ON CONFLICT(user_id) DO UPDATE SET view = excluded.view, hidden_components = excluded.hidden_components, updated_at = excluded.updated_at`,
     [user.id, view, blob]
+  );
+  res.json({ ok: true });
+});
+
+// ---------- SOURCE! Desktop side panel prefs ----------
+// Same shape as layout-prefs, scoped to the Desktop right-side stat
+// panel instead of the homepage grid. Hiding a module (or the whole
+// panel) always works locally via localStorage, signed in or not —
+// this endpoint only exists to carry that choice across devices for a
+// signed-in reader, never gates the action itself.
+app.get("/api/my/panel-prefs", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const row = await dbGet(`SELECT panel_hidden, hidden_modules FROM user_panel_prefs WHERE user_id = ?`, [user.id]);
+  if (!row) return res.json({ saved: false });
+  let hiddenModules = [];
+  try { hiddenModules = JSON.parse(row.hidden_modules || "[]"); } catch { /* ignore */ }
+  if (!Array.isArray(hiddenModules)) hiddenModules = [];
+  res.json({ saved: true, panelHidden: !!row.panel_hidden, hiddenModules });
+});
+
+app.post("/api/my/panel-prefs", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  let { panelHidden, hiddenModules } = req.body || {};
+  panelHidden = !!panelHidden;
+  if (!Array.isArray(hiddenModules)) hiddenModules = [];
+  hiddenModules = hiddenModules
+    .filter(m => typeof m === "string" && m.length <= 50)
+    .slice(0, 20);
+  await dbRun(
+    `INSERT INTO user_panel_prefs (user_id, panel_hidden, hidden_modules, updated_at) VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(user_id) DO UPDATE SET panel_hidden = excluded.panel_hidden, hidden_modules = excluded.hidden_modules, updated_at = excluded.updated_at`,
+    [user.id, panelHidden ? 1 : 0, JSON.stringify(hiddenModules)]
   );
   res.json({ ok: true });
 });
@@ -2863,6 +2909,167 @@ async function getNationalGasPrice() {
 }
 
 app.get("/api/gas-price", async (req, res) => res.json({ price: await getNationalGasPrice() }));
+
+// ---------- Climate metrics (SOURCE! Desktop side panel) ----------
+// Four independent, fail-soft, cached fetches. Each hides itself on the
+// frontend if it comes back null — same "hide, don't show broken/empty
+// state" convention used everywhere else outbound in this codebase (gas
+// price, Videos box, Bluesky box). None of these can be verified from
+// the sandbox (no egress to gml.noaa.gov/data.giss.nasa.gov/nsidc.org/
+// ncei.noaa.gov) — same class of feature as the gas price scrape and the
+// Bluesky bot: correct in principle, real hit-rate is a live-only check
+// once deployed. Of the four, the disaster count is the least reliable
+// — it's scraped from a summary sentence on a page, not a clean data
+// file, and NOAA's page copy could change wording at any time.
+
+const CLIMATE_CACHE_TTL_MS = 12 * 60 * 60 * 1000; // 12 hours — none of these update faster than daily
+
+// CO2 — Mauna Loa Observatory, NOAA Global Monitoring Laboratory. Weekly
+// text file, comment lines start with '#'. Rather than assume an exact
+// column position (format has varied across NOAA's own file revisions),
+// take the last real line and pick out the first token that parses as a
+// plausible ppm reading (350–500) — robust to minor column-order drift.
+const CO2_URL = "https://gml.noaa.gov/webdata/ccgg/trends/co2/co2_weekly_mlo.txt";
+const CO2_PRE_INDUSTRIAL_PPM = 280;
+let co2Cache = { ppm: null, fetchedAt: 0 };
+
+async function fetchCO2Ppm() {
+  const r = await fetch(CO2_URL, { headers: { "User-Agent": "Mozilla/5.0 (compatible; n38-cms/1.0; +https://news-for-38-year-olds.onrender.com)" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const text = await r.text();
+  const lines = text.split("\n").map(l => l.trim()).filter(l => l && !l.startsWith("#"));
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const tokens = lines[i].split(/\s+/);
+    const ppm = tokens.map(Number).find(n => Number.isFinite(n) && n >= 350 && n <= 500);
+    if (ppm) return Math.round(ppm * 100) / 100;
+  }
+  throw new Error("No plausible CO2 reading found");
+}
+
+async function getCO2Ppm() {
+  const now = Date.now();
+  if (now - co2Cache.fetchedAt > CLIMATE_CACHE_TTL_MS) {
+    try {
+      co2Cache = { ppm: await fetchCO2Ppm(), fetchedAt: now };
+    } catch (err) {
+      console.error("CO2 fetch error:", err.message);
+    }
+  }
+  return co2Cache.ppm;
+}
+
+app.get("/api/co2-ppm", async (req, res) => res.json({ ppm: await getCO2Ppm(), preIndustrial: CO2_PRE_INDUSTRIAL_PPM }));
+
+// Global temperature anomaly — NASA GISTEMP, annual (J-D) mean relative
+// to the 1951–1980 baseline. CSV, header row names the columns so we
+// look up "J-D" by name rather than assuming a fixed index. NASA's own
+// values are already decimal Celsius (e.g. "1.19"), but guard for a
+// hundredths-encoded variant (e.g. "119") just in case a future format
+// revision drops the decimal point.
+const TEMP_ANOMALY_URL = "https://data.giss.nasa.gov/gistemp/tabledata_v4/GLB.Ts+dSST.csv";
+let tempAnomalyCache = { anomaly: null, fetchedAt: 0 };
+
+async function fetchTempAnomaly() {
+  const r = await fetch(TEMP_ANOMALY_URL, { headers: { "User-Agent": "Mozilla/5.0 (compatible; n38-cms/1.0; +https://news-for-38-year-olds.onrender.com)" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const text = await r.text();
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  const headerLine = lines.find(l => l.includes("J-D"));
+  if (!headerLine) throw new Error("Could not find header row");
+  const headers = headerLine.split(",").map(h => h.trim());
+  const jdIndex = headers.indexOf("J-D");
+  if (jdIndex < 0) throw new Error("No J-D column");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const cells = lines[i].split(",").map(c => c.trim());
+    if (cells === headers || !/^\d{4}$/.test(cells[0])) continue;
+    let val = Number(cells[jdIndex]);
+    if (!Number.isFinite(val) || cells[jdIndex] === "***") continue;
+    if (Math.abs(val) > 10) val = val / 100; // hundredths-encoded fallback
+    return Math.round(val * 100) / 100;
+  }
+  throw new Error("No plausible annual anomaly found");
+}
+
+async function getTempAnomaly() {
+  const now = Date.now();
+  if (now - tempAnomalyCache.fetchedAt > CLIMATE_CACHE_TTL_MS) {
+    try {
+      tempAnomalyCache = { anomaly: await fetchTempAnomaly(), fetchedAt: now };
+    } catch (err) {
+      console.error("Temp anomaly fetch error:", err.message);
+    }
+  }
+  return tempAnomalyCache.anomaly;
+}
+
+app.get("/api/temp-anomaly", async (req, res) => res.json({ anomaly: await getTempAnomaly(), baseline: "1951–1980 average" }));
+
+// Arctic sea ice extent — NSIDC daily CSV (Sea Ice Index), million km².
+// Header names columns explicitly; look up "Extent" by name.
+const SEA_ICE_URL = "https://noaadata.apps.nsidc.org/NOAA/G02135/north/daily/data/N_seaice_extent_daily_v3.0.csv";
+let seaIceCache = { extent: null, fetchedAt: 0 };
+
+async function fetchSeaIceExtent() {
+  const r = await fetch(SEA_ICE_URL, { headers: { "User-Agent": "Mozilla/5.0 (compatible; n38-cms/1.0; +https://news-for-38-year-olds.onrender.com)" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const text = await r.text();
+  const lines = text.split("\n").map(l => l.trim()).filter(Boolean);
+  const headerLine = lines.find(l => /extent/i.test(l));
+  if (!headerLine) throw new Error("Could not find header row");
+  const headers = headerLine.split(",").map(h => h.trim().toLowerCase());
+  const extentIndex = headers.indexOf("extent");
+  if (extentIndex < 0) throw new Error("No extent column");
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const cells = lines[i].split(",").map(c => c.trim());
+    const val = Number(cells[extentIndex]);
+    if (Number.isFinite(val) && val > 0 && val < 20) return Math.round(val * 100) / 100;
+  }
+  throw new Error("No plausible extent reading found");
+}
+
+async function getSeaIceExtent() {
+  const now = Date.now();
+  if (now - seaIceCache.fetchedAt > CLIMATE_CACHE_TTL_MS) {
+    try {
+      seaIceCache = { extent: await fetchSeaIceExtent(), fetchedAt: now };
+    } catch (err) {
+      console.error("Sea ice fetch error:", err.message);
+    }
+  }
+  return seaIceCache.extent;
+}
+
+app.get("/api/sea-ice", async (req, res) => res.json({ extent: await getSeaIceExtent() }));
+
+// Billion-dollar disaster count — NOAA NCEI. Least reliable of the four:
+// scraped from a summary sentence on a public page, not a clean data
+// file, so a copy change on NOAA's end could break the regex silently
+// (fails soft to null either way — the panel just hides this module).
+const DISASTER_URL = "https://www.ncei.noaa.gov/access/billions/";
+let disasterCache = { count: null, fetchedAt: 0 };
+
+async function fetchDisasterCount() {
+  const r = await fetch(DISASTER_URL, { headers: { "User-Agent": "Mozilla/5.0 (compatible; n38-cms/1.0; +https://news-for-38-year-olds.onrender.com)" } });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const html = await r.text();
+  const m = html.match(/(\d{1,3})\s*(?:confirmed\s*)?(?:weather\s*(?:and|&)?\s*climate\s*)?(?:billion[\s-]dollar)?\s*disaster[s]?/i);
+  if (!m) throw new Error("Could not find disaster count on page");
+  return Number(m[1]);
+}
+
+async function getDisasterCount() {
+  const now = Date.now();
+  if (now - disasterCache.fetchedAt > CLIMATE_CACHE_TTL_MS) {
+    try {
+      disasterCache = { count: await fetchDisasterCount(), fetchedAt: now };
+    } catch (err) {
+      console.error("Disaster count fetch error:", err.message);
+    }
+  }
+  return disasterCache.count;
+}
+
+app.get("/api/climate-disasters", async (req, res) => res.json({ count: await getDisasterCount(), year: new Date().getFullYear() }));
 
 // ---------- YouTube video feed (curated, not algorithmic) ----------
 // Pulls each curated channel's "uploads" playlist via playlistItems.list

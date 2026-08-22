@@ -910,15 +910,18 @@ body[data-layout="desktop"] #main.read-layout {
 }
 
 /* ---------------------------------------------------------------
-   Desktop right rail — fills the dead space beyond the centered main
-   column (720/960px) on wide screens with a compact Most Popular on
-   Bluesky panel. Desktop layout only, and only once there's real room
-   for it — narrower desktop widths keep the space collapsed rather
-   than cramming a rail in.
+   Desktop side panel — fills the dead space beyond the centered main
+   column (720/960px) on wide screens with a stack of small stat/
+   context modules (midterms countdown, Iran War day, gas price,
+   climate metrics, top Bluesky post). Desktop layout only, and only
+   once there's real room for it — narrower desktop widths keep the
+   space collapsed rather than cramming a panel in. Never fully
+   vanishes even when a reader hides everything in it — collapses to
+   just the header row so the gear (the only way back) stays reachable.
    --------------------------------------------------------------- */
-.desktop-bsky-rail { display: none; }
+.desktop-side-panel { display: none; }
 @media (min-width: 1180px) {
-  body[data-layout="desktop"] .desktop-bsky-rail:not([hidden]) {
+  body[data-layout="desktop"] .desktop-side-panel:not([hidden]) {
     display: block;
     position: fixed;
     top: 110px;
@@ -936,9 +939,8 @@ body[data-layout="desktop"] #main.read-layout {
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--ink-muted);
-  margin: 0 0 10px 2px;
 }
-.desktop-bsky-rail .card {
+.desktop-side-panel .card {
   margin-bottom: 8px;
   padding: 10px 12px;
 }
@@ -949,7 +951,99 @@ body[data-layout="desktop"] #main.read-layout {
   font-weight: 600;
   color: var(--accent-dim);
   padding: 10px 0 4px;
+  margin-bottom: 14px;
 }
+
+.panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.panel-settings { position: relative; }
+
+.panel-settings-btn {
+  width: 26px;
+  height: 26px;
+  font-size: 13px;
+}
+
+.panel-settings-list {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 220px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.14);
+  padding: 8px;
+  z-index: 40;
+}
+
+.panel-settings-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font-family: var(--body);
+  font-size: 12.5px;
+  color: var(--ink);
+  padding: 7px 6px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.panel-settings-item:hover { background: var(--surface); }
+
+.panel-settings-item input[type="checkbox"] { flex-shrink: 0; }
+
+.panel-settings-sep {
+  height: 1px;
+  background: var(--line);
+  margin: 5px 4px;
+}
+
+.panel-signin-hint {
+  font-family: var(--body);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  padding: 8px 6px 4px;
+  line-height: 1.4;
+}
+
+.panel-signin-hint a {
+  color: var(--accent-dim);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.panel-stat {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 11px 13px;
+  margin-bottom: 8px;
+}
+
+.panel-stat-value {
+  display: block;
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 19px;
+  color: var(--ink);
+  line-height: 1.15;
+}
+
+.panel-stat-label {
+  display: block;
+  font-family: var(--body);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+  margin-top: 2px;
+}
+
 .state-block-mini {
   font-size: 12.5px;
   color: var(--ink-muted);

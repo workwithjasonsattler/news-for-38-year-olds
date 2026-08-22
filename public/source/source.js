@@ -63,7 +63,7 @@
     document.body.dataset.layout = mode;
     renderLayoutReview();
     renderActiveTab();
-    renderDesktopBskyRail();
+    renderDesktopSidePanel();
   }
 
   function renderLayoutReview() {
@@ -1107,39 +1107,214 @@
   }
 
   // ---------------------------------------------------------------
-  // BUZZ — organized around big stories/topics. Actions (Rogan's
-  // List) up top, then Trending on Bluesky. Maps to the existing
-  // Nerve Center panels + the Actions SIMPLE_FEED.
+  // Desktop side panel — a stack of small stat/context modules filling
+  // the dead space beyond the centered main column on wide screens.
+  // Replaces the old flat "Most Popular on Bluesky" list with several
+  // independent modules a reader can show/hide individually, or hide
+  // the whole panel. Hiding always works locally (localStorage) whether
+  // signed in or not — signing in just carries that choice across
+  // devices, same pattern as the Read-tab Spray bar and Edit Layout.
   // ---------------------------------------------------------------
-  let desktopBskyRailCache = null; // [{...post}] — same shape/endpoint as Buzz's Trending on Bluesky
+  const MIDTERM_DATE = new Date("2026-11-03T00:00:00");
+  const IRAN_WAR_START = new Date("2026-02-28T00:00:00");
 
-  // Desktop-only right rail: fills the dead space beyond the centered main
-  // column on wide screens with a compact Most Popular on Bluesky panel.
-  // Same data/ranking/per-person cap as the Nerve Center panel (reuses
-  // /api/nerve-center/bluesky, no new backend) — styled in SOURCE!'s own
-  // card language rather than Nerve Center's BuzzFeed reskin, since those
-  // are deliberately distinct brand identities. Only fetches/renders when
-  // the layout is actually Desktop; CSS hides the rail entirely otherwise,
-  // so there's no point spending a request on it in Mobile mode.
-  async function renderDesktopBskyRail() {
-    const el = document.getElementById("desktopBskyRail");
+  const PANEL_MODULE_DEFS = [
+    { key: "midterms", label: "Days to midterms" },
+    { key: "iranwar", label: "Day of Iran War" },
+    { key: "gas", label: "Gas price" },
+    { key: "co2", label: "CO2 (ppm)" },
+    { key: "tempanomaly", label: "Global temp anomaly" },
+    { key: "seaice", label: "Arctic sea ice extent" },
+    { key: "disasters", label: "Billion-dollar disasters" },
+    { key: "topbluesky", label: "Top post on Bluesky" },
+  ];
+
+  const PANEL_HIDDEN_KEY = "source_panel_hidden";
+  const PANEL_MODULES_KEY = "source_panel_hidden_modules";
+
+  function getPanelHidden() { return localStorage.getItem(PANEL_HIDDEN_KEY) === "1"; }
+  function setPanelHidden(v) { localStorage.setItem(PANEL_HIDDEN_KEY, v ? "1" : "0"); }
+  function getHiddenModules() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(PANEL_MODULES_KEY) || "[]");
+      return new Set(Array.isArray(raw) ? raw : []);
+    } catch (e) { return new Set(); }
+  }
+  function setHiddenModules(set) { localStorage.setItem(PANEL_MODULES_KEY, JSON.stringify([...set])); }
+
+  let panelPrefsSynced = false; // only pull the account's saved prefs once per page load
+  async function syncPanelPrefsFromAccount() {
+    if (!currentUser || panelPrefsSynced) return;
+    panelPrefsSynced = true;
+    try {
+      const prefs = await api("/api/my/panel-prefs");
+      if (prefs && prefs.saved) {
+        setPanelHidden(prefs.panelHidden);
+        setHiddenModules(new Set(prefs.hiddenModules || []));
+      }
+    } catch (e) { /* fail soft, keep whatever localStorage already has */ }
+  }
+  async function savePanelPrefsToAccount() {
+    if (!currentUser) return;
+    try {
+      await api("/api/my/panel-prefs", {
+        method: "POST",
+        body: JSON.stringify({ panelHidden: getPanelHidden(), hiddenModules: [...getHiddenModules()] }),
+      });
+    } catch (e) { /* fail soft — local state already applied regardless */ }
+  }
+
+  let desktopPanelDataCache = null; // resolved {gas, co2, temp, ice, disasters, topPost} — fetched once per page load
+  async function fetchPanelData() {
+    const [gasR, co2R, tempR, iceR, disR, bskyR] = await Promise.allSettled([
+      api("/api/gas-price"),
+      api("/api/co2-ppm"),
+      api("/api/temp-anomaly"),
+      api("/api/sea-ice"),
+      api("/api/climate-disasters"),
+      api("/api/nerve-center/bluesky"),
+    ]);
+    return {
+      gas: gasR.status === "fulfilled" ? gasR.value.price : null,
+      co2: co2R.status === "fulfilled" ? co2R.value.ppm : null,
+      co2PreIndustrial: co2R.status === "fulfilled" ? co2R.value.preIndustrial : 280,
+      temp: tempR.status === "fulfilled" ? tempR.value.anomaly : null,
+      ice: iceR.status === "fulfilled" ? iceR.value.extent : null,
+      disasters: disR.status === "fulfilled" ? disR.value.count : null,
+      topPost: (bskyR.status === "fulfilled" && Array.isArray(bskyR.value) && bskyR.value.length) ? bskyR.value[0] : null,
+    };
+  }
+
+  // Each returns an HTML string, or null if there's nothing to show —
+  // callers skip the module entirely on null rather than rendering an
+  // empty/broken state.
+  function renderPanelModule(key, data) {
+    switch (key) {
+      case "midterms": {
+        const days = Math.ceil((MIDTERM_DATE - new Date()) / 86400000);
+        return `<div class="panel-stat"><span class="panel-stat-value">${days}</span><span class="panel-stat-label">days to the midterms</span></div>`;
+      }
+      case "iranwar": {
+        const day = Math.floor((new Date() - IRAN_WAR_START) / 86400000) + 1;
+        return `<div class="panel-stat"><span class="panel-stat-value">${day}</span><span class="panel-stat-label">day of the Iran War</span></div>`;
+      }
+      case "gas":
+        if (!data.gas) return null;
+        return `<div class="panel-stat"><span class="panel-stat-value">$${Number(data.gas).toFixed(2)}</span><span class="panel-stat-label">/gal natl avg gas price</span></div>`;
+      case "co2":
+        if (!data.co2) return null;
+        return `<div class="panel-stat"><span class="panel-stat-value">${data.co2}</span><span class="panel-stat-label">ppm CO₂ · pre-industrial was ${data.co2PreIndustrial}</span></div>`;
+      case "tempanomaly":
+        if (data.temp === null || data.temp === undefined) return null;
+        return `<div class="panel-stat"><span class="panel-stat-value">${data.temp > 0 ? "+" : ""}${data.temp}°C</span><span class="panel-stat-label">global temp vs. 1951–1980 avg</span></div>`;
+      case "seaice":
+        if (!data.ice) return null;
+        return `<div class="panel-stat"><span class="panel-stat-value">${data.ice}M km²</span><span class="panel-stat-label">Arctic sea ice extent</span></div>`;
+      case "disasters":
+        if (!data.disasters) return null;
+        return `<div class="panel-stat"><span class="panel-stat-value">${data.disasters}</span><span class="panel-stat-label">billion-dollar disasters this year</span></div>`;
+      case "topbluesky":
+        if (!data.topPost) return null;
+        return `<div class="panel-stat-label" style="margin-bottom:6px;">Top on Bluesky</div>${renderBluePost(data.topPost)}<a class="desktop-bsky-rail-more" href="/nerve-center.html" target="_blank" rel="noopener">More on Nerve Center →</a>`;
+      default:
+        return null;
+    }
+  }
+
+  function renderPanelSettings() {
+    const hidden = getHiddenModules();
+    const panelHidden = getPanelHidden();
+    return `
+      <div class="panel-settings" id="panelSettings">
+        <button class="icon-btn panel-settings-btn" id="panelSettingsBtn" aria-haspopup="true" aria-expanded="false" title="Customize panel">⚙</button>
+        <div class="panel-settings-list" id="panelSettingsList" hidden>
+          <label class="panel-settings-item">
+            <input type="checkbox" id="panelHideAllToggle" ${panelHidden ? "checked" : ""}>
+            Hide this panel
+          </label>
+          <div class="panel-settings-sep"></div>
+          ${PANEL_MODULE_DEFS.map(m => `
+            <label class="panel-settings-item">
+              <input type="checkbox" class="panel-module-toggle" data-key="${m.key}" ${hidden.has(m.key) ? "" : "checked"}>
+              ${escapeHtml(m.label)}
+            </label>`).join("")}
+          ${!currentUser ? `<div class="panel-signin-hint">Signed in, this'll follow you across devices — <a href="#" id="panelSignInLink">Sign in</a></div>` : ""}
+        </div>
+      </div>`;
+  }
+
+  function wirePanelSettingsEvents() {
+    const btn = document.getElementById("panelSettingsBtn");
+    const list = document.getElementById("panelSettingsList");
+    if (!btn || !list) return;
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const opening = list.hidden;
+      list.hidden = !opening;
+      btn.setAttribute("aria-expanded", String(opening));
+    });
+    const hideAll = document.getElementById("panelHideAllToggle");
+    if (hideAll) {
+      hideAll.addEventListener("change", () => {
+        setPanelHidden(hideAll.checked);
+        savePanelPrefsToAccount();
+        renderDesktopSidePanel();
+      });
+    }
+    document.querySelectorAll(".panel-module-toggle").forEach(cb => {
+      cb.addEventListener("change", () => {
+        const set = getHiddenModules();
+        if (cb.checked) set.delete(cb.dataset.key); else set.add(cb.dataset.key);
+        setHiddenModules(set);
+        savePanelPrefsToAccount();
+        renderDesktopSidePanel();
+      });
+    });
+    const signInLink = document.getElementById("panelSignInLink");
+    if (signInLink) {
+      signInLink.addEventListener("click", (e) => {
+        e.preventDefault();
+        switchTab("you");
+      });
+    }
+  }
+
+  // Desktop-only side panel: fills the dead space beyond the centered
+  // main column on wide screens. Fetches once per page load (cached);
+  // only fetches when the layout is actually Desktop, since CSS hides
+  // the panel entirely otherwise. Never fully vanishes even when a
+  // reader hides it — collapses to just the header row so the gear
+  // icon (the only way back) stays reachable.
+  async function renderDesktopSidePanel() {
+    const el = document.getElementById("desktopSidePanel");
     if (!el) return;
     if (getLayoutMode() !== "desktop") { el.hidden = true; return; }
     el.hidden = false;
-    if (!desktopBskyRailCache) {
-      el.innerHTML = `<div class="desktop-bsky-rail-head">Most Popular on Bluesky</div><div class="state-block-mini">Loading…</div>`;
-      try {
-        const posts = await api("/api/nerve-center/bluesky");
-        desktopBskyRailCache = Array.isArray(posts) ? posts.slice(0, 8) : [];
-      } catch (e) {
-        desktopBskyRailCache = [];
-      }
+    await syncPanelPrefsFromAccount();
+
+    if (getPanelHidden()) {
+      el.innerHTML = `<div class="panel-head"><span class="desktop-bsky-rail-head">Panel hidden</span>${renderPanelSettings()}</div>`;
+      wirePanelSettingsEvents();
+      return;
     }
-    if (desktopBskyRailCache.length === 0) { el.hidden = true; return; }
+
+    if (!desktopPanelDataCache) {
+      el.innerHTML = `<div class="panel-head"><span class="desktop-bsky-rail-head">Today</span>${renderPanelSettings()}</div><div class="state-block-mini">Loading…</div>`;
+      wirePanelSettingsEvents();
+      desktopPanelDataCache = await fetchPanelData();
+    }
+
+    const hidden = getHiddenModules();
+    const moduleHtml = PANEL_MODULE_DEFS
+      .filter(m => !hidden.has(m.key))
+      .map(m => renderPanelModule(m.key, desktopPanelDataCache))
+      .filter(Boolean)
+      .join("");
+
     el.innerHTML = `
-      <div class="desktop-bsky-rail-head">Most Popular on Bluesky</div>
-      ${desktopBskyRailCache.map(renderBluePost).join("")}
-      <a class="desktop-bsky-rail-more" href="/nerve-center.html" target="_blank" rel="noopener">More on Nerve Center →</a>`;
+      <div class="panel-head"><span class="desktop-bsky-rail-head">Today</span>${renderPanelSettings()}</div>
+      ${moduleHtml || `<div class="state-block-mini">Nothing to show — everything's hidden or unavailable right now.</div>`}`;
+    wirePanelSettingsEvents();
   }
 
   async function renderBuzz() {
@@ -1297,6 +1472,12 @@
         list.hidden = true;
         if (btn) btn.setAttribute("aria-expanded", "false");
       }
+      const panelList = document.getElementById("panelSettingsList");
+      const panelBtn = document.getElementById("panelSettingsBtn");
+      if (panelList && !panelList.hidden) {
+        panelList.hidden = true;
+        if (panelBtn) panelBtn.setAttribute("aria-expanded", "false");
+      }
     });
 
     const refreshBtn = document.getElementById("refreshBtn");
@@ -1316,7 +1497,7 @@
 
     await refreshSession();
     renderActiveTab();
-    renderDesktopBskyRail();
+    renderDesktopSidePanel();
 
     if (!localStorage.getItem(ONBOARDED_KEY)) {
       showOnboarding();
