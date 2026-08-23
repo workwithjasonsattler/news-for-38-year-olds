@@ -833,6 +833,7 @@
       // lighter-weight, not competing with the two doors for attention.
       let html = `
         <div class="sources-intro">
+          <div class="sources-intro-rule"></div>
           <div class="sources-intro-title">Pick a starter pack of feeds or create your own.</div>
         </div>
         <div class="sources-doors">
@@ -855,7 +856,7 @@
       }
 
       if (currentUser) {
-        html += `<div class="section-label" style="margin-top:22px;">Your Sprays</div>` + renderYourSpraysSection(bar);
+        html += `<div class="section-label" style="margin-top:30px;">Your Sprays</div>` + renderYourSpraysSection(bar);
       } else {
         html += `<p class="sources-signin-hint">Sign in (on the You tab) to save and organize your own Sprays.</p>`;
       }

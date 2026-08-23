@@ -689,29 +689,40 @@ button { font-family: inherit; cursor: pointer; }
 }
 
 /* Sources tab intro — sits above the two entry doors */
+/* Calmer, more onboarding-like intro — a small accent rule under the
+   headline (the same motif as onboarding's ob-rule), more breathing
+   room above the doors, so this reads as a continuation of the
+   onboarding "feel" rather than a denser dashboard screen. */
 .sources-intro {
-  margin: 2px 2px 16px;
+  margin: 6px 2px 24px;
+}
+.sources-intro-rule {
+  width: 36px;
+  height: 3px;
+  background: var(--accent);
+  border-radius: 2px;
+  margin-bottom: 12px;
 }
 .sources-intro-title {
   font-family: var(--display);
   font-weight: 700;
-  font-size: 21px;
+  font-size: 22px;
   color: var(--ink);
   letter-spacing: -0.01em;
-  line-height: 1.3;
+  line-height: 1.32;
 }
 
 /* Two-door entry: Starter packs vs Create your own */
 .sources-doors {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 10px;
+  gap: 12px;
 }
 .sources-door {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  padding: 14px 16px;
+  padding: 18px 16px;
   border-radius: 14px;
   border: 1px solid var(--line);
   background: var(--surface);
@@ -731,13 +742,13 @@ button { font-family: inherit; cursor: pointer; }
 .sources-door-sub {
   font-size: 12px;
   color: var(--ink-muted);
-  margin-top: 3px;
+  margin-top: 4px;
 }
 
 .sources-signin-hint {
   font-size: 13px;
   color: var(--ink-muted);
-  margin: 6px 2px 0;
+  margin: 14px 2px 0;
 }
 
 /* Suggested-for-you pills — shown inline once the Starter packs door is
