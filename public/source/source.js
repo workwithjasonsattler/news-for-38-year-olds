@@ -1648,6 +1648,8 @@
   // ---------------------------------------------------------------
   const ONBOARDED_KEY = "source_onboarded";
 
+  const WHATS_THIS_COPY = "SOURCE! is an algorithm-free news reader. Choose from handpicked Sprays of vetted RSS feeds. Or create your own and share it with anyone as its own RSS feed. Get to the source. Take back your mind.";
+
   function showOnboarding() {
     const el = document.createElement("div");
     el.className = "onboarding";
@@ -1658,10 +1660,31 @@
       <h1>Take Back Your Mind.</h1>
       <button class="ob-btn" id="obStart">Start with News</button>
       <button class="ob-btn secondary" id="obOwn">Pick my own sources</button>
+      <a href="#" class="ob-whats-this" id="obWhatsThis">What's this?</a>
     `;
     document.body.appendChild(el);
     document.getElementById("obStart").addEventListener("click", () => dismissOnboarding("read"));
     document.getElementById("obOwn").addEventListener("click", () => dismissOnboarding("sources"));
+    document.getElementById("obWhatsThis").addEventListener("click", (e) => {
+      e.preventDefault();
+      toggleWhatsThis();
+    });
+  }
+
+  function toggleWhatsThis() {
+    const existing = document.getElementById("obWhatsThisPanel");
+    if (existing) { existing.remove(); return; }
+    const el = document.getElementById("onboarding");
+    if (!el) return;
+    const panel = document.createElement("div");
+    panel.className = "ob-whats-this-panel";
+    panel.id = "obWhatsThisPanel";
+    panel.innerHTML = `
+      <p>${escapeHtml(WHATS_THIS_COPY)}</p>
+      <button class="ob-whats-this-close" id="obWhatsThisClose" aria-label="Close">×</button>
+    `;
+    el.appendChild(panel);
+    document.getElementById("obWhatsThisClose").addEventListener("click", () => panel.remove());
   }
 
   function dismissOnboarding(landOnTab) {
