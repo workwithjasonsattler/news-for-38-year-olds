@@ -584,7 +584,16 @@
   function renderReaderFeed(shown, trendingLinks) {
     const feed = document.getElementById("readerFeed");
     if (!feed) return;
-    const headlinesOnly = getReadDisplay() === "headlines";
+    const mode = getReadDisplay();
+    const headlinesOnly = mode === "headlines";
+    // Scroll — same list, same order, no new fetch. Roomier treatment
+    // (bigger thumb, more excerpt, "see the conversation" link when one
+    // exists) matching Scroll's card treatment elsewhere in the app —
+    // still a compact selectable list, not the full-bleed one-story
+    // card, since this is a side rail next to the reader pane, not the
+    // primary reading surface. No like/repost/reply counts, same as
+    // every other Scroll surface.
+    const scrollMode = mode === "scroll";
     feed.innerHTML = shown.map(d => {
       const active = selectedDispatch && d.id === selectedDispatch.id;
       const title = d.title || d.headline || "";
@@ -594,6 +603,23 @@
           <button class="feed-item feed-item-rss${active ? " active" : ""}" data-id="${idAttr}">
             <span class="feed-item-title">${escapeHtml(title)}</span>
             <span class="feed-item-meta"><span>${escapeHtml(d.outlet || d.source || "")}</span><span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</span>
+          </button>`;
+      }
+      if (scrollMode) {
+        const excerpt = (d.excerpt || "").trim().slice(0, 220);
+        const hasImage = !!d.image_url;
+        const discussUrl = trendingLinks.get(d.link);
+        return `
+          <button class="feed-item feed-item-scroll${active ? " active" : ""}" data-id="${idAttr}">
+            <img class="feed-item-thumb feed-item-thumb-lg${hasImage ? " loaded" : ""}" id="thumb-${d.id}" alt=""
+              ${hasImage ? `src="${escapeHtml(d.image_url)}"` : ""} loading="lazy"
+              onerror="this.classList.remove('loaded')">
+            <span class="feed-item-text">
+              <span class="feed-item-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</span>
+              <span class="feed-item-title feed-item-title-lg">${escapeHtml(title)}</span>
+              ${excerpt ? `<span class="feed-item-excerpt feed-item-excerpt-lg">${escapeHtml(excerpt)}</span>` : ""}
+              ${discussUrl ? `<span class="feed-item-discuss">See the conversation on Bluesky ↗</span>` : ""}
+            </span>
           </button>`;
       }
       const excerpt = (d.excerpt || "").trim().slice(0, 140);
