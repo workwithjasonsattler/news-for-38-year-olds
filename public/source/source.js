@@ -1685,7 +1685,7 @@
       <div class="ob-wordmark">SOURCE!</div>
       <div class="ob-rule"></div>
       <h1>Take Back Your Mind</h1>
-      <button class="ob-btn" id="obStart">Skip setup, start reading</button>
+      <button class="ob-btn" id="obStart">Just dig in</button>
       <button class="ob-btn secondary" id="obOwn">Pick my own sources</button>
       <a href="#" class="ob-whats-this" id="obWhatsThis">What's this?</a>
     `;
