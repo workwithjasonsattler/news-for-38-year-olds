@@ -1560,18 +1560,24 @@
     wirePanelSettingsEvents();
   }
 
+  let actionsExpanded = false;
+  let onTrendExpanded = false;
+  const ON_TREND_COLLAPSED_COUNT = 5;
+
   async function renderBuzz() {
     const main = document.getElementById("main");
     main.innerHTML = stateBlock({ title: "SCANNING CHATTER", body: "Pulling the signal off Bluesky...", spin: true });
-    const [actionsResult, postsResult] = await Promise.allSettled([
+    const [actionsResult, postsResult, chatterResult] = await Promise.allSettled([
       api("/api/actions-feed"),
       api("/api/nerve-center/bluesky"),
+      api("/api/nerve-center/chatter"),
     ]);
 
     const actions = actionsResult.status === "fulfilled" && Array.isArray(actionsResult.value) ? actionsResult.value : [];
     const posts = postsResult.status === "fulfilled" && Array.isArray(postsResult.value) ? postsResult.value : [];
+    const stories = chatterResult.status === "fulfilled" && Array.isArray(chatterResult.value) ? chatterResult.value : [];
 
-    if (actions.length === 0 && posts.length === 0) {
+    if (actions.length === 0 && posts.length === 0 && stories.length === 0) {
       main.innerHTML = stateBlock({ glyph: "∅", title: "QUIET RIGHT NOW", body: "No chatter picked up in the current window." });
       return;
     }
@@ -1580,11 +1586,29 @@
     if (actions.length > 0) {
       html += `<div class="section-label">WHAT YOU CAN DO</div>` + renderActionsSection(actions);
     }
+    if (stories.length > 0) {
+      html += `<div class="section-label">ON TREND</div><p class="section-sub">Who's covering today's top stories</p>` + renderOnTrendSection(stories);
+    }
     if (posts.length > 0) {
       const scrollMode = getReadDisplay() === "scroll";
       html += `<div class="section-label">TRENDING ON BLUESKY</div>` + posts.slice(0, 40).map(p => renderBluePost(p, scrollMode ? "card-scroll-post" : "")).join("");
     }
     main.innerHTML = html;
+
+    const actionsToggle = document.getElementById("actionsExpandToggle");
+    if (actionsToggle) {
+      actionsToggle.addEventListener("click", () => {
+        actionsExpanded = !actionsExpanded;
+        renderBuzz();
+      });
+    }
+    const onTrendToggle = document.getElementById("onTrendExpandToggle");
+    if (onTrendToggle) {
+      onTrendToggle.addEventListener("click", () => {
+        onTrendExpanded = !onTrendExpanded;
+        renderBuzz();
+      });
+    }
   }
 
   function renderActionsSection(actions) {
@@ -1592,6 +1616,7 @@
     let html = "";
     if (top) {
       const excerpt = (top.excerpt || "").trim();
+      html += `<p class="section-sub">Latest from Rogan's List</p>`;
       html += `
         <div class="card">
           <a class="card-link" href="${escapeHtml(top.link || "#")}" target="_blank" rel="noopener">
@@ -1606,9 +1631,34 @@
         </div>`;
     }
     if (rest.length > 0) {
-      html += `<div class="card">` + rest.map(a => `
-        <a class="card-link plain-row" href="${escapeHtml(a.link || "#")}" target="_blank" rel="noopener">${escapeHtml(a.title || "")}</a>
-      `).join("") + `</div>`;
+      if (actionsExpanded) {
+        html += `<div class="card">` + rest.map(a => `
+          <a class="card-link plain-row" href="${escapeHtml(a.link || "#")}" target="_blank" rel="noopener">${escapeHtml(a.title || "")}</a>
+        `).join("") + `</div>`;
+        html += `<button class="link-toggle" id="actionsExpandToggle">Show less</button>`;
+      } else {
+        html += `<button class="link-toggle" id="actionsExpandToggle">See ${rest.length} more from Rogan's List →</button>`;
+      }
+    }
+    return html;
+  }
+
+  function renderOnTrendSection(stories) {
+    const shown = onTrendExpanded ? stories : stories.slice(0, ON_TREND_COLLAPSED_COUNT);
+    let html = shown.map(s => `
+      <div class="card">
+        <a class="card-link plain-row" href="${escapeHtml(s.storyLink || "#")}" target="_blank" rel="noopener"><strong>${escapeHtml(s.story || "")}</strong></a>
+        ${(s.chatter || []).map(c => `
+          <div class="on-trend-post">
+            ${outletChip(c.outlet || "")}
+            <div class="on-trend-post-text">${escapeHtml((c.text || "").slice(0, 200))}</div>
+            <a class="on-trend-post-link" href="${escapeHtml(c.blueskyUrl || "#")}" target="_blank" rel="noopener">See it on Bluesky ↗</a>
+          </div>`).join("")}
+      </div>`).join("");
+    if (stories.length > ON_TREND_COLLAPSED_COUNT) {
+      html += onTrendExpanded
+        ? `<button class="link-toggle" id="onTrendExpandToggle">Show less</button>`
+        : `<button class="link-toggle" id="onTrendExpandToggle">Show ${stories.length - ON_TREND_COLLAPSED_COUNT} more stories →</button>`;
     }
     return html;
   }

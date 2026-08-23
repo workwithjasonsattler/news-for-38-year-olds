@@ -814,6 +814,31 @@ button { font-family: inherit; cursor: pointer; }
 
 .section-label:first-child { margin-top: 2px; }
 
+/* small eyebrow line under a section-label, e.g. "Latest from Rogan's List" */
+.section-sub {
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: -4px 2px 8px;
+}
+
+/* On Trend: a matched Bluesky post nested under its story */
+.on-trend-post {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.on-trend-post-text {
+  font-size: 13px;
+  color: var(--ink-muted);
+  line-height: 1.4;
+  margin: 4px 0 4px;
+}
+
+.on-trend-post-link {
+  font-size: 12.5px;
+  color: var(--accent-dim);
+}
+
 /* plain link rows, used for the non-preview items in a top-item
    preview list (e.g. Actions after the first item) */
 .plain-row {
