@@ -1675,7 +1675,7 @@
   // ---------------------------------------------------------------
   const ONBOARDED_KEY = "source_onboarded";
 
-  const WHATS_THIS_COPY = "SOURCE! is an algorithm-free news reader. Choose from handpicked Sprays of vetted RSS feeds. Or create your own and share it with anyone as its own RSS feed. Get to the source. Take back your mind.";
+  const WHATS_THIS_COPY = "SOURCE! gives you the news you need, without the billionaires' algorithms. Choose from handpicked Sprays of vetted RSS feeds. Or create your own and share it with anyone as its own RSS feed.";
 
   function showOnboarding() {
     const el = document.createElement("div");
@@ -1684,8 +1684,8 @@
     el.innerHTML = `
       <div class="ob-wordmark">SOURCE!</div>
       <div class="ob-rule"></div>
-      <h1>Take Back Your Mind.</h1>
-      <button class="ob-btn" id="obStart">Start with News</button>
+      <h1>Take Back Your Mind</h1>
+      <button class="ob-btn" id="obStart">Start with handpicked news</button>
       <button class="ob-btn secondary" id="obOwn">Pick my own sources</button>
       <a href="#" class="ob-whats-this" id="obWhatsThis">What's this?</a>
     `;

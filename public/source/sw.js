@@ -1,5 +1,5 @@
-const SHELL_CACHE = "source-app-shell-v6";
-const WIRE_CACHE = "source-app-wire-v6";
+const SHELL_CACHE = "source-app-shell-v7";
+const WIRE_CACHE = "source-app-wire-v7";
 
 const SHELL_ASSETS = [
   "/source/",

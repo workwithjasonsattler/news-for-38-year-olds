@@ -1,7 +1,7 @@
 {
   "name": "SOURCE! — News First",
   "short_name": "SOURCE!",
-  "description": "Take Back Your Mind.",
+  "description": "Take Back Your Mind",
   "start_url": "/source/",
   "scope": "/source/",
   "display": "standalone",
