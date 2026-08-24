@@ -2036,10 +2036,85 @@ app.get("/api/my/mixes", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
   const rows = await dbAll(
-    `SELECT slug, name, location_label, is_public, created_at FROM feed_mixes WHERE creator_user_id = ? ORDER BY created_at DESC`,
+    `SELECT slug, name, location_label, is_public, is_official, created_at FROM feed_mixes WHERE creator_user_id = ? ORDER BY created_at DESC`,
     [user.id]
   );
-  res.json(rows);
+  res.json(rows.map(r => ({ ...r, is_official: !!r.is_official })));
+});
+
+// ---------- Quick add/remove: "which of my Sprays is this source in?" ----------
+// Powers the "Add to a Spray" picker that opens straight off a post (card or
+// reader pane) — a reader shouldn't have to leave what they're reading and
+// find the full Create/Edit flow just to say "yes, this outlet belongs in my
+// Politics Spray." Official (auto-syncing) Sprays are excluded — they have no
+// stored feed_mix_sources rows to toggle, they mirror the live Wire.
+app.get("/api/my/mixes/for-source", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  const outlet = req.query.outlet ? String(req.query.outlet).trim() : null;
+  const customSourceId = req.query.custom_source_id ? Number(req.query.custom_source_id) : null;
+  if (!outlet && !customSourceId) return res.status(400).json({ error: "outlet or custom_source_id is required" });
+
+  const mixes = await dbAll(
+    `SELECT id, slug, name FROM feed_mixes WHERE creator_user_id = ? AND is_official = 0 ORDER BY created_at DESC`,
+    [user.id]
+  );
+  const result = [];
+  for (const m of mixes) {
+    const match = outlet
+      ? await dbGet(`SELECT 1 FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'admin_outlet' AND outlet = ?`, [m.id, outlet])
+      : await dbGet(`SELECT 1 FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'custom' AND custom_source_id = ?`, [m.id, customSourceId]);
+    result.push({ slug: m.slug, name: m.name, has_source: !!match });
+  }
+  res.json(result);
+});
+
+app.post("/api/my/mixes/:slug/toggle-source", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix) return res.status(404).json({ error: "mix not found" });
+  if (mix.creator_user_id !== user.id) return res.status(403).json({ error: "not your mix" });
+  if (mix.is_official) return res.status(400).json({ error: "this Spray auto-syncs to the live Wire and can't be edited directly" });
+
+  const sourceType = req.body?.source_type === "custom" ? "custom" : "admin_outlet";
+  let outlet = null, customSourceId = null;
+  if (sourceType === "admin_outlet") {
+    outlet = String(req.body?.outlet || "").trim();
+    if (!outlet) return res.status(400).json({ error: "outlet is required" });
+    const exists = await dbGet(`SELECT id FROM feeds WHERE outlet = ? AND submission_status = 'approved'`, [outlet]);
+    if (!exists) return res.status(400).json({ error: `Unknown source: ${outlet}` });
+  } else {
+    customSourceId = Number(req.body?.custom_source_id);
+    if (!customSourceId) return res.status(400).json({ error: "custom_source_id is required" });
+    const owned = await dbGet(`SELECT id FROM user_custom_sources WHERE id = ? AND user_id = ?`, [customSourceId, user.id]);
+    if (!owned) return res.status(400).json({ error: "you can only add your own custom sources to a Spray" });
+  }
+
+  const existing = outlet
+    ? await dbGet(`SELECT id FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'admin_outlet' AND outlet = ?`, [mix.id, outlet])
+    : await dbGet(`SELECT id FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'custom' AND custom_source_id = ?`, [mix.id, customSourceId]);
+
+  if (existing) {
+    const countRow = await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
+    if (countRow.n <= 1) {
+      return res.status(400).json({ error: "a Spray needs at least one source — delete the whole Spray instead if you want to remove its last one" });
+    }
+    await dbRun(`DELETE FROM feed_mix_sources WHERE id = ?`, [existing.id]);
+    await dbRun(`UPDATE feed_mixes SET updated_at = datetime('now') WHERE id = ?`, [mix.id]);
+    return res.json({ added: false });
+  }
+
+  const countRow = await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
+  if (countRow.n >= MIX_SOURCE_CAP) return res.status(400).json({ error: `mixes are capped at ${MIX_SOURCE_CAP} sources` });
+  await dbRun(
+    `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, ?, ?, ?, ?)`,
+    [mix.id, sourceType, outlet, customSourceId, countRow.n]
+  );
+  await dbRun(`UPDATE feed_mixes SET updated_at = datetime('now') WHERE id = ?`, [mix.id]);
+  res.json({ added: true });
 });
 
 // ---------- Follows: Topics taxonomy ----------

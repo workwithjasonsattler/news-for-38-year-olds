@@ -198,6 +198,36 @@
     return `<a class="tip-badge" href="${escapeHtml(info.url)}" target="_blank" rel="noopener">💛 ${escapeHtml(info.label)}</a>`;
   }
 
+  // Resolves a dispatch back to a source a Spray can actually hold. Custom
+  // (reader-private) items get their custom_source_id decoded straight out
+  // of the synthetic dispatch id built in GET /api/dispatches and
+  // resolveMixSources() — no backend/dispatch-shape change needed, both
+  // already encode it as "custom-<id>-..." / "mix-custom-<id>-...". Every
+  // other dispatch (curated outlets, videos — video creators are stored as
+  // normal outlet rows with a youtube_channel_id, so this covers Best of
+  // YouTube too) maps off its plain outlet name. Returns null when neither
+  // shape matches, so callers can skip rendering the control entirely.
+  function sprayableSource(d) {
+    const customMatch = /^(?:mix-)?custom-(\d+)-/.exec(d.id || "");
+    if (customMatch) {
+      const label = (d.outlet || d.source || "").trim() || "this source";
+      return { source_type: "custom", custom_source_id: Number(customMatch[1]), label };
+    }
+    const outlet = (d.outlet || d.source || "").trim();
+    if (outlet) return { source_type: "admin_outlet", outlet, label: outlet };
+    return null;
+  }
+
+  // "+ Spray" control — a sibling element next to the tip/subscribe badge,
+  // not nested inside the card's outbound <a>, same pattern already used
+  // for the trending badge. Renders nothing when the dispatch can't be
+  // mapped to a real source (sprayableSource returns null).
+  function sprayAddButton(d) {
+    const src = sprayableSource(d);
+    if (!src) return "";
+    return `<button class="spray-add-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' title="Add to a Spray">+ Spray</button>`;
+  }
+
   // Inline .btn-style link for the reader pane's action row, alongside
   // Open original / Try reader view.
   function tipSubscribeButton(d) {
@@ -489,6 +519,9 @@
         main.querySelectorAll(".buzz-badge").forEach(btn => {
           btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
         });
+        main.querySelectorAll(".spray-add-btn").forEach(btn => {
+          btn.addEventListener("click", () => openSprayPicker(JSON.parse(btn.dataset.spraySource)));
+        });
       }
 
       const needsLiveThumb = getReadDisplay() === "headlines"
@@ -543,6 +576,7 @@
           ${d.link ? `<a class="btn primary reader-open-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">${d.is_video ? "Watch on YouTube ↗" : "Open original ↗"}</a>
           ${d.is_video ? "" : `<button class="btn" id="readerMoreBtn">Try reader view</button>`}` : ""}
           ${tipSubscribeButton(d)}
+          ${sprayAddButton(d)}
         </div>
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         <div class="reader-frame-wrap" id="readerFrameWrap" hidden></div>
@@ -575,6 +609,8 @@
     }
     const buzzBtn = pane.querySelector(".buzz-badge");
     if (buzzBtn) buzzBtn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
+    const sprayBtn = pane.querySelector(".spray-add-btn");
+    if (sprayBtn) sprayBtn.addEventListener("click", () => openSprayPicker(JSON.parse(sprayBtn.dataset.spraySource)));
     if (typeof d.id === "number") {
       if (d.id in paywallStatusMap) applyPaywallBadge(d.id, paywallStatusMap[d.id]);
       else loadPaywallStatus([d.id]);
@@ -691,7 +727,7 @@
               ${excerpt ? `<div class="card-scroll-excerpt">${escapeHtml(excerpt)}</div>` : ""}
             </div>
           </a>
-          ${tipSubscribeBadge(d)}
+          ${tipSubscribeBadge(d)}${sprayAddButton(d)}
           ${discussUrl ? `<a class="card-scroll-discuss" href="${escapeHtml(discussUrl)}" target="_blank" rel="noopener">See the conversation on Bluesky ↗</a>` : ""}
         </div>`;
     }
@@ -711,7 +747,7 @@
             <div class="card-title">${escapeHtml(title)}</div>
             ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt)}</div>` : ""}
           </a>
-          ${tipSubscribeBadge(d)}
+          ${tipSubscribeBadge(d)}${sprayAddButton(d)}
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         </div>`;
     }
@@ -723,7 +759,7 @@
             <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
             <div class="card-title">${escapeHtml(title)}</div>
           </a>
-          ${tipSubscribeBadge(d)}
+          ${tipSubscribeBadge(d)}${sprayAddButton(d)}
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         </div>`;
     }
@@ -740,7 +776,7 @@
             ${thumb}
           </div>
         </a>
-        ${tipSubscribeBadge(d)}
+        ${tipSubscribeBadge(d)}${sprayAddButton(d)}
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
       </div>`;
   }
@@ -1011,6 +1047,131 @@
   function debounce(fn, ms) {
     let t = null;
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
+  }
+
+  // ----- "Add to a Spray" quick picker — opens straight off a post (card
+  // or reader pane). Check/uncheck which of your own Sprays this source
+  // belongs to, or spin up a brand new one with it pre-added. Toggles
+  // happen immediately, no separate Save step — same "tap it, it's done"
+  // feel as a save-to-a-playlist picker. This is also the general answer
+  // to "editing a Spray is hard" — it's the one place a reader can add a
+  // source to an EXISTING Spray at all; the guided Create flow only ever
+  // builds new ones. -----
+
+  let sprayPickerSource = null;
+  let sprayPickerMixes = null; // [{slug, name, has_source}] once loaded
+
+  function closeSprayPicker() {
+    const el = document.getElementById("sprayPickerOverlay");
+    if (el) el.remove();
+    sprayPickerSource = null;
+    sprayPickerMixes = null;
+  }
+
+  async function openSprayPicker(source) {
+    if (!currentUser) { toast("Sign in on the You tab to add this to a Spray."); return; }
+    if (!source) { toast("Can't add this to a Spray."); return; }
+    sprayPickerSource = source;
+    sprayPickerMixes = null;
+    renderSprayPicker(true);
+    try {
+      const params = source.source_type === "custom"
+        ? `custom_source_id=${source.custom_source_id}`
+        : `outlet=${encodeURIComponent(source.outlet)}`;
+      sprayPickerMixes = await api(`/api/my/mixes/for-source?${params}`);
+    } catch (e) {
+      sprayPickerMixes = [];
+      toast(e.message || "Couldn't load your Sprays.");
+    }
+    renderSprayPicker(false);
+  }
+
+  function renderSprayPicker(loading) {
+    let el = document.getElementById("sprayPickerOverlay");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "sprayPickerOverlay";
+      el.className = "spray-picker-overlay";
+      document.body.appendChild(el);
+      el.addEventListener("click", (e) => { if (e.target === el) closeSprayPicker(); });
+    }
+    if (!sprayPickerSource) return; // closed mid-fetch
+    const label = sprayPickerSource.label || "this source";
+    let body;
+    if (loading) {
+      body = `<div class="state-block-mini">Loading your Sprays…</div>`;
+    } else if (!sprayPickerMixes || sprayPickerMixes.length === 0) {
+      body = `<div class="spray-picker-empty">You don't have any Sprays yet — start one below.</div>`;
+    } else {
+      body = `<div class="spray-picker-list">` + sprayPickerMixes.map(m => `
+        <label class="spray-picker-row">
+          <input type="checkbox" data-slug="${escapeHtml(m.slug)}" ${m.has_source ? "checked" : ""}>
+          <span>${escapeHtml(m.name)}</span>
+        </label>`).join("") + `</div>`;
+    }
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span>Add <strong>${escapeHtml(label)}</strong> to a Spray</span>
+          <button class="spray-picker-close" id="sprayPickerClose" aria-label="Close">×</button>
+        </div>
+        ${body}
+        <div class="spray-picker-newrow">
+          <input type="text" id="sprayPickerNewName" placeholder="New Spray name…" maxlength="80">
+          <button class="btn" id="sprayPickerNewBtn">+ New</button>
+        </div>
+      </div>`;
+    document.getElementById("sprayPickerClose").addEventListener("click", closeSprayPicker);
+    if (!loading) {
+      el.querySelectorAll(".spray-picker-row input[type=checkbox]").forEach(cb => {
+        cb.addEventListener("change", () => toggleSprayPickerMix(cb.dataset.slug, cb));
+      });
+    }
+    const newBtn = document.getElementById("sprayPickerNewBtn");
+    if (newBtn) newBtn.addEventListener("click", createSprayFromPicker);
+  }
+
+  async function toggleSprayPickerMix(slug, checkboxEl) {
+    checkboxEl.disabled = true;
+    try {
+      const body = sprayPickerSource.source_type === "custom"
+        ? { source_type: "custom", custom_source_id: sprayPickerSource.custom_source_id }
+        : { source_type: "admin_outlet", outlet: sprayPickerSource.outlet };
+      const result = await api(`/api/my/mixes/${encodeURIComponent(slug)}/toggle-source`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      const mix = sprayPickerMixes.find(m => m.slug === slug);
+      if (mix) mix.has_source = result.added;
+      toast(result.added ? "Added." : "Removed.");
+    } catch (e) {
+      checkboxEl.checked = !checkboxEl.checked;
+      toast(e.message || "Couldn't update that Spray.");
+    } finally {
+      checkboxEl.disabled = false;
+    }
+  }
+
+  async function createSprayFromPicker() {
+    const input = document.getElementById("sprayPickerNewName");
+    const name = (input.value || "").trim();
+    if (!name) { toast("Name your Spray first."); return; }
+    const btn = document.getElementById("sprayPickerNewBtn");
+    btn.disabled = true;
+    try {
+      const sources = sprayPickerSource.source_type === "custom"
+        ? [{ source_type: "custom", custom_source_id: sprayPickerSource.custom_source_id }]
+        : [{ source_type: "admin_outlet", outlet: sprayPickerSource.outlet }];
+      const created = await api("/api/mixes", { method: "POST", body: JSON.stringify({ name, sources }) });
+      sprayPickerMixes = sprayPickerMixes || [];
+      sprayPickerMixes.unshift({ slug: created.slug, name, has_source: true });
+      toast(`Created "${name}."`);
+      renderSprayPicker(false);
+    } catch (e) {
+      toast(e.message || "Couldn't create that Spray.");
+    } finally {
+      if (btn) btn.disabled = false;
+    }
   }
 
   // ----- Guided Create flow: name -> add one -> suggest 5 -> repeat -----
