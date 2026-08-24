@@ -1447,9 +1447,11 @@
       case "co2":
         if (!data.co2) return null;
         return `<div class="panel-stat"><span class="panel-stat-value">${data.co2}</span><span class="panel-stat-label">ppm CO₂ · pre-industrial was ${data.co2PreIndustrial}</span></div>`;
-      case "tempanomaly":
+      case "tempanomaly": {
         if (data.temp === null || data.temp === undefined) return null;
-        return `<div class="panel-stat"><span class="panel-stat-value">${data.temp > 0 ? "+" : ""}${data.temp}°C</span><span class="panel-stat-label">global temp vs. 1951–1980 avg</span></div>`;
+        const tempF = Math.round(data.temp * 9 / 5 * 100) / 100;
+        return `<div class="panel-stat"><span class="panel-stat-value">${tempF > 0 ? "+" : ""}${tempF}°F</span><span class="panel-stat-label">global temp vs. 1951–1980 avg</span></div>`;
+      }
       case "seaice":
         if (!data.ice) return null;
         return `<div class="panel-stat"><span class="panel-stat-value">${data.ice}M km²</span><span class="panel-stat-label">Arctic sea ice extent</span></div>`;
@@ -1522,6 +1524,14 @@
     }
   }
 
+  function panelDateLabel() {
+    return new Date().toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "long",
+      day: "numeric",
+    });
+  }
+
   // Desktop-only side panel: fills the dead space beyond the centered
   // main column on wide screens. Fetches once per page load (cached);
   // only fetches when the layout is actually Desktop, since CSS hides
@@ -1536,13 +1546,13 @@
     await syncPanelPrefsFromAccount();
 
     if (getPanelHidden()) {
-      el.innerHTML = `<div class="panel-head"><span class="desktop-bsky-rail-head">Panel hidden</span>${renderPanelSettings()}</div>`;
+      el.innerHTML = `<div class="panel-head"><div class="panel-head-text"><span class="desktop-bsky-rail-head">Panel hidden</span><span class="panel-date">${panelDateLabel()}</span></div>${renderPanelSettings()}</div>`;
       wirePanelSettingsEvents();
       return;
     }
 
     if (!desktopPanelDataCache) {
-      el.innerHTML = `<div class="panel-head"><span class="desktop-bsky-rail-head">Today</span>${renderPanelSettings()}</div><div class="state-block-mini">Loading…</div>`;
+      el.innerHTML = `<div class="panel-head"><div class="panel-head-text"><span class="desktop-bsky-rail-head">Today</span><span class="panel-date">${panelDateLabel()}</span></div>${renderPanelSettings()}</div><div class="state-block-mini">Loading…</div>`;
       wirePanelSettingsEvents();
       desktopPanelDataCache = await fetchPanelData();
     }
@@ -1555,7 +1565,7 @@
       .join("");
 
     el.innerHTML = `
-      <div class="panel-head"><span class="desktop-bsky-rail-head">Today</span>${renderPanelSettings()}</div>
+      <div class="panel-head"><div class="panel-head-text"><span class="desktop-bsky-rail-head">Today</span><span class="panel-date">${panelDateLabel()}</span></div>${renderPanelSettings()}</div>
       ${moduleHtml || `<div class="state-block-mini">Nothing to show — everything's hidden or unavailable right now.</div>`}`;
     wirePanelSettingsEvents();
   }
