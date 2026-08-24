@@ -383,8 +383,8 @@
     el.innerHTML = pills.map(p => {
       const active = activeSprayKeys.has(p.key);
       return `
-        <button class="spray-pill${active ? " active" : ""}" data-key="${escapeHtml(p.key)}">
-          ${escapeHtml(p.label)}${active && p.key !== "all" ? `<span class="spray-pill-x" data-key="${escapeHtml(p.key)}">×</span>` : ""}
+        <button class="spray-pill${active ? " active" : ""}" data-key="${escapeHtml(p.key)}" title="${escapeHtml(p.label)}">
+          <span class="spray-pill-label">${escapeHtml(p.label)}</span>${active && p.key !== "all" ? `<span class="spray-pill-x" data-key="${escapeHtml(p.key)}">×</span>` : ""}
         </button>`;
     }).join("") + `<button class="spray-pill spray-pill-create" data-key="__create">+ Create</button>`;
     el.querySelectorAll(".spray-pill-x").forEach(x => {

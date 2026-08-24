@@ -525,10 +525,19 @@ button { font-family: inherit; cursor: pointer; }
      no-JS improvement for the "many pills on a narrow phone" case;
      doesn't change layout/behavior when the bar isn't overflowing. */
   scroll-snap-type: x proximity;
+  /* Edge-fade hint: a static mask (no scroll-position JS needed) that
+     softens both edges so a reader can tell there's more to scroll to
+     before they've swiped at all. Harmless when the bar doesn't
+     overflow — nothing sits under the faded strip in that case. */
+  mask-image: linear-gradient(to right, transparent, black 18px, black calc(100% - 18px), transparent);
+  -webkit-mask-image: linear-gradient(to right, transparent, black 18px, black calc(100% - 18px), transparent);
 }
 .spray-toggle::-webkit-scrollbar { display: none; }
 .spray-pill {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  max-width: 45vw;
   padding: 7px 14px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -540,12 +549,17 @@ button { font-family: inherit; cursor: pointer; }
   white-space: nowrap;
   scroll-snap-align: start;
 }
+.spray-pill-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* Narrow phones specifically (not the general <700px mobile
    breakpoint) — tighten pill padding/type a touch so more of the bar
    reads at a glance before a reader needs to scroll at all. */
 @media (max-width: 380px) {
-  .spray-pill { padding: 6px 11px; font-size: 12px; }
+  .spray-pill { padding: 6px 11px; font-size: 12px; max-width: 52vw; }
 }
 .spray-pill.active {
   background: var(--ink);
