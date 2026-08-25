@@ -829,9 +829,19 @@
     };
   }
   let sourceSuggestCache = null; // [{outlet, section}] — the handful shown as "starter packs"
-  let sourcesShowStarterPacks = false; // collapsed by default — tapping the Starter packs door reveals these inline
-  let sourcesBrowseAllOpen = false;
+  // Sources tab is two named areas, not a busy dashboard:
+  //   YOUR SOURCES  — everything you can build a Spray from, searchable,
+  //     each one drills into a detail view (which of your Sprays it's
+  //     already in) that ends at the same "+ Spray" picker used from a
+  //     post — this is the one general way to EDIT a Spray's contents.
+  //   EXPAND YOUR MIND — a handful of suggestions plus a door into the
+  //     full guided Create flow, for building something brand new.
+  // Replaces the earlier "two doors" (Starter packs / Create your own)
+  // framing — those two ideas were largely the same thing wearing
+  // different clothes; this collapses them into one coherent area.
   let sourcesBrowseFilter = "";
+  let sourcesDetailOutlet = null; // which registry row is expanded
+  let sourcesDetailMixes = null;  // cached for-source() result for it
 
   async function loadSourceSuggestions() {
     if (sourceSuggestCache) return sourceSuggestCache;
@@ -860,96 +870,145 @@
       // Filter on feed_type, not feed_url presence — an Organization can have no RSS
       // (e.g. Degenerate Art, YouTube-only) and still belong here.
       sourcesRegistryCache = (Array.isArray(sources) ? sources : []).filter(s => s.feed_type !== "journalist");
-
       const orgSources = sourcesRegistryCache;
 
-      // Two doors, not a busy dashboard: pick a starter pack (today's
-      // suggestion engine, reframed) or jump straight into Create. Your
-      // Sprays and the full registry both still exist, just tucked below,
-      // lighter-weight, not competing with the two doors for attention.
+      // ----- AREA 1: Your Sources -----
       let html = `
-        <div class="sources-intro">
-          <div class="sources-intro-rule"></div>
-          <div class="sources-intro-title">Pick a starter pack of feeds or create your own.</div>
-        </div>
-        <div class="sources-doors">
-          <button class="sources-door${sourcesShowStarterPacks ? " active" : ""}" id="doorStarterPacks">
-            <span class="sources-door-title">Starter packs</span>
-            <span class="sources-door-sub">A few to try right now</span>
-          </button>
-          <button class="sources-door" id="doorCreateOwn">
-            <span class="sources-door-title">Create your own</span>
-            <span class="sources-door-sub">Add sources one at a time</span>
-          </button>
+        <div class="sources-area-head">
+          <div class="sources-area-rule"></div>
+          <div class="sources-area-title">Your Sources</div>
+          <div class="sources-area-sub">Everything you can build a Spray from. Tap one to see where it already lives.</div>
         </div>`;
 
-      if (sourcesShowStarterPacks && suggestions.length > 0) {
-        html += `<div class="source-suggest-grid" style="margin-top:10px;">${suggestions.map(s => `
+      if (currentUser) {
+        html += `<div class="section-label">Your Sprays</div>` + renderYourSpraysSection(bar);
+      } else {
+        html += `<p class="sources-signin-hint">Sign in (on the You tab) to save and organize your own Sprays.</p>`;
+      }
+
+      html += `<div class="section-label" style="margin-top:22px;">All sources (${orgSources.length})</div>`;
+      html += `<input class="create-flow-input" id="sourcesBrowseSearch" placeholder="Search sources..." value="${escapeHtml(sourcesBrowseFilter)}" style="margin:8px 0 10px;">`;
+
+      const filtered = sourcesBrowseFilter
+        ? orgSources.filter(s => (s.outlet || s.name || "").toLowerCase().includes(sourcesBrowseFilter.toLowerCase()))
+        : orgSources;
+
+      html += filtered.length === 0
+        ? `<div class="card"><div class="card-meta">No sources match.</div></div>`
+        : `<div class="card" style="padding:0;">` + filtered.map((s, i) => renderSourceRow(s, i > 0)).join("") + `</div>`;
+
+      // ----- AREA 2: Expand Your Mind -----
+      html += `
+        <div class="sources-area-head" style="margin-top:34px;">
+          <div class="sources-area-rule"></div>
+          <div class="sources-area-title">Expand Your Mind</div>
+          <div class="sources-area-sub">A few you might like — tap one to add it to a Spray, or start something brand new.</div>
+        </div>`;
+
+      if (suggestions.length > 0) {
+        html += `<div class="source-suggest-grid">${suggestions.map(s => `
             <button class="source-suggest-pill" data-outlet="${escapeHtml(s.outlet)}">
               ${escapeHtml(s.outlet)}${s.section ? `<span class="source-suggest-sub">${escapeHtml(s.section)}</span>` : ""}
             </button>`).join("")}
           </div>`;
       }
-
-      if (currentUser) {
-        html += `<div class="section-label" style="margin-top:30px;">Your Sprays</div>` + renderYourSpraysSection(bar);
-      } else {
-        html += `<p class="sources-signin-hint">Sign in (on the You tab) to save and organize your own Sprays.</p>`;
-      }
-
-      html += `<button class="link-toggle" id="browseAllToggle">${sourcesBrowseAllOpen ? "Hide full list" : `Browse all sources (${orgSources.length}) →`}</button>`;
-
-      if (sourcesBrowseAllOpen) {
-        const filtered = sourcesBrowseFilter
-          ? orgSources.filter(s => (s.outlet || s.name || "").toLowerCase().includes(sourcesBrowseFilter.toLowerCase()))
-          : orgSources;
-        html += `<input class="create-flow-input" id="sourcesBrowseSearch" placeholder="Search sources..." value="${escapeHtml(sourcesBrowseFilter)}" style="margin:10px 0;">`;
-        html += filtered.length === 0
-          ? `<div class="card"><div class="card-meta">No sources match.</div></div>`
-          : filtered.map(s => `
-            <div class="card">
-              <div class="card-title">${escapeHtml(s.outlet || s.name || "")}</div>
-            </div>`).join("");
-      }
+      html += `<button class="btn" id="startNewSprayBtn" style="margin-top:14px;width:100%;">+ Start a brand-new Spray</button>`;
 
       main.innerHTML = html;
 
-      document.getElementById("doorStarterPacks").addEventListener("click", () => {
-        sourcesShowStarterPacks = !sourcesShowStarterPacks;
-        renderSources();
-      });
-      document.getElementById("doorCreateOwn").addEventListener("click", openCreateFlow);
       wireYourSpraysSection();
+      wireSourcesArea1();
 
       main.querySelectorAll(".source-suggest-pill").forEach(btn => {
-        btn.addEventListener("click", () => startFlowFromSuggestion(btn.dataset.outlet));
+        btn.addEventListener("click", () => openSprayPicker({ source_type: "admin_outlet", outlet: btn.dataset.outlet, label: btn.dataset.outlet }));
       });
-
-      document.getElementById("browseAllToggle").addEventListener("click", () => {
-        sourcesBrowseAllOpen = !sourcesBrowseAllOpen;
-        renderSources();
-      });
-
-      const browseSearch = document.getElementById("sourcesBrowseSearch");
-      if (browseSearch) {
-        browseSearch.addEventListener("input", debounce((e) => {
-          sourcesBrowseFilter = e.target.value;
-          renderSources();
-        }, 200));
-        // keep focus after a debounced re-render triggered by typing
-        browseSearch.focus();
-        browseSearch.setSelectionRange(browseSearch.value.length, browseSearch.value.length);
-      }
+      document.getElementById("startNewSprayBtn").addEventListener("click", openCreateFlow);
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "REGISTRY UNREACHABLE", body: e.message || "Could not load sources." });
     }
   }
 
-  function startFlowFromSuggestion(outlet) {
-    if (!currentUser) { toast("Sign in on the You tab to create a Spray."); return; }
-    createFlowState = newCreateFlowState();
-    addPicked({ source_type: "admin_outlet", outlet, label: outlet });
-    refreshSuggestions();
+  // A single row in the searchable registry list. Tapping it toggles an
+  // inline detail (fetched lazily, only while open) showing which of the
+  // reader's own Sprays already carry it, ending in the same "+ Spray"
+  // picker used from a post — the drill-down IS the edit action, not a
+  // separate mechanism.
+  function renderSourceRow(s, needsBorder) {
+    const outlet = s.outlet || s.name || "";
+    const isOpen = sourcesDetailOutlet === outlet;
+    let detail = "";
+    if (isOpen) {
+      if (!currentUser) {
+        detail = `<div class="source-row-detail"><p class="sources-signin-hint" style="margin:0;">Sign in on the You tab to add this to a Spray.</p></div>`;
+      } else if (!sourcesDetailMixes) {
+        detail = `<div class="source-row-detail"><div class="state-block-mini">Loading…</div></div>`;
+      } else {
+        const inMixes = sourcesDetailMixes.filter(m => m.has_source);
+        detail = `<div class="source-row-detail">
+          ${inMixes.length > 0
+            ? `<div class="source-row-in">In your Sprays: ${inMixes.map(m => escapeHtml(m.name)).join(", ")}</div>`
+            : `<div class="source-row-in muted">Not in any of your Sprays yet.</div>`}
+          <button class="btn" data-detail-add="${escapeHtml(outlet)}">+ Add to a Spray</button>
+        </div>`;
+      }
+    }
+    return `
+      <div class="source-row${needsBorder ? " bordered" : ""}" data-outlet="${escapeHtml(outlet)}">
+        <button class="source-row-head">
+          <span>${escapeHtml(outlet)}</span>
+          <span class="source-row-chevron">${isOpen ? "−" : "+"}</span>
+        </button>
+        ${detail}
+      </div>`;
+  }
+
+  function wireSourcesArea1() {
+    const search = document.getElementById("sourcesBrowseSearch");
+    if (search) {
+      search.addEventListener("input", debounce((e) => {
+        sourcesBrowseFilter = e.target.value;
+        renderSources();
+      }, 200));
+      // keep focus after a debounced re-render triggered by typing
+      search.focus();
+      search.setSelectionRange(search.value.length, search.value.length);
+    }
+
+    document.querySelectorAll(".source-row-head").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const row = btn.closest(".source-row");
+        const outlet = row.dataset.outlet;
+        if (sourcesDetailOutlet === outlet) {
+          sourcesDetailOutlet = null;
+          sourcesDetailMixes = null;
+          renderSources();
+          return;
+        }
+        sourcesDetailOutlet = outlet;
+        sourcesDetailMixes = null;
+        renderSources();
+        if (!currentUser) return;
+        try {
+          const result = await api(`/api/my/mixes/for-source?outlet=${encodeURIComponent(outlet)}`);
+          if (sourcesDetailOutlet === outlet) {
+            sourcesDetailMixes = result;
+            renderSources();
+          }
+        } catch (e) {
+          if (sourcesDetailOutlet === outlet) {
+            sourcesDetailMixes = [];
+            renderSources();
+          }
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-detail-add]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const outlet = btn.dataset.detailAdd;
+        openSprayPicker({ source_type: "admin_outlet", outlet, label: outlet });
+      });
+    });
   }
 
   // ----- "Your Sprays" bar editor -----
@@ -1064,8 +1123,17 @@
   function closeSprayPicker() {
     const el = document.getElementById("sprayPickerOverlay");
     if (el) el.remove();
+    const closedSource = sprayPickerSource;
     sprayPickerSource = null;
     sprayPickerMixes = null;
+    // If the Sources tab's drill-down detail was open on the exact source
+    // this picker just edited, refresh it — otherwise it'd show stale
+    // "in your Sprays" membership after a toggle.
+    if (closedSource && closedSource.source_type === "admin_outlet" &&
+        activeTab === "sources" && sourcesDetailOutlet === closedSource.outlet) {
+      sourcesDetailMixes = null;
+      renderSources();
+    }
   }
 
   async function openSprayPicker(source) {
