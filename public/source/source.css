@@ -171,13 +171,6 @@ button { font-family: inherit; cursor: pointer; }
   font-weight: 700;
 }
 
-.view-menu-item.disabled {
-  color: var(--ink-muted);
-  cursor: not-allowed;
-}
-
-.view-menu-item.disabled:hover { background: transparent; }
-
 .view-menu-sep {
   height: 1px;
   background: var(--line);
@@ -1472,8 +1465,17 @@ body[data-layout="desktop"] #main.read-layout {
   background: var(--surface);
 }
 
+/* Scroll — the reader pane is Desktop's primary reading surface, so this
+   is where Scroll's full-bleed, one-story identity actually has to live
+   (the side rail's own Scroll treatment is a compact list, not this).
+   Taller image, bigger display type, more room, a plain "join the
+   conversation" link — matches the mobile Scroll card's feel without
+   ever showing a like/repost count. */
+.reader-image-scroll { aspect-ratio: 16 / 10; }
+
 .reader-body { padding: 18px 22px 22px; }
 .reader-body-textonly { padding-top: 24px; }
+.reader-body-scroll { padding: 26px 30px 28px; }
 
 .reader-title {
   font-family: var(--display);
@@ -1484,12 +1486,22 @@ body[data-layout="desktop"] #main.read-layout {
   color: var(--ink);
 }
 .reader-title-large { font-size: 30px; }
+.reader-title-scroll { font-size: 34px; line-height: 1.18; margin: 14px 0 16px; }
 
 .reader-excerpt {
   font-size: 15.5px;
   line-height: 1.6;
   color: var(--ink-muted);
   margin: 0 0 18px;
+}
+.reader-excerpt-scroll { font-size: 17px; line-height: 1.7; margin-bottom: 14px; }
+
+.reader-discuss-scroll {
+  display: inline-block;
+  margin: 0 0 20px;
+  font-size: 13.5px;
+  color: var(--accent-dim);
+  text-decoration: underline;
 }
 
 .reader-actions {

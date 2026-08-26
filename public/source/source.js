@@ -61,15 +61,6 @@
   function setLayoutMode(mode) {
     localStorage.setItem(LAYOUT_KEY, mode);
     document.body.dataset.layout = mode;
-    // Scroll mode's full-bleed, one-story treatment doesn't have a real
-    // Desktop equivalent yet (confirmed not working well there) — fall
-    // back to Expanded rather than show a mode that looks broken. This
-    // only touches the DISPLAY preference, not the layout preference
-    // itself; switching back to Mobile does not restore Scroll
-    // automatically, since that's surprising for a passive layout swap.
-    if (mode === "desktop" && getReadDisplay() === "scroll") {
-      setReadDisplay("expanded");
-    }
     renderLayoutReview();
     renderViewMenu();
     renderActiveTab();
@@ -113,16 +104,12 @@
     const el = document.getElementById("viewMenu");
     if (!el) return;
     const mode = getReadDisplay();
-    // Scroll doesn't have a real Desktop treatment yet (falls back to
-    // looking like Expanded, which reads as broken, not intentional) —
-    // disable rather than offer a mode that doesn't work on this layout.
-    const scrollDisabled = getLayoutMode() === "desktop";
     el.innerHTML = `
       <button class="view-menu-btn" id="viewMenuBtn" aria-haspopup="true" aria-expanded="false">VIEW ▾</button>
       <div class="view-menu-list" id="viewMenuList" hidden>
         <button class="view-menu-item${mode === "headlines" ? " active" : ""}" data-action="headlines">Headlines Only</button>
         <button class="view-menu-item${mode === "expanded" ? " active" : ""}" data-action="expanded">Expanded</button>
-        <button class="view-menu-item${mode === "scroll" ? " active" : ""}${scrollDisabled ? " disabled" : ""}" data-action="scroll"${scrollDisabled ? ` disabled title="Scroll isn't available in Desktop preview yet"` : ""}>Scroll</button>
+        <button class="view-menu-item${mode === "scroll" ? " active" : ""}" data-action="scroll">Scroll</button>
         <div class="view-menu-sep"></div>
         <button class="view-menu-item" data-action="customize">Customize</button>
       </div>`;
@@ -136,7 +123,6 @@
     });
     list.querySelectorAll(".view-menu-item").forEach(item => {
       item.addEventListener("click", () => {
-        if (item.disabled) return;
         list.hidden = true;
         btn.setAttribute("aria-expanded", "false");
         const action = item.dataset.action;
@@ -660,11 +646,14 @@
     main.innerHTML = `
       <div class="reader-pane" id="readerPane"></div>
       <div class="reader-feed" id="readerFeed"></div>`;
-    renderReaderPane(selectedDispatch, trendingLinks.has(selectedDispatch.link));
+    renderReaderPane(selectedDispatch, trendingLinks.has(selectedDispatch.link), trendingLinks.get(selectedDispatch.link));
     renderReaderFeed(shown, trendingLinks);
   }
 
-  function renderReaderPane(d, isTrending) {
+  // discussUrl: the matching Bluesky post for this story, if one exists —
+  // same Map every other Scroll surface in the app reads from
+  // (getTrendingLinks()). Only ever shown as a plain link, never a count.
+  function renderReaderPane(d, isTrending, discussUrl) {
     const pane = document.getElementById("readerPane");
     if (!pane || !d) return;
     const excerpt = (d.excerpt || "").trim();
@@ -675,12 +664,20 @@
     // succeeds and returns real content, that swap happens independently
     // in the More-button handler below and isn't affected by this.
     const noImage = !d.image_url;
+    // Scroll — the reader pane is the PRIMARY reading surface on Desktop,
+    // so this is where Scroll's actual "one story, full-bleed, roomy"
+    // identity has to live, not the side rail (which already got its own
+    // Scroll treatment as a compact list). Taller image, bigger display
+    // type, more breathing room, and the same plain "see the conversation"
+    // link the rest of Scroll uses — no counts, ever.
+    const scrollMode = getReadDisplay() === "scroll";
     pane.innerHTML = `
-      ${d.image_url ? `<img class="reader-image" src="${escapeHtml(d.image_url)}" alt="" loading="lazy">` : ""}
-      <div class="reader-body${noImage ? " reader-body-textonly" : ""}">
+      ${d.image_url ? `<img class="reader-image${scrollMode ? " reader-image-scroll" : ""}" src="${escapeHtml(d.image_url)}" alt="" loading="lazy">` : ""}
+      <div class="reader-body${noImage ? " reader-body-textonly" : ""}${scrollMode ? " reader-body-scroll" : ""}">
         <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
-        <h2 class="reader-title${noImage ? " reader-title-large" : ""}">${escapeHtml(title)}</h2>
-        ${excerpt ? `<p class="reader-excerpt">${escapeHtml(excerpt)}</p>` : ""}
+        <h2 class="reader-title${noImage ? " reader-title-large" : ""}${scrollMode ? " reader-title-scroll" : ""}">${escapeHtml(title)}</h2>
+        ${excerpt ? `<p class="reader-excerpt${scrollMode ? " reader-excerpt-scroll" : ""}">${escapeHtml(excerpt)}</p>` : ""}
+        ${scrollMode && discussUrl ? `<a class="reader-discuss-scroll" href="${escapeHtml(discussUrl)}" target="_blank" rel="noopener">See the conversation on Bluesky ↗</a>` : ""}
         <div class="reader-actions">
           ${d.link ? `<a class="btn primary reader-open-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">${d.is_video ? "Watch on YouTube ↗" : "Open original ↗"}</a>
           ${d.is_video ? "" : `<button class="btn" id="readerMoreBtn">Try reader view</button>`}` : ""}
@@ -797,7 +794,7 @@
         const d = shown.find(x => String(x.id) === btn.dataset.id);
         if (!d) return;
         selectedDispatch = d;
-        renderReaderPane(d, trendingLinks.has(d.link));
+        renderReaderPane(d, trendingLinks.has(d.link), trendingLinks.get(d.link));
         feed.querySelectorAll(".feed-item").forEach(b => b.classList.remove("active"));
         btn.classList.add("active");
       });
