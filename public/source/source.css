@@ -171,6 +171,13 @@ button { font-family: inherit; cursor: pointer; }
   font-weight: 700;
 }
 
+.view-menu-item.disabled {
+  color: var(--ink-muted);
+  cursor: not-allowed;
+}
+
+.view-menu-item.disabled:hover { background: transparent; }
+
 .view-menu-sep {
   height: 1px;
   background: var(--line);

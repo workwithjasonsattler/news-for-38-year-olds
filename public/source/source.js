@@ -61,7 +61,17 @@
   function setLayoutMode(mode) {
     localStorage.setItem(LAYOUT_KEY, mode);
     document.body.dataset.layout = mode;
+    // Scroll mode's full-bleed, one-story treatment doesn't have a real
+    // Desktop equivalent yet (confirmed not working well there) — fall
+    // back to Expanded rather than show a mode that looks broken. This
+    // only touches the DISPLAY preference, not the layout preference
+    // itself; switching back to Mobile does not restore Scroll
+    // automatically, since that's surprising for a passive layout swap.
+    if (mode === "desktop" && getReadDisplay() === "scroll") {
+      setReadDisplay("expanded");
+    }
     renderLayoutReview();
+    renderViewMenu();
     renderActiveTab();
     renderDesktopSidePanel();
   }
@@ -103,12 +113,16 @@
     const el = document.getElementById("viewMenu");
     if (!el) return;
     const mode = getReadDisplay();
+    // Scroll doesn't have a real Desktop treatment yet (falls back to
+    // looking like Expanded, which reads as broken, not intentional) —
+    // disable rather than offer a mode that doesn't work on this layout.
+    const scrollDisabled = getLayoutMode() === "desktop";
     el.innerHTML = `
       <button class="view-menu-btn" id="viewMenuBtn" aria-haspopup="true" aria-expanded="false">VIEW ▾</button>
       <div class="view-menu-list" id="viewMenuList" hidden>
         <button class="view-menu-item${mode === "headlines" ? " active" : ""}" data-action="headlines">Headlines Only</button>
         <button class="view-menu-item${mode === "expanded" ? " active" : ""}" data-action="expanded">Expanded</button>
-        <button class="view-menu-item${mode === "scroll" ? " active" : ""}" data-action="scroll">Scroll</button>
+        <button class="view-menu-item${mode === "scroll" ? " active" : ""}${scrollDisabled ? " disabled" : ""}" data-action="scroll"${scrollDisabled ? ` disabled title="Scroll isn't available in Desktop preview yet"` : ""}>Scroll</button>
         <div class="view-menu-sep"></div>
         <button class="view-menu-item" data-action="customize">Customize</button>
       </div>`;
@@ -122,6 +136,7 @@
     });
     list.querySelectorAll(".view-menu-item").forEach(item => {
       item.addEventListener("click", () => {
+        if (item.disabled) return;
         list.hidden = true;
         btn.setAttribute("aria-expanded", "false");
         const action = item.dataset.action;
@@ -409,6 +424,7 @@
       { key: "all", label: "All" },
       { key: sprayBarData.news.slug, label: sprayDisplayName(sprayBarData.news.slug, sprayBarData.news.name) || "News" },
       { key: "__youtube", label: "Best of YouTube" },
+      { key: "__bluesky", label: "Best of Bluesky" },
     ].concat(sprayBarData.sprays.map(s => ({ key: s.slug, label: sprayDisplayName(s.slug, s.name) })));
     el.innerHTML = pills.map(p => {
       const active = activeSprayKeys.has(p.key);
@@ -443,6 +459,18 @@
         date: v.published_at,
         excerpt: "",
         is_video: true,
+      }));
+    }
+    if (key === "__bluesky") {
+      const posts = await api("/api/nerve-center/bluesky");
+      return (Array.isArray(posts) ? posts : []).map((p, i) => ({
+        id: `bsky-${i}`,
+        title: p.text || "",
+        link: p.link || p.blueskyUrl,
+        image_url: null,
+        outlet: p.outlet,
+        date: p.createdAt ? new Date(p.createdAt).toISOString() : null,
+        excerpt: "",
       }));
     }
     const mix = await api(`/api/mixes/${encodeURIComponent(key)}`);
