@@ -237,10 +237,50 @@
   // not nested inside the card's outbound <a>, same pattern already used
   // for the trending badge. Renders nothing when the dispatch can't be
   // mapped to a real source (sprayableSource returns null).
+  //
+  // When the reader is currently viewing exactly ONE of their own,
+  // non-official Sprays (see quickRemoveContext below), every item shown
+  // is — by construction, since it was fetched FROM that Spray's own
+  // source list — already a member of it. In that context the button
+  // flips to a one-tap "− Remove" instead of opening the picker, so
+  // removing is exactly as fast as adding was: one click, no dialog.
   function sprayAddButton(d) {
     const src = sprayableSource(d);
     if (!src) return "";
+    if (quickRemoveContext) {
+      return `<button class="spray-add-btn spray-remove-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' data-remove-slug="${escapeHtml(quickRemoveContext.slug)}" title="Remove from ${escapeHtml(quickRemoveContext.name)}">− ${escapeHtml(quickRemoveContext.name)}</button>`;
+    }
     return `<button class="spray-add-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' title="Add to a Spray">+ Spray</button>`;
+  }
+
+  // Removes a source from the Spray the reader is currently viewing, with
+  // no picker round-trip — the direct counterpart to sprayAddButton's
+  // quick-remove state above. Always re-renders Read on success (via
+  // `onSuccess`) rather than pulling just the clicked card, since one
+  // outlet/source can back several cards in the same view and a source
+  // removal should clear all of them, not just the one that was clicked.
+  async function quickRemoveFromActiveSpray(source, slug, btnEl, onSuccess) {
+    if (btnEl) btnEl.disabled = true;
+    try {
+      const body = source.source_type === "custom"
+        ? { source_type: "custom", custom_source_id: source.custom_source_id }
+        : { source_type: "admin_outlet", outlet: source.outlet };
+      const result = await api(`/api/my/mixes/${encodeURIComponent(slug)}/toggle-source`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      if (result.added) {
+        // Unexpected — it should have been present since it came from
+        // this Spray's own list. Toggle it back off rather than leave a
+        // silent mismatch between what's shown and what's actually saved.
+        await api(`/api/my/mixes/${encodeURIComponent(slug)}/toggle-source`, { method: "POST", body: JSON.stringify(body) });
+      }
+      toast(`Removed from ${quickRemoveContext ? quickRemoveContext.name : "that Spray"}.`);
+      if (onSuccess) onSuccess();
+    } catch (e) {
+      if (btnEl) btnEl.disabled = false;
+      toast(e.message || "Couldn't remove that.");
+    }
   }
 
   // Inline .btn-style link for the reader pane's action row, alongside
@@ -342,6 +382,16 @@
   // manual refresh as long as that story is still in the fresh list;
   // falls back to the newest item otherwise.
   let selectedDispatch = null;
+
+  // Set (non-null) only when the reader is viewing exactly ONE of their
+  // own, non-official Sprays via the toggle bar — {slug, name}. Read by
+  // sprayAddButton() to flip "+ Spray" (open the picker) into a one-tap
+  // "− Remove" for every card shown, since everything in view got there
+  // BY BEING a member of that Spray. Recomputed each fetchReadItems()
+  // call; cleared whenever "All", multiple Sprays, or a built-in slot
+  // (__youtube/__bluesky) is active, or the single active Spray isn't
+  // one the reader actually owns (e.g. someone else's public Spray).
+  let quickRemoveContext = null;
 
   // Shared official flagship Spray slug — matches server.mjs's
   // OFFICIAL_HEADLINES_SPRAY_SLUG. Used as the "News" fallback for
@@ -447,6 +497,12 @@
     });
   }
 
+  // Populated as a side effect of fetchItemsForSprayKey() whenever it
+  // fetches a real Spray (not the built-in __youtube/__bluesky slots) —
+  // slug -> {name, is_owner, is_official}. Read by fetchReadItems() to
+  // decide whether the single active Spray qualifies for quick-remove.
+  const mixMetaCache = new Map();
+
   async function fetchItemsForSprayKey(key) {
     if (key === "__youtube") {
       const videos = await api("/api/video-feed");
@@ -474,6 +530,7 @@
       }));
     }
     const mix = await api(`/api/mixes/${encodeURIComponent(key)}`);
+    mixMetaCache.set(key, { name: mix.name, is_owner: !!mix.is_owner, is_official: !!mix.is_official });
     return Array.isArray(mix.items) ? mix.items : [];
   }
 
@@ -487,7 +544,7 @@
   // dropped from the selection rather than breaking the whole view; if
   // every key fails, falls back to "all".
   async function fetchReadItems() {
-    if (activeSprayKeys.has("all")) return api("/api/dispatches");
+    if (activeSprayKeys.has("all")) { quickRemoveContext = null; return api("/api/dispatches"); }
     const keys = Array.from(activeSprayKeys);
     const results = await Promise.allSettled(keys.map(fetchItemsForSprayKey));
 
@@ -508,6 +565,19 @@
     if (survivingKeys.length !== keys.length) {
       activeSprayKeys = new Set(survivingKeys);
       persistActiveSprayKeys();
+    }
+
+    // Exactly one real (non-built-in) Spray in view, and the reader owns
+    // it and it's not the auto-syncing official one (which has no stored
+    // sources to toggle) -> quick-remove mode. Anything else (multiple
+    // selected, a built-in slot, or a Spray that isn't theirs) reverts
+    // every card back to the normal "+ Spray" add flow.
+    quickRemoveContext = null;
+    if (survivingKeys.length === 1) {
+      const meta = mixMetaCache.get(survivingKeys[0]);
+      if (meta && meta.is_owner && !meta.is_official) {
+        quickRemoveContext = { slug: survivingKeys[0], name: meta.name };
+      }
     }
 
     const seen = new Set();
@@ -548,7 +618,18 @@
           btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
         });
         main.querySelectorAll(".spray-add-btn").forEach(btn => {
-          btn.addEventListener("click", () => openSprayPicker(JSON.parse(btn.dataset.spraySource)));
+          btn.addEventListener("click", () => {
+            const source = JSON.parse(btn.dataset.spraySource);
+            if (btn.dataset.removeSlug) {
+              // Re-render rather than pull just this one card — the same
+              // outlet/source could back several cards in view, and a
+              // source removal should clear all of them, not just the
+              // one that was clicked.
+              quickRemoveFromActiveSpray(source, btn.dataset.removeSlug, btn, () => renderRead());
+            } else {
+              openSprayPicker(source);
+            }
+          });
         });
       }
 
@@ -638,7 +719,18 @@
     const buzzBtn = pane.querySelector(".buzz-badge");
     if (buzzBtn) buzzBtn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
     const sprayBtn = pane.querySelector(".spray-add-btn");
-    if (sprayBtn) sprayBtn.addEventListener("click", () => openSprayPicker(JSON.parse(sprayBtn.dataset.spraySource)));
+    if (sprayBtn) {
+      sprayBtn.addEventListener("click", () => {
+        const source = JSON.parse(sprayBtn.dataset.spraySource);
+        if (sprayBtn.dataset.removeSlug) {
+          // Pane + feed list share one underlying fetch — re-run it so
+          // both stay in sync rather than trying to patch two DOM trees.
+          quickRemoveFromActiveSpray(source, sprayBtn.dataset.removeSlug, sprayBtn, () => renderRead());
+        } else {
+          openSprayPicker(source);
+        }
+      });
+    }
     if (typeof d.id === "number") {
       if (d.id in paywallStatusMap) applyPaywallBadge(d.id, paywallStatusMap[d.id]);
       else loadPaywallStatus([d.id]);

@@ -527,6 +527,16 @@ button { font-family: inherit; cursor: pointer; }
 }
 .spray-add-btn:hover { color: var(--ink); border-color: var(--ink-muted); }
 
+/* Quick-remove state — one tap, no picker, when the reader is viewing a
+   Spray they own. Uses the alert color so it visually reads as a removal,
+   not a duplicate "add" affordance. */
+.spray-remove-btn {
+  color: var(--alert);
+  border-color: var(--alert);
+}
+.spray-remove-btn:hover { color: var(--alert); border-color: var(--alert); background: rgba(184, 18, 58, 0.06); }
+.spray-remove-btn:disabled { opacity: 0.5; }
+
 /* "Add to a Spray" picker — a bottom sheet on mobile widths, a centered
    modal above the phone-frame breakpoint. Checkboxes toggle immediately
    (no separate Save), same feel as a save-to-a-playlist picker. This is
