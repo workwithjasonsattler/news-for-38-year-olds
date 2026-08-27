@@ -726,7 +726,7 @@ async function getCurrentUser(req) {
 }
 
 app.post("/api/auth/request-link", async (req, res) => {
-  const { email } = req.body || {};
+  const { email, client } = req.body || {};
   const normalized = (email || "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
     return res.status(400).json({ error: "valid email required" });
@@ -734,7 +734,17 @@ app.post("/api/auth/request-link", async (req, res) => {
   const token = newToken();
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
   await dbRun(`INSERT INTO login_tokens (email, token, expires_at) VALUES (?, ?, ?)`, [normalized, token, expiresAt]);
-  await sendMagicLink(normalized, `${SITE_URL}/api/auth/verify?token=${token}`);
+
+  // `client` lets a specific frontend (e.g. SOURCE!'s app shell) mark the
+  // emailed link so /api/auth/verify knows to hand a bearer token back to
+  // THAT app instead of the default site redirect — see the matching
+  // branch below. Unrecognized/absent `client` values fall through to the
+  // exact same link as always; every other caller of this endpoint
+  // (desktop site, spray.html, N38YO's own app shell) is unaffected.
+  const verifyUrl = client === "source"
+    ? `${SITE_URL}/api/auth/verify?token=${token}&app=source`
+    : `${SITE_URL}/api/auth/verify?token=${token}`;
+  await sendMagicLink(normalized, verifyUrl);
   res.json({ ok: true });
 });
 
@@ -769,6 +779,24 @@ app.get("/api/auth/verify", async (req, res) => {
   if (wantsJson) {
     return res.json({ ok: true, token: sessionToken, user: { email: user.email } });
   }
+
+  // A real click on the magic-link EMAIL is a browser navigation, not a
+  // fetch — `format=json` above only serves a client calling verify
+  // programmatically (e.g. a future Capacitor deep-link handler). For an
+  // actual emailed link, `app=source` (set by request-link when the
+  // request originated from SOURCE!'s own sign-in form) redirects back
+  // into the app with the session token riding in the URL instead of the
+  // default site redirect — the cookie above still gets set too (harmless
+  // if the click happens in the same browser as the installed app), but
+  // the token in the URL is what actually makes sign-in reliable if the
+  // email client opens the link in a DIFFERENT browser/webview context
+  // than the one the app itself runs in, which cookies alone can't
+  // survive. SOURCE!'s own frontend picks this up on load, stores it as
+  // its bearer token, and strips it from the URL bar.
+  if (req.query.app === "source") {
+    return res.redirect(302, `/source/?auth_token=${sessionToken}`);
+  }
+
   res.redirect(302, "/");
 });
 

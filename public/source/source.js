@@ -2096,7 +2096,7 @@
         const email = document.getElementById("youEmail").value.trim();
         if (!email) return;
         try {
-          await api("/api/auth/request-link", { method: "POST", body: JSON.stringify({ email }) });
+          await api("/api/auth/request-link", { method: "POST", body: JSON.stringify({ email, client: "source" }) });
           toast("Check your email for an access link.");
         } catch (e) {
           toast(e.message || "Could not send link.");
@@ -2309,6 +2309,23 @@
   }
 
   document.addEventListener("DOMContentLoaded", async () => {
+    // Capture a bearer token handed back from the magic-link email flow
+    // (see GET /api/auth/verify's `app=source` branch server-side) BEFORE
+    // refreshSession() runs, so the very first /api/me call already sends
+    // it. Strip it from the URL bar immediately after — a session token
+    // sitting in browser history/address bar is worth cleaning up even
+    // though the cookie set alongside it means this isn't the only way
+    // in. This also happens to be exactly the mechanism a future
+    // Capacitor deep-link handler could reuse (open the app with
+    // ?auth_token=... in its own URL), so nothing here is throwaway.
+    const authTokenParam = new URLSearchParams(location.search).get("auth_token");
+    if (authTokenParam) {
+      setToken(authTokenParam);
+      const cleanUrl = new URL(location.href);
+      cleanUrl.searchParams.delete("auth_token");
+      history.replaceState(null, "", cleanUrl.toString());
+    }
+
     document.body.dataset.layout = getLayoutMode();
     renderLayoutReview();
     renderViewMenu();
