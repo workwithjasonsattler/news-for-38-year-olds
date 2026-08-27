@@ -2144,6 +2144,7 @@
   // source item ages out of the wire.
   function renderMySavesSection(saves, visibility) {
     const shareUrl = visibility.share_slug ? `${location.origin}/source/?saves=${visibility.share_slug}` : null;
+    const rssUrl = visibility.share_slug ? `${location.origin}/api/saves/${visibility.share_slug}/rss` : null;
     const shareRow = `
       <div class="card" style="padding:12px; margin-bottom:10px;">
         <div class="spray-bar-row" style="padding:0;">
@@ -2154,7 +2155,8 @@
           <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
             <input class="create-flow-input" id="savesShareUrl" readonly value="${escapeHtml(shareUrl)}" style="flex:1;">
             <button class="btn" id="savesShareCopy">Copy</button>
-          </div>` : ""}
+          </div>
+          <a class="ob-whats-this" href="${escapeHtml(rssUrl)}" target="_blank" rel="noopener" style="display:block; margin-top:8px;">📡 Subscribe via RSS</a>` : ""}
       </div>`;
 
     if (saves.length === 0) {

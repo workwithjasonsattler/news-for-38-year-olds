@@ -1589,6 +1589,75 @@ app.get("/api/mixes/:slug/rss", async (req, res) => {
   }
 });
 
+// RSS output for a shared save list (SOURCE! My Saves) — same pattern as
+// the Spray RSS output just above: reuses the data already stored (here,
+// user_saves' own snapshot fields, no live query needed at all since
+// there's nothing to resolve), same cache/fail-soft shape, same
+// "don't confirm existence of a private list" 404 behavior as the JSON
+// GET /api/saves/:shareSlug endpoint it sits next to.
+const savesRssCache = new Map(); // shareSlug -> { xml, fetchedAt }
+
+function buildSaveListRssXml(shareSlug, items) {
+  const channelTitle = "My Saves — SOURCE!";
+  const channelLink = `${SITE_URL}/source/?saves=${encodeURIComponent(shareSlug)}`;
+  const channelDesc = "A reader's personal reading list on SOURCE! — items they chose to keep, in the order they saved them.";
+
+  const itemsXml = items
+    .slice(0, RSS_FEED_ITEM_CAP)
+    .map((it) => {
+      const guid = escapeXml(it.link);
+      const pubDate = toRfc822(it.saved_at);
+      return `    <item>
+      <title>${escapeXml(it.title)}</title>
+      <link>${escapeXml(it.link)}</link>
+      <guid isPermaLink="true">${guid}</guid>
+      <pubDate>${pubDate}</pubDate>
+      ${it.excerpt ? `<description>${escapeXml(it.excerpt)}</description>` : ""}
+      ${it.outlet ? `<dc:creator>${escapeXml(it.outlet)}</dc:creator>` : ""}
+      ${it.outlet ? `<source>${escapeXml(it.outlet)}</source>` : ""}
+    </item>`;
+    })
+    .join("\n");
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>${escapeXml(channelTitle)}</title>
+    <link>${escapeXml(channelLink)}</link>
+    <description>${escapeXml(channelDesc)}</description>
+    <language>en-us</language>
+    <lastBuildDate>${new Date().toUTCString()}</lastBuildDate>
+${itemsXml}
+  </channel>
+</rss>`;
+}
+
+app.get("/api/saves/:shareSlug/rss", async (req, res) => {
+  const shareSlug = req.params.shareSlug;
+  try {
+    const list = await dbGet(`SELECT user_id FROM user_save_lists WHERE share_slug = ? AND is_public = 1`, [shareSlug]);
+    if (!list) return res.status(404).type("text/plain").send("feed not found");
+
+    const cached = savesRssCache.get(shareSlug);
+    if (cached && Date.now() - cached.fetchedAt < RSS_FEED_CACHE_TTL_MS) {
+      return res.type("application/rss+xml; charset=utf-8").send(cached.xml);
+    }
+
+    const items = await dbAll(
+      `SELECT link, title, excerpt, outlet, saved_at FROM user_saves WHERE user_id = ? ORDER BY saved_at DESC`,
+      [list.user_id]
+    );
+    const xml = buildSaveListRssXml(shareSlug, items);
+    savesRssCache.set(shareSlug, { xml, fetchedAt: Date.now() });
+    res.type("application/rss+xml; charset=utf-8").send(xml);
+  } catch (err) {
+    console.error("Saves RSS feed generation failed for", shareSlug, err);
+    const cached = savesRssCache.get(shareSlug);
+    if (cached) return res.type("application/rss+xml; charset=utf-8").send(cached.xml); // fail soft: stale beats broken
+    res.status(500).type("text/plain").send("feed temporarily unavailable");
+  }
+});
+
 // ---------- Bluesky headlines bot ----------
 // Posts the "top story" from the Headlines: Best in the World Spray to a
 // Bluesky bot account every BLUESKY_BOT_INTERVAL_MINUTES (Jason's call:
