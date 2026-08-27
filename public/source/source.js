@@ -239,6 +239,51 @@
     return `<button class="spray-add-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' title="Add to a Spray">+ Spray</button>`;
   }
 
+  // "Save" control — a lightweight personal bookmark, distinct from
+  // Sprays (a Spray is a collection of SOURCES; a save is a single ITEM).
+  // Snapshotted at click time (title/excerpt/image/outlet frozen into the
+  // payload right here) since the reader may not still be looking at this
+  // dispatch by the time they check My Saves later, and the underlying
+  // wire item can age out entirely. Renders nothing without a real link —
+  // there's nothing to save an item as a bookmark to point at otherwise.
+  function saveButton(d) {
+    if (!d.link) return "";
+    const payload = {
+      link: d.link,
+      title: d.title || d.headline || "",
+      excerpt: (d.excerpt || "").trim().slice(0, 500) || null,
+      image_url: d.image_url || null,
+      outlet: (d.outlet || d.source || "").trim() || null,
+      published_at: d.date || null,
+    };
+    return `<button class="save-btn" data-save-payload='${escapeHtml(JSON.stringify(payload))}' title="Save for later">☆ Save</button>`;
+  }
+
+  // Wires every ".save-btn" inside `root` — shared by both card grids and
+  // the reader pane so the click/toast/disabled behavior never drifts
+  // between the two surfaces. Flips to a plain "★ Saved" label on success
+  // (including the already-saved case — a reader tapping Save twice
+  // should see a friendly confirm, not an error) rather than being
+  // removed, so the reader gets visible confirmation without a re-render.
+  function wireSaveButtons(root) {
+    root.querySelectorAll(".save-btn").forEach(btn => {
+      btn.addEventListener("click", async () => {
+        if (!currentUser) { toast("Sign in to save items"); switchTab("you"); return; }
+        btn.disabled = true;
+        try {
+          const payload = JSON.parse(btn.dataset.savePayload);
+          await api("/api/my/saves", { method: "POST", body: JSON.stringify(payload) });
+          btn.textContent = "★ Saved";
+          btn.classList.add("save-btn-done");
+          toast("Saved");
+        } catch (e) {
+          btn.disabled = false;
+          toast(e.message || "Couldn't save that");
+        }
+      });
+    });
+  }
+
   // Removes a source from the Spray the reader is currently viewing, with
   // no picker round-trip — the direct counterpart to sprayAddButton's
   // quick-remove state above. Always re-renders Read on success (via
@@ -617,6 +662,7 @@
             }
           });
         });
+        wireSaveButtons(main);
       }
 
       const needsLiveThumb = getReadDisplay() === "headlines"
@@ -683,6 +729,7 @@
           ${d.is_video ? "" : `<button class="btn" id="readerMoreBtn">Try reader view</button>`}` : ""}
           ${tipSubscribeButton(d)}
           ${sprayAddButton(d)}
+          ${saveButton(d)}
         </div>
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         <div class="reader-frame-wrap" id="readerFrameWrap" hidden></div>
@@ -728,6 +775,7 @@
         }
       });
     }
+    wireSaveButtons(pane);
     if (typeof d.id === "number") {
       if (d.id in paywallStatusMap) applyPaywallBadge(d.id, paywallStatusMap[d.id]);
       else loadPaywallStatus([d.id]);
@@ -844,7 +892,7 @@
               ${excerpt ? `<div class="card-scroll-excerpt">${escapeHtml(excerpt)}</div>` : ""}
             </div>
           </a>
-          ${tipSubscribeBadge(d)}${sprayAddButton(d)}
+          ${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}
           ${discussUrl ? `<a class="card-scroll-discuss" href="${escapeHtml(discussUrl)}" target="_blank" rel="noopener">See the conversation on Bluesky ↗</a>` : ""}
         </div>`;
     }
@@ -864,7 +912,7 @@
             <div class="card-title">${escapeHtml(title)}</div>
             ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt)}</div>` : ""}
           </a>
-          ${tipSubscribeBadge(d)}${sprayAddButton(d)}
+          ${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         </div>`;
     }
@@ -876,7 +924,7 @@
             <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
             <div class="card-title">${escapeHtml(title)}</div>
           </a>
-          ${tipSubscribeBadge(d)}${sprayAddButton(d)}
+          ${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         </div>`;
     }
@@ -893,7 +941,7 @@
             ${thumb}
           </div>
         </a>
-        ${tipSubscribeBadge(d)}${sprayAddButton(d)}
+        ${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
       </div>`;
   }
@@ -2056,18 +2104,114 @@
       });
       return;
     }
+    let saves = [];
+    let visibility = { is_public: false, share_slug: null };
+    try {
+      [saves, visibility] = await Promise.all([
+        api("/api/my/saves"),
+        api("/api/my/saves/visibility"),
+      ]);
+    } catch (e) {
+      // fail soft — signed-in status and sign-out still work even if
+      // saves can't be loaded right now
+    }
+
     main.innerHTML = `
       <div class="card">
         <div class="card-meta"><span>SIGNED IN</span><span class="stamp">VERIFIED</span></div>
         <div class="card-title">${escapeHtml(currentUser.email)}</div>
       </div>
-      <button class="btn" id="youSignOut" style="margin-top:10px;">SIGN OUT</button>`;
+      <button class="btn" id="youSignOut" style="margin-top:10px;">SIGN OUT</button>
+      <div class="section-label" style="margin-top:22px;">MY SAVES</div>
+      <div class="section-sub">${saves.length} saved item${saves.length === 1 ? "" : "s"} — a personal reading list, not a Spray.</div>
+      ${renderMySavesSection(saves, visibility)}
+    `;
     document.getElementById("youSignOut").addEventListener("click", async () => {
       try { await api("/api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
       setToken("");
       currentUser = null;
       sprayBarData = null;
       renderYou();
+    });
+    wireMySavesSection();
+  }
+
+  // ----- "My Saves" (personal reading list, You tab) -----
+  // Distinct from Sprays: a Spray is a collection of SOURCES a reader
+  // follows; a save is a single ITEM they wanted to keep. Snapshotted at
+  // save time (see saveButton()) — the title/excerpt/image shown here is
+  // frozen, not re-fetched live, so a save never breaks even after its
+  // source item ages out of the wire.
+  function renderMySavesSection(saves, visibility) {
+    const shareUrl = visibility.share_slug ? `${location.origin}/source/?saves=${visibility.share_slug}` : null;
+    const shareRow = `
+      <div class="card" style="padding:12px; margin-bottom:10px;">
+        <div class="spray-bar-row" style="padding:0;">
+          <span class="spray-bar-name">${visibility.is_public ? "🌐 Your saves are public" : "🔒 Your saves are private"}</span>
+          <button class="spray-bar-btn" id="savesVisibilityToggle">${visibility.is_public ? "Make private" : "Share my saves"}</button>
+        </div>
+        ${visibility.is_public && shareUrl ? `
+          <div style="margin-top:10px; display:flex; gap:8px; align-items:center;">
+            <input class="create-flow-input" id="savesShareUrl" readonly value="${escapeHtml(shareUrl)}" style="flex:1;">
+            <button class="btn" id="savesShareCopy">Copy</button>
+          </div>` : ""}
+      </div>`;
+
+    if (saves.length === 0) {
+      return shareRow + `<div class="card"><div class="card-meta">Nothing saved yet — tap "☆ Save" on any post in Read or Buzz to keep it here.</div></div>`;
+    }
+
+    const rows = saves.map(s => `
+      <div class="spray-bar-row" data-save-id="${s.id}" style="align-items:flex-start;">
+        ${s.image_url ? `<img src="${escapeHtml(s.image_url)}" alt="" style="width:56px; height:56px; object-fit:cover; border-radius:6px; flex-shrink:0;" onerror="this.remove()">` : ""}
+        <a href="${escapeHtml(s.link)}" target="_blank" rel="noopener" style="flex:1; min-width:0; text-decoration:none; color:inherit;">
+          <span class="spray-bar-name" style="display:block; white-space:normal;">${escapeHtml(s.title)}</span>
+          <span class="feed-item-meta" style="display:block; margin-top:2px;"><span>${escapeHtml(s.outlet || "")}</span></span>
+        </a>
+        <button class="spray-bar-btn remove" data-action="remove-save">×</button>
+      </div>`).join("");
+
+    return shareRow + `<div class="card" style="padding:0;">${rows}</div>`;
+  }
+
+  function wireMySavesSection() {
+    const toggle = document.getElementById("savesVisibilityToggle");
+    if (toggle) {
+      toggle.addEventListener("click", async () => {
+        toggle.disabled = true;
+        try {
+          const current = toggle.textContent.trim() === "Share my saves";
+          await api("/api/my/saves/visibility", { method: "POST", body: JSON.stringify({ is_public: current }) });
+          renderYou();
+        } catch (e) {
+          toast(e.message || "Couldn't update sharing");
+          toggle.disabled = false;
+        }
+      });
+    }
+    const copyBtn = document.getElementById("savesShareCopy");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", () => {
+        const input = document.getElementById("savesShareUrl");
+        if (!input) return;
+        input.select();
+        navigator.clipboard?.writeText(input.value).then(() => toast("Link copied")).catch(() => toast("Couldn't copy — select and copy manually"));
+      });
+    }
+    document.querySelectorAll('[data-save-id] [data-action="remove-save"]').forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const row = btn.closest("[data-save-id]");
+        const id = row?.dataset.saveId;
+        if (!id) return;
+        btn.disabled = true;
+        try {
+          await api(`/api/my/saves/${id}`, { method: "DELETE" });
+          renderYou();
+        } catch (e) {
+          toast(e.message || "Couldn't remove that");
+          btn.disabled = false;
+        }
+      });
     });
   }
 
@@ -2130,6 +2274,38 @@
   // ---------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------
+  // ----- Public "shared saves" view (?saves=<slug>) -----
+  // A visitor opening a shared save-list link doesn't sign in or land on
+  // a normal tab — this renders read-only, straight into #main, same
+  // "?spray=<slug> auto-opens on load" pattern spray.html already uses
+  // for its own shareable links.
+  async function renderPublicSaves(slug) {
+    const main = document.getElementById("main");
+    main.innerHTML = `<div class="card"><div class="card-meta">Loading saved items…</div></div>`;
+    let data;
+    try {
+      data = await api(`/api/saves/${encodeURIComponent(slug)}`);
+    } catch (e) {
+      main.innerHTML = `<div class="card"><div class="card-meta">This save list isn't public (or doesn't exist).</div></div>`;
+      return;
+    }
+    const items = data.items || [];
+    main.innerHTML = `
+      <div class="section-label">SHARED SAVES</div>
+      <div class="section-sub">${items.length} item${items.length === 1 ? "" : "s"} someone chose to keep — read-only, not a Spray.</div>
+      ${items.length === 0
+        ? `<div class="card"><div class="card-meta">Nothing here yet.</div></div>`
+        : items.map(it => `
+          <div class="card">
+            <a class="card-link" href="${escapeHtml(it.link)}" target="_blank" rel="noopener">
+              <div class="card-meta">${outletChip(it.outlet)}<span>${relTime(it.saved_at)}</span></div>
+              <div class="card-title">${escapeHtml(it.title)}</div>
+              ${it.excerpt ? `<div class="card-excerpt">${escapeHtml(it.excerpt)}</div>` : ""}
+            </a>
+          </div>`).join("")}
+      <a href="/source/" class="ob-whats-this" style="display:block; margin-top:16px;">← Back to SOURCE!</a>`;
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
     document.body.dataset.layout = getLayoutMode();
     renderLayoutReview();
@@ -2167,7 +2343,13 @@
     }
 
     await refreshSession();
-    renderActiveTab();
+
+    const sharedSavesSlug = new URLSearchParams(location.search).get("saves");
+    if (sharedSavesSlug) {
+      renderPublicSaves(sharedSavesSlug);
+    } else {
+      renderActiveTab();
+    }
     renderDesktopSidePanel();
 
     if (!localStorage.getItem(ONBOARDED_KEY)) {

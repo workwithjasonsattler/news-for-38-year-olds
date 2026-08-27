@@ -318,6 +318,36 @@ async function initSchema() {
       hidden_modules TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`,
+    // ---------- Save / Reading List (SOURCE!) ----------
+    // A reader's personal "My Saves" tray. Deliberately a SNAPSHOT, not a
+    // live reference: dispatches age out of the wire (and custom-source /
+    // Spray / video items are synthetic and can vanish entirely once
+    // re-fetched), so the only reliable way for a saved item to survive is
+    // to freeze its display fields at save time. One running list per
+    // reader for v1 — no named/multiple lists, matches the "lightweight
+    // bookmark tray" framing Jason confirmed over Sprays'-style CRUD.
+    `CREATE TABLE IF NOT EXISTS user_saves (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      link TEXT NOT NULL,
+      title TEXT NOT NULL,
+      excerpt TEXT,
+      image_url TEXT,
+      outlet TEXT,
+      published_at TEXT,
+      saved_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, link)
+    )`,
+    // Sharing settings for a reader's save list — separate 1:1 table
+    // (same shape/reasoning as user_layout_prefs/user_panel_prefs) rather
+    // than columns on `users`, so this stays purely opt-in additive state.
+    // No row means private with no share link yet, same as those tables.
+    `CREATE TABLE IF NOT EXISTS user_save_lists (
+      user_id INTEGER PRIMARY KEY,
+      is_public INTEGER NOT NULL DEFAULT 0,
+      share_slug TEXT UNIQUE,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
   ];
   for (const sql of statements) await dbRun(sql);
 
@@ -2115,6 +2145,107 @@ app.post("/api/my/mixes/:slug/toggle-source", async (req, res) => {
   );
   await dbRun(`UPDATE feed_mixes SET updated_at = datetime('now') WHERE id = ?`, [mix.id]);
   res.json({ added: true });
+});
+
+// ---------- Save / Reading List (SOURCE!) ----------
+// A lightweight personal bookmark tray, distinct from Sprays: a Spray is a
+// collection of SOURCES; a save is a single ITEM. Snapshot-based (see the
+// table comment above) — once saved, an item survives even after its
+// source dispatch ages out of the wire or the underlying feed changes.
+const SAVE_CAP = 500; // generous personal-tray cap, not a Spray-style curation limit
+
+app.get("/api/my/saves", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const rows = await dbAll(
+    `SELECT id, link, title, excerpt, image_url, outlet, published_at, saved_at
+     FROM user_saves WHERE user_id = ? ORDER BY saved_at DESC`,
+    [user.id]
+  );
+  res.json(rows);
+});
+
+app.post("/api/my/saves", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  const link = String(req.body?.link || "").trim();
+  const title = String(req.body?.title || "").trim();
+  if (!link || !/^https?:\/\//i.test(link)) return res.status(400).json({ error: "a valid link is required" });
+  if (!title) return res.status(400).json({ error: "a title is required" });
+
+  const countRow = await dbGet(`SELECT COUNT(*) AS n FROM user_saves WHERE user_id = ?`, [user.id]);
+  if (countRow.n >= SAVE_CAP) return res.status(400).json({ error: `saves are capped at ${SAVE_CAP} — remove some old ones to add more` });
+
+  const excerpt = req.body?.excerpt ? String(req.body.excerpt).slice(0, 500) : null;
+  const imageUrl = req.body?.image_url ? String(req.body.image_url).slice(0, 1000) : null;
+  const outlet = req.body?.outlet ? String(req.body.outlet).slice(0, 200) : null;
+  const publishedAt = req.body?.published_at ? String(req.body.published_at).slice(0, 100) : null;
+
+  // INSERT OR IGNORE: saving something already saved (same link) is a no-op,
+  // not an error — a reader tapping Save twice shouldn't see a failure.
+  const result = await dbRun(
+    `INSERT OR IGNORE INTO user_saves (user_id, link, title, excerpt, image_url, outlet, published_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [user.id, link, title, excerpt, imageUrl, outlet, publishedAt]
+  );
+  res.json({ ok: true, already_saved: !result.changes });
+});
+
+app.delete("/api/my/saves/:id", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const result = await dbRun(`DELETE FROM user_saves WHERE id = ? AND user_id = ?`, [req.params.id, user.id]);
+  if (!result.changes) return res.status(404).json({ error: "save not found" });
+  res.json({ ok: true });
+});
+
+// Public/private toggle for the reader's whole save list (v1 shares the
+// WHOLE list, not a per-item selection — matches the Spray is_public
+// pattern). Generates a share_slug the first time a reader goes public;
+// the slug is kept (not regenerated) on later toggles, so a link someone
+// already has doesn't quietly break if the owner flips private -> public
+// again later.
+app.post("/api/my/saves/visibility", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const isPublic = !!req.body?.is_public;
+
+  const existing = await dbGet(`SELECT share_slug FROM user_save_lists WHERE user_id = ?`, [user.id]);
+  const shareSlug = existing?.share_slug || newToken(4);
+
+  await dbRun(
+    `INSERT INTO user_save_lists (user_id, is_public, share_slug, updated_at) VALUES (?, ?, ?, datetime('now'))
+     ON CONFLICT(user_id) DO UPDATE SET is_public = excluded.is_public, updated_at = excluded.updated_at`,
+    [user.id, isPublic ? 1 : 0, shareSlug]
+  );
+  res.json({ ok: true, is_public: isPublic, share_slug: shareSlug });
+});
+
+app.get("/api/my/saves/visibility", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const row = await dbGet(`SELECT is_public, share_slug FROM user_save_lists WHERE user_id = ?`, [user.id]);
+  if (!row) return res.json({ is_public: false, share_slug: null });
+  res.json({ is_public: !!row.is_public, share_slug: row.share_slug });
+});
+
+// Public, read-only view of someone else's shared save list. 404s (not 403)
+// on an unknown or private slug — same "don't confirm existence of a
+// private thing" posture used nowhere else explicitly in this codebase but
+// worth doing right for a personal reading list.
+app.get("/api/saves/:shareSlug", async (req, res) => {
+  const list = await dbGet(
+    `SELECT user_id FROM user_save_lists WHERE share_slug = ? AND is_public = 1`,
+    [req.params.shareSlug]
+  );
+  if (!list) return res.status(404).json({ error: "not found" });
+  const rows = await dbAll(
+    `SELECT link, title, excerpt, image_url, outlet, published_at, saved_at
+     FROM user_saves WHERE user_id = ? ORDER BY saved_at DESC`,
+    [list.user_id]
+  );
+  res.json({ items: rows });
 });
 
 // ---------- Follows: Topics taxonomy ----------

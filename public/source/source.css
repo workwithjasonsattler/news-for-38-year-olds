@@ -530,6 +530,31 @@ button { font-family: inherit; cursor: pointer; }
 .spray-remove-btn:hover { color: var(--alert); border-color: var(--alert); background: rgba(184, 18, 58, 0.06); }
 .spray-remove-btn:disabled { opacity: 0.5; }
 
+/* "☆ Save" control — same quiet secondary-action treatment as
+   "+ Spray", sitting right next to it (margin-left instead of stacking
+   below, since both are inline-flex on the same row). Flips to a plain
+   filled-star label + accent color on success rather than being
+   removed, so tapping it a second time reads as "yep, still saved"
+   instead of the control just vanishing. */
+.save-btn {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 6px;
+  margin-left: 6px;
+  padding: 5px 10px;
+  background: transparent;
+  color: var(--ink-muted);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-family: var(--body);
+  font-weight: 600;
+  font-size: 11.5px;
+}
+.save-btn:hover { color: var(--ink); border-color: var(--ink-muted); }
+.save-btn:disabled { opacity: 0.6; }
+.save-btn-done { color: var(--accent-dim); border-color: var(--accent); }
+.save-btn-done:hover { color: var(--accent-dim); border-color: var(--accent); }
+
 /* "Add to a Spray" picker — a bottom sheet on mobile widths, a centered
    modal above the phone-frame breakpoint. Checkboxes toggle immediately
    (no separate Save), same feel as a save-to-a-playlist picker. This is
