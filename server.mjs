@@ -366,6 +366,7 @@ async function initSchema() {
     `ALTER TABLE feed_mixes ADD COLUMN clone_count INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE feed_mixes ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE topics ADD COLUMN category TEXT`,
+    `ALTER TABLE users ADD COLUMN last_active_at TEXT`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
   }
@@ -714,15 +715,29 @@ function getAuthToken(req) {
   return match ? match[1].trim() : null;
 }
 
+// Throttle window for touching last_active_at — every authenticated
+// request funnels through getCurrentUser(), so writing on every single
+// call would be wasteful. Once per day per reader is plenty of
+// resolution for a 90-day inactivity window (EMAIL_RETENTION_DAYS below).
+const ACTIVITY_TOUCH_THROTTLE_MS = 24 * 60 * 60 * 1000;
+
 async function getCurrentUser(req) {
   const token = getAuthToken(req);
   if (!token) return null;
   const row = await dbGet(
-    `SELECT u.id, u.email FROM sessions s JOIN users u ON u.id = s.user_id
+    `SELECT u.id, u.email, u.last_active_at FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token = ? AND s.expires_at > datetime('now')`,
     [token]
   );
-  return row || null;
+  if (!row) return null;
+
+  const lastTouch = row.last_active_at ? new Date(row.last_active_at).getTime() : 0;
+  if (Date.now() - lastTouch > ACTIVITY_TOUCH_THROTTLE_MS) {
+    // fire-and-forget — this bookkeeping write should never block or
+    // fail the actual request it's riding along with
+    dbRun(`UPDATE users SET last_active_at = datetime('now') WHERE id = ?`, [row.id]).catch(() => {});
+  }
+  return { id: row.id, email: row.email };
 }
 
 app.post("/api/auth/request-link", async (req, res) => {
@@ -763,6 +778,11 @@ app.get("/api/auth/verify", async (req, res) => {
     const info = await dbRun(`INSERT INTO users (email) VALUES (?)`, [row.email]);
     user = { id: info.lastInsertRowid, email: row.email };
   }
+  // Stamp activity right at sign-in — don't wait for getCurrentUser()'s
+  // throttled lazy touch on a later request, since a fresh sign-in after
+  // a long absence is exactly the case that should reset the 90-day
+  // inactivity clock immediately.
+  await dbRun(`UPDATE users SET last_active_at = datetime('now') WHERE id = ?`, [user.id]);
 
   const sessionToken = newToken();
   const sessionExpires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
@@ -4078,6 +4098,46 @@ if (AUTO_IMPORT_MINUTES > 0) {
   }, AUTO_IMPORT_MINUTES * 60 * 1000);
 }
 
+// ---------- email retention sweep ----------
+// Privacy policy commitment: a reader's email is erased after 90 days of
+// no activity (COALESCE(last_active_at, created_at) — covers accounts
+// that predate last_active_at tracking, or that never got a touch for
+// any reason, by falling back to signup date). Erasing means overwriting
+// the email column with a synthetic, guaranteed-unique placeholder — NOT
+// deleting the user row, since that would orphan every piece of content
+// tied to it (saves, Sprays, custom sources, prefs). A PUBLIC Spray or
+// save list a reader shared stays live and viewable after this runs;
+// only the email disappears. The account can never be signed back into
+// once erased (a fresh request-link for the original address just
+// creates a brand-new account, which is the correct "erase and start
+// over" behavior) — any lingering sessions are also revoked in the same
+// pass, though a 90-day-inactive account's sessions have almost always
+// already expired on their own (SESSION_DAYS = 90) by the time this
+// fires anyway.
+const EMAIL_RETENTION_DAYS = Number(process.env.EMAIL_RETENTION_DAYS || 90);
+const EMAIL_RETENTION_SWEEP_MS = 24 * 60 * 60 * 1000; // once a day is plenty for a 90-day window
+
+async function sweepInactiveUserEmails() {
+  try {
+    const cutoff = new Date(Date.now() - EMAIL_RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const stale = await dbAll(
+      `SELECT id FROM users
+       WHERE email NOT LIKE 'deleted-user-%@erased.local'
+       AND COALESCE(last_active_at, created_at) < ?`,
+      [cutoff]
+    );
+    for (const row of stale) {
+      await dbRun(`UPDATE users SET email = ? WHERE id = ?`, [`deleted-user-${row.id}@erased.local`, row.id]);
+      await dbRun(`DELETE FROM sessions WHERE user_id = ?`, [row.id]);
+    }
+    if (stale.length) console.log(`Email retention sweep: erased ${stale.length} inactive account email(s) (>${EMAIL_RETENTION_DAYS}d inactive)`);
+  } catch (err) {
+    console.error("Email retention sweep failed:", err.message); // fail soft — never blocks startup or the rest of the app
+  }
+}
+
+setInterval(sweepInactiveUserEmails, EMAIL_RETENTION_SWEEP_MS);
+
 // ---------- startup ----------
 async function start() {
   // Turso can occasionally return a transient 5xx (a host blip, a brief
@@ -4099,6 +4159,12 @@ async function start() {
       await seedOfficialHeadlinesSpray();
       await seedLeafTopics();
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
+      // Same "kick shortly after boot, not just on the interval" pattern as
+      // the Bluesky bot below — a fresh deploy shouldn't have to wait up to
+      // a full day before the sweep's ever run once. Safe on every restart:
+      // sweepInactiveUserEmails() only touches accounts already past the
+      // cutoff, so a repeat run right after a restart is a no-op.
+      setTimeout(sweepInactiveUserEmails, 10000);
       // Post once shortly after boot (not immediately — give the process a
       // moment to settle) so a fresh deploy doesn't cost up to a full
       // BLUESKY_BOT_INTERVAL_MINUTES of silence before you can tell it's
