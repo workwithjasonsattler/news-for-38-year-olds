@@ -2125,6 +2125,9 @@
       <div class="section-label" style="margin-top:22px;">MY SAVES</div>
       <div class="section-sub">${saves.length} saved item${saves.length === 1 ? "" : "s"} — a personal reading list, not a Spray.</div>
       ${renderMySavesSection(saves, visibility)}
+      <div class="section-label" style="margin-top:22px; color: var(--alert);">DELETE MY ACCOUNT</div>
+      <div class="section-sub">Permanently erases your saves, Sprays, custom sources, and preferences. This can't be undone.</div>
+      <button class="btn" id="youDeleteAccount" style="margin-top:8px; border-color: var(--alert); color: var(--alert);">Delete my account</button>
     `;
     document.getElementById("youSignOut").addEventListener("click", async () => {
       try { await api("/api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
@@ -2132,6 +2135,22 @@
       currentUser = null;
       sprayBarData = null;
       renderYou();
+    });
+    document.getElementById("youDeleteAccount").addEventListener("click", async () => {
+      const ok = confirm(
+        "Delete your account? This permanently erases your saves, your Sprays, your custom sources, and every preference — there's no undoing this. Type OK to confirm."
+      );
+      if (!ok) return;
+      try {
+        await api("/api/my/account", { method: "DELETE" });
+        setToken("");
+        currentUser = null;
+        sprayBarData = null;
+        toast("Account deleted");
+        renderYou();
+      } catch (e) {
+        toast(e.message || "Couldn't delete your account — try again");
+      }
     });
     wireMySavesSection();
   }

@@ -832,6 +832,64 @@ app.get("/api/me", async (req, res) => {
   res.json({ user: user ? { email: user.email } : null });
 });
 
+// Full, reader-initiated account deletion — distinct from
+// sweepInactiveUserEmails()'s automatic 90-day inactivity erasure. The
+// automatic sweep deliberately PRESERVES already-public content (a
+// shared Spray or Saves list stays live, only the email disappears) so
+// nobody else's clone/link silently breaks just because the original
+// owner went quiet. This endpoint is the opposite: an explicit "delete
+// everything" request, so it genuinely removes the reader's owned
+// content too, not just their email. Required for real App Store
+// compliance (Apple's 5.1.1v needs an in-app deletion path, not just an
+// email address to write to) — matches the privacy policy's manual
+// deletion promise.
+app.delete("/api/my/account", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  try {
+    // Sprays the reader owns: no FK cascade in SQLite here, so clear
+    // child rows (sources, topic tags) before the mix row itself. A mix
+    // someone else CLONED from this reader is untouched — clone already
+    // copies sources into the cloning reader's own tables, independent
+    // of the original (see POST /api/mixes/:slug/clone), so nothing
+    // downstream breaks.
+    const ownedMixes = await dbAll(`SELECT id FROM feed_mixes WHERE creator_user_id = ?`, [user.id]);
+    for (const mix of ownedMixes) {
+      await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
+      await dbRun(`DELETE FROM feed_mix_topics WHERE mix_id = ?`, [mix.id]);
+    }
+    await dbRun(`DELETE FROM feed_mixes WHERE creator_user_id = ?`, [user.id]);
+
+    // Topics they proposed: delete outright only if still pending
+    // (never went live, effectively theirs alone). An APPROVED topic is
+    // part of the shared taxonomy and may already be tagged on other
+    // readers' Sprays, so it must survive — just clear the attribution.
+    await dbRun(`DELETE FROM topics WHERE suggested_by_user_id = ? AND status = 'pending'`, [user.id]);
+    await dbRun(`UPDATE topics SET suggested_by_user_id = NULL WHERE suggested_by_user_id = ?`, [user.id]);
+
+    await dbRun(`DELETE FROM user_saves WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_save_lists WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_custom_sources WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_feed_prefs WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_source_ratings WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_layout_prefs WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_panel_prefs WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_spray_bar WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_news_pref WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM feed_thumbs WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM sessions WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM login_tokens WHERE email = ?`, [user.email]);
+    await dbRun(`DELETE FROM users WHERE id = ?`, [user.id]);
+
+    clearSessionCookie(res);
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Account deletion failed for user", user.id, err);
+    res.status(500).json({ error: "Couldn't delete your account — try again, or contact support." });
+  }
+});
+
 // ---------- reader feed preferences (Phase 1) ----------
 app.get("/api/my/feed-prefs", async (req, res) => {
   const user = await getCurrentUser(req);
