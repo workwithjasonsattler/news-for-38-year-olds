@@ -549,7 +549,7 @@
       }));
     }
     if (key === "__bluesky") {
-      const posts = await api("/api/nerve-center/bluesky");
+      const posts = await fetchBlueskyPopularCached();
       return (Array.isArray(posts) ? posts : []).map((p, i) => ({
         id: `bsky-${i}`,
         title: p.text || "",
@@ -628,10 +628,7 @@
     renderSprayToggle();
     main.innerHTML = stateBlock({ title: "PULLING TRANSMISSION", body: "Fetching latest dispatches...", spin: true });
     try {
-      const [items, trendingLinks] = await Promise.all([
-        fetchReadItems(),
-        getTrendingLinks(),
-      ]);
+      const items = await fetchReadItems();
       if (!Array.isArray(items) || items.length === 0) {
         main.innerHTML = stateBlock({ glyph: "∅", title: "NO SIGNAL", body: "No dispatches available right now." });
         return;
@@ -641,37 +638,57 @@
         .sort((a, b) => new Date(b.date) - new Date(a.date))
         .slice(0, 60);
 
-      if (getLayoutMode() === "desktop") {
-        renderReadDesktop(shown, trendingLinks);
-      } else {
-        main.innerHTML = shown.map((d, i) => renderDispatchCard(d, trendingLinks.has(d.link), i === 0, trendingLinks.get(d.link))).join("");
-        main.querySelectorAll(".buzz-badge").forEach(btn => {
-          btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
-        });
-        main.querySelectorAll(".spray-add-btn").forEach(btn => {
-          btn.addEventListener("click", () => {
-            const source = JSON.parse(btn.dataset.spraySource);
-            if (btn.dataset.removeSlug) {
-              // Re-render rather than pull just this one card — the same
-              // outlet/source could back several cards in view, and a
-              // source removal should clear all of them, not just the
-              // one that was clicked.
-              quickRemoveFromActiveSpray(source, btn.dataset.removeSlug, btn, () => renderRead());
-            } else {
-              openSprayPicker(source);
-            }
-          });
-        });
-        wireSaveButtons(main);
-      }
+      // Paint immediately with no trending badges yet — a badge is a pure
+      // enhancement (a small chip / "see the conversation" link), never
+      // load-bearing for the actual content, so there's no reason to make
+      // a reader wait on a SEPARATE network call just to see their
+      // dispatches. getTrendingLinks() runs in the background below; once
+      // it resolves, renderReadBody() runs again with real badge data —
+      // that second call is synchronous (shown/trendingLinks already in
+      // memory, no new fetch), so it's a quiet instant patch, not a
+      // second loading flash. Guarded on activeTab still being "read" so
+      // a reader who's since switched tabs doesn't get this tab's content
+      // silently overwriting whatever they're looking at now.
+      renderReadBody(shown, new Map());
 
       const needsLiveThumb = getReadDisplay() === "headlines"
         ? []
         : shown.filter(d => !d.image_url && typeof d.id === "number").map(d => d.id);
       loadThumbnails(needsLiveThumb);
       loadPaywallStatus(shown.filter(d => typeof d.id === "number").map(d => d.id));
+
+      getTrendingLinks().then(trendingLinks => {
+        if (trendingLinks.size > 0 && activeTab === "read") renderReadBody(shown, trendingLinks);
+      });
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "TRANSMISSION FAILED", body: e.message || "Could not reach the wire." });
+    }
+  }
+
+  function renderReadBody(shown, trendingLinks) {
+    const main = document.getElementById("main");
+    if (getLayoutMode() === "desktop") {
+      renderReadDesktop(shown, trendingLinks);
+    } else {
+      main.innerHTML = shown.map((d, i) => renderDispatchCard(d, trendingLinks.has(d.link), i === 0, trendingLinks.get(d.link))).join("");
+      main.querySelectorAll(".buzz-badge").forEach(btn => {
+        btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
+      });
+      main.querySelectorAll(".spray-add-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const source = JSON.parse(btn.dataset.spraySource);
+          if (btn.dataset.removeSlug) {
+            // Re-render rather than pull just this one card — the same
+            // outlet/source could back several cards in view, and a
+            // source removal should clear all of them, not just the
+            // one that was clicked.
+            quickRemoveFromActiveSpray(source, btn.dataset.removeSlug, btn, () => renderRead());
+          } else {
+            openSprayPicker(source);
+          }
+        });
+      });
+      wireSaveButtons(main);
     }
   }
 
@@ -856,9 +873,27 @@
   // story without ever showing a like/reply count. Fails soft to an
   // empty Map — Bluesky being unreachable should never break the Read
   // tab, it just means no badges/links show.
+  // Both Read (trending badges) and Buzz (Trending-on-Bluesky section)
+  // independently need the same /api/nerve-center/bluesky data — without
+  // this, a reader bouncing between the two tabs pays for the identical
+  // network round-trip twice in a row for data that hasn't changed. Short
+  // client-side memoization window (well under the server's own cache
+  // TTL for this endpoint) so it stays fresh, just not re-fetched on
+  // every single tab switch.
+  let blueskyPopularCache = null; // { data, fetchedAt }
+  const BLUESKY_POPULAR_CACHE_MS = 60 * 1000;
+  async function fetchBlueskyPopularCached() {
+    if (blueskyPopularCache && Date.now() - blueskyPopularCache.fetchedAt < BLUESKY_POPULAR_CACHE_MS) {
+      return blueskyPopularCache.data;
+    }
+    const data = await api("/api/nerve-center/bluesky");
+    blueskyPopularCache = { data, fetchedAt: Date.now() };
+    return data;
+  }
+
   async function getTrendingLinks() {
     try {
-      const posts = await api("/api/nerve-center/bluesky");
+      const posts = await fetchBlueskyPopularCached();
       const map = new Map();
       (Array.isArray(posts) ? posts : []).forEach(p => { if (p.hasLink && p.link) map.set(p.link, p.blueskyUrl); });
       return map;
@@ -1809,7 +1844,7 @@
       api("/api/temp-anomaly"),
       api("/api/sea-ice"),
       api("/api/climate-disasters"),
-      api("/api/nerve-center/bluesky"),
+      fetchBlueskyPopularCached(),
     ]);
     return {
       gas: gasR.status === "fulfilled" ? gasR.value.price : null,
@@ -1973,7 +2008,7 @@
     main.innerHTML = stateBlock({ title: "SCANNING CHATTER", body: "Pulling the signal off Bluesky...", spin: true });
     const [actionsResult, postsResult, chatterResult] = await Promise.allSettled([
       api("/api/actions-feed"),
-      api("/api/nerve-center/bluesky"),
+      fetchBlueskyPopularCached(),
       api("/api/nerve-center/chatter"),
     ]);
 
