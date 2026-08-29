@@ -4,6 +4,7 @@
 // free-tier ephemeral filesystem. Falls back to a local file automatically
 // when no TURSO_DATABASE_URL is set, so local dev needs no extra setup.
 import express from "express";
+import compression from "compression";
 import { createClient } from "@libsql/client";
 import { XMLParser } from "fast-xml-parser";
 import { readFile } from "node:fs/promises";
@@ -621,6 +622,15 @@ async function dropDegenerateArtRss() {
 
 // ---------- express app ----------
 const app = express();
+// gzip/brotli compression, as early in the middleware chain as possible so
+// it covers everything downstream: static JS/CSS (source.js/source.css
+// are ~90KB+/~65KB+ raw, meaningfully smaller compressed), every JSON API
+// response, and RSS/XML output. This was previously entirely absent —
+// every response shipped uncompressed over the wire. Express's own
+// default filter (respects a Cache-Control: no-transform response header,
+// skips already-compressed content types) is used as-is, no need to
+// override it.
+app.use(compression());
 app.use(express.json());
 // sw.js must never be cached by the browser — service workers only
 // self-update when the browser fetches a byte-different sw.js, and if

@@ -2415,7 +2415,19 @@
       });
     }
 
-    await refreshSession();
+    // Fire the session check WITHOUT awaiting it before rendering — the
+    // default "read" tab (activeTab always starts as "read" on a fresh
+    // load) doesn't need to know sign-in state to fetch/render its own
+    // list, and renderYou() already re-checks the session itself whenever
+    // a reader actually visits that tab. Awaiting refreshSession() first
+    // meant the app was serializing two genuinely independent network
+    // round-trips (auth check, then content fetch) for no real reason —
+    // this lets them run concurrently instead. renderDesktopSidePanel()
+    // is kept correctly sequenced AFTER the session resolves (not
+    // parallelized) since syncPanelPrefsFromAccount() inside it does
+    // synchronously depend on currentUser being resolved already, to
+    // correctly sync a signed-in reader's account-level panel prefs.
+    const sessionPromise = refreshSession();
 
     const sharedSavesSlug = new URLSearchParams(location.search).get("saves");
     if (sharedSavesSlug) {
@@ -2423,6 +2435,8 @@
     } else {
       renderActiveTab();
     }
+
+    await sessionPromise;
     renderDesktopSidePanel();
 
     if (!localStorage.getItem(ONBOARDED_KEY)) {
