@@ -109,6 +109,7 @@
     renderViewMenu();
     if (activeTab === "read") renderRead();
     if (activeTab === "buzz") renderBuzz();
+    renderDesktopSidePanel();
   }
 
   function renderViewMenu() {
@@ -407,6 +408,7 @@
     if (main) main.classList.remove("read-layout", "read-scroll-desktop");
     const toggle = document.getElementById("sprayToggle");
     if (toggle && activeTab !== "read") toggle.hidden = true;
+    renderDesktopSidePanel();
     if (activeTab === "read") return renderRead();
     if (activeTab === "sources") return renderSources();
     if (activeTab === "buzz") return renderBuzz();
@@ -1994,6 +1996,12 @@
     const el = document.getElementById("desktopSidePanel");
     if (!el) return;
     if (getLayoutMode() !== "desktop") { el.hidden = true; return; }
+    // Scroll's whole point is a calm, centered, one-story feed — a stats
+    // dashboard pinned to the right undermines that (visually pulls the
+    // page off-center even though #main itself is still truly centered).
+    // Hidden only while actually on Read in Scroll mode; reappears the
+    // moment either condition changes.
+    if (activeTab === "read" && getReadDisplay() === "scroll") { el.hidden = true; return; }
     el.hidden = false;
     await syncPanelPrefsFromAccount();
 
