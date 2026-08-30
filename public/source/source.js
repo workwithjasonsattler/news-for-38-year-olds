@@ -2126,7 +2126,8 @@
           <input id="youEmail" type="email" placeholder="you@domain.com"
             style="width:100%; padding:9px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--body); font-size:14px; margin-bottom:8px; border-radius:8px;">
           <button class="btn primary" id="youSendLink">SEND ACCESS LINK</button>
-        </div>`;
+        </div>
+        <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:14px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>`;
       document.getElementById("youSendLink").addEventListener("click", async () => {
         const email = document.getElementById("youEmail").value.trim();
         if (!email) return;
@@ -2163,6 +2164,7 @@
       <div class="section-label" style="margin-top:22px; color: var(--alert);">DELETE MY ACCOUNT</div>
       <div class="section-sub">Permanently erases your saves, Sprays, custom sources, and preferences. This can't be undone.</div>
       <button class="btn" id="youDeleteAccount" style="margin-top:8px; border-color: var(--alert); color: var(--alert);">Delete my account</button>
+      <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:22px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>
     `;
     document.getElementById("youSignOut").addEventListener("click", async () => {
       try { await api("/api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
@@ -2314,6 +2316,7 @@
     panel.id = "obWhatsThisPanel";
     panel.innerHTML = `
       <p>${escapeHtml(WHATS_THIS_COPY)}</p>
+      <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:10px; font-size:13px;">Privacy Policy</a>
       <button class="ob-whats-this-close" id="obWhatsThisClose" aria-label="Close">×</button>
     `;
     el.appendChild(panel);
