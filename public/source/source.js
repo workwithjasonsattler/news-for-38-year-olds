@@ -2123,6 +2123,21 @@
   }
 
   // ---------------------------------------------------------------
+  // Standalone (installed/Home-Screen) detection — used to explain a
+  // real, known limitation: on iOS specifically, an installed web app
+  // runs in a separate storage context from Safari. The sign-in email's
+  // link always opens in Safari (Mail can't launch straight into an
+  // installed web app), so a cookie/token set there doesn't carry over
+  // to the docked app today. This is a genuine platform gap that only
+  // goes away with a real native (Capacitor) wrap or a dedicated device-
+  // pairing flow — neither built yet. Rather than let sign-in silently
+  // "not stick" with no explanation, tell the reader plainly.
+  // ---------------------------------------------------------------
+  function isStandaloneApp() {
+    return (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) || window.navigator.standalone === true;
+  }
+
+  // ---------------------------------------------------------------
   // YOU — account + shareable reading list. Maps to Account +
   // Sprays/custom-sources management.
   // ---------------------------------------------------------------
@@ -2137,6 +2152,7 @@
           <input id="youEmail" type="email" placeholder="you@domain.com"
             style="width:100%; padding:9px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--body); font-size:14px; margin-bottom:8px; border-radius:8px;">
           <button class="btn primary" id="youSendLink">SEND ACCESS LINK</button>
+          ${isStandaloneApp() ? `<p style="font-size:12.5px; color: var(--ink-muted); margin-top:10px;">Heads up: on an installed/Home-Screen app, the sign-in link opens in your regular browser, not this app — you'll need to sign in there for now. We're working on fixing this for the installed app.</p>` : ""}
         </div>
         <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:14px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>`;
       document.getElementById("youSendLink").addEventListener("click", async () => {
