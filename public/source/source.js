@@ -404,7 +404,7 @@
 
   function renderActiveTab() {
     const main = document.getElementById("main");
-    if (main) main.classList.remove("read-layout");
+    if (main) main.classList.remove("read-layout", "read-scroll-desktop");
     const toggle = document.getElementById("sprayToggle");
     if (toggle && activeTab !== "read") toggle.hidden = true;
     if (activeTab === "read") return renderRead();
@@ -678,9 +678,20 @@
 
   function renderReadBody(shown, trendingLinks) {
     const main = document.getElementById("main");
-    if (getLayoutMode() === "desktop") {
+    // Scroll is a continuous, one-story-at-a-time feed — that's
+    // fundamentally incompatible with the two-pane click-to-select
+    // reader layout, no matter how the pane itself is sized. So Scroll
+    // drops the reader pane on Desktop too and reuses the exact same
+    // single-column card feed mobile uses (renderDispatchCard already
+    // renders identically regardless of caller — see its own "scroll"
+    // branch). Headlines/Expanded keep the two-pane Desktop layout.
+    if (getLayoutMode() === "desktop" && getReadDisplay() !== "scroll") {
       renderReadDesktop(shown, trendingLinks);
-    } else {
+      return;
+    }
+    main.classList.remove("read-layout");
+    main.classList.toggle("read-scroll-desktop", getLayoutMode() === "desktop" && getReadDisplay() === "scroll");
+    {
       main.innerHTML = shown.map((d, i) => renderDispatchCard(d, trendingLinks.has(d.link), i === 0, trendingLinks.get(d.link))).join("");
       main.querySelectorAll(".buzz-badge").forEach(btn => {
         btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
@@ -713,6 +724,7 @@
   // ---------------------------------------------------------------
   function renderReadDesktop(shown, trendingLinks) {
     const main = document.getElementById("main");
+    main.classList.remove("read-scroll-desktop");
     main.classList.add("read-layout");
     if (!selectedDispatch || !shown.some(d => d.id === selectedDispatch.id)) {
       selectedDispatch = shown[0];

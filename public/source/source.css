@@ -1307,6 +1307,17 @@ body[data-layout="desktop"] #main.read-layout {
   }
 }
 
+/* Desktop Scroll — drops BOTH the reader-pane split (.read-layout) and the
+   generic Sources/Buzz masonry grid (#main's own default). A continuous
+   scroll feed is single-column by definition; centering it at a modest
+   width (not the full 720/960px main column) is what keeps full-bleed
+   Scroll cards from stretching too wide to read comfortably. */
+body[data-layout="desktop"] #main.read-scroll-desktop {
+  display: block;
+  max-width: 560px;
+  margin: 0 auto;
+}
+
 /* ---------------------------------------------------------------
    Desktop side panel — fills the dead space beyond the centered main
    column (720/960px) on wide screens with a stack of small stat/
