@@ -1314,8 +1314,41 @@ body[data-layout="desktop"] #main.read-layout {
    Scroll cards from stretching too wide to read comfortably. */
 body[data-layout="desktop"] #main.read-scroll-desktop {
   display: block;
-  max-width: 560px;
+  max-width: 840px;
   margin: 0 auto;
+}
+
+/* Scaled ~50% up from the mobile Scroll card's own sizing (22px title ->
+   33px, etc.) — Desktop has the room for it and it reads better at this
+   width than the same card sized for a phone. Scoped to .read-scroll-desktop
+   only, so mobile's own Scroll cards are completely untouched. */
+body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll {
+  margin-bottom: 30px;
+}
+body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-body {
+  padding: 24px;
+}
+body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-body-textonly {
+  padding-top: 33px;
+}
+body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-meta {
+  font-size: 18px;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-title {
+  font-size: 33px;
+  margin-bottom: 15px;
+}
+body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-body-textonly .card-scroll-title {
+  font-size: 39px;
+}
+body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-excerpt {
+  font-size: 22px;
+}
+body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-discuss {
+  padding: 15px 24px 24px;
+  font-size: 20px;
 }
 
 /* ---------------------------------------------------------------
