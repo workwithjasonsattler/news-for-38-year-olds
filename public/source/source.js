@@ -626,7 +626,7 @@
   async function renderRead() {
     const main = document.getElementById("main");
     renderSprayToggle();
-    main.innerHTML = stateBlock({ title: "PULLING TRANSMISSION", body: "Fetching latest dispatches...", spin: true });
+    main.innerHTML = stateBlock({ title: "Loading Fresh RSS Feeds", body: "Just posted", spin: true });
     try {
       const items = await fetchReadItems();
       if (!Array.isArray(items) || items.length === 0) {
