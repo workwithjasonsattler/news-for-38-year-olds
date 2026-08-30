@@ -53,9 +53,20 @@
   // it's here for looking at both arrangements during development.
   // ---------------------------------------------------------------
   const LAYOUT_KEY = "source_layout_mode";
+  const LAYOUT_REVIEW_BREAKPOINT = 700; // matches the CSS breakpoint that hides the review toggle below this width
 
   function getLayoutMode() {
-    return localStorage.getItem(LAYOUT_KEY) || "mobile";
+    const stored = localStorage.getItem(LAYOUT_KEY) || "mobile";
+    // The Desktop preview toggle only exists (visually) at >=700px — it's a review tool for
+    // wide screens, not a real reader-facing setting. If a narrow viewport somehow has
+    // "desktop" stored (e.g. localStorage carried over from testing on a wider screen, or a
+    // resize), never actually render Desktop there: there'd be no way to switch back, since
+    // the only control for it is hidden below this width. Mobile is always safe/correct below
+    // the breakpoint regardless of what's stored.
+    if (stored === "desktop" && window.innerWidth < LAYOUT_REVIEW_BREAKPOINT) {
+      return "mobile";
+    }
+    return stored;
   }
 
   function setLayoutMode(mode) {
@@ -2387,6 +2398,22 @@
     renderLayoutReview();
     renderViewMenu();
     renderTabBar();
+
+    // If the viewport crosses the 700px breakpoint at runtime (window resize,
+    // or rotating a tablet), re-resolve the layout mode so a narrow window
+    // never stays stuck rendering Desktop with its toggle hidden.
+    let lastResolvedLayout = getLayoutMode();
+    window.addEventListener("resize", () => {
+      const resolved = getLayoutMode();
+      if (resolved !== lastResolvedLayout) {
+        lastResolvedLayout = resolved;
+        document.body.dataset.layout = resolved;
+        renderLayoutReview();
+        renderViewMenu();
+        renderActiveTab();
+        renderDesktopSidePanel();
+      }
+    });
 
     document.addEventListener("click", () => {
       const list = document.getElementById("viewMenuList");
