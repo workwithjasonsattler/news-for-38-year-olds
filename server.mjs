@@ -684,13 +684,21 @@ function clearSessionCookie(res) {
 
 // Sends via Resend if RESEND_API_KEY is set; otherwise logs the link so local
 // dev and early testing never require an email provider to be configured.
-async function sendMagicLink(email, link) {
+// `client` ("source" or undefined) rebrands the sender name/subject/body for
+// SOURCE! sign-ins — same verified sending ADDRESS either way (parsed out of
+// RESEND_FROM), just a different display name and copy, since Resend only
+// has the one domain verified and N38YO/SOURCE! share that infrastructure.
+async function sendMagicLink(email, link, client) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
     console.log(`[dev] Magic sign-in link for ${email}: ${link}`);
     return;
   }
-  const from = process.env.RESEND_FROM || "News for 38 Year Olds <login@news38yearolds.com>";
+  const defaultFrom = process.env.RESEND_FROM || "News for 38 Year Olds <login@news38yearolds.com>";
+  const addressMatch = defaultFrom.match(/<([^>]+)>/);
+  const sendingAddress = addressMatch ? addressMatch[1] : defaultFrom;
+  const from = client === "source" ? `SOURCE! <${sendingAddress}>` : defaultFrom;
+  const productName = client === "source" ? "SOURCE!" : "News for 38 Year Olds";
   try {
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -699,7 +707,7 @@ async function sendMagicLink(email, link) {
         from,
         to: email,
         subject: "Your sign-in link",
-        html: `<p>Click to sign in to News for 38 Year Olds:</p><p><a href="${link}">${link}</a></p><p>This link expires in 15 minutes. If you didn't request it, ignore this email.</p>`,
+        html: `<p>Click to sign in to ${productName}:</p><p><a href="${link}">${link}</a></p><p>This link expires in 15 minutes. If you didn't request it, ignore this email.</p>`,
       }),
     });
     if (!resp.ok) {
@@ -769,7 +777,7 @@ app.post("/api/auth/request-link", async (req, res) => {
   const verifyUrl = client === "source"
     ? `${SITE_URL}/api/auth/verify?token=${token}&app=source`
     : `${SITE_URL}/api/auth/verify?token=${token}`;
-  await sendMagicLink(normalized, verifyUrl);
+  await sendMagicLink(normalized, verifyUrl, client === "source" ? "source" : undefined);
   res.json({ ok: true });
 });
 
