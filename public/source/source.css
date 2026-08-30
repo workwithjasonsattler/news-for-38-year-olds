@@ -1311,44 +1311,48 @@ body[data-layout="desktop"] #main.read-layout {
    generic Sources/Buzz masonry grid (#main's own default). A continuous
    scroll feed is single-column by definition; centering it at a modest
    width (not the full 720/960px main column) is what keeps full-bleed
-   Scroll cards from stretching too wide to read comfortably. */
+   Scroll cards from stretching too wide to read comfortably.
+   Width dialed back from an earlier 840px — that made line lengths too
+   long and actually slowed reading while scrolling, even though it looked
+   more spacious. 680px is the sweet spot: noticeably bigger than mobile's
+   own sizing, still comfortable to read at speed. */
 body[data-layout="desktop"] #main.read-scroll-desktop {
   display: block;
-  max-width: 840px;
+  max-width: 680px;
   margin: 0 auto;
 }
 
-/* Scaled ~50% up from the mobile Scroll card's own sizing (22px title ->
-   33px, etc.) — Desktop has the room for it and it reads better at this
-   width than the same card sized for a phone. Scoped to .read-scroll-desktop
-   only, so mobile's own Scroll cards are completely untouched. */
+/* Scaled up from the mobile Scroll card's own sizing (22px title -> 27px,
+   etc.) to match the 680px column — Desktop has the room for it, but not
+   so much that it slows reading. Scoped to .read-scroll-desktop only, so
+   mobile's own Scroll cards are completely untouched. */
 body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll {
-  margin-bottom: 30px;
+  margin-bottom: 24px;
 }
 body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-body {
-  padding: 24px;
+  padding: 20px;
 }
 body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-body-textonly {
-  padding-top: 33px;
+  padding-top: 27px;
 }
 body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-meta {
-  font-size: 18px;
-  gap: 12px;
-  margin-bottom: 15px;
+  font-size: 15px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-title {
-  font-size: 33px;
-  margin-bottom: 15px;
+  font-size: 27px;
+  margin-bottom: 12px;
 }
 body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-body-textonly .card-scroll-title {
-  font-size: 39px;
+  font-size: 32px;
 }
 body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-excerpt {
-  font-size: 22px;
+  font-size: 18px;
 }
 body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-discuss {
-  padding: 15px 24px 24px;
-  font-size: 20px;
+  padding: 12px 20px 20px;
+  font-size: 16px;
 }
 
 /* ---------------------------------------------------------------
