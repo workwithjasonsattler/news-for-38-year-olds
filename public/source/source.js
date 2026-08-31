@@ -613,8 +613,6 @@
       if (r.status === "fulfilled") {
         survivingKeys.push(keys[i]);
         combined = combined.concat(r.value);
-        // eslint-disable-next-line no-console
-        console.log(`[spray-toggle] "${keys[i]}" contributed ${r.value.length} item(s)`);
       } else {
         failures.push(keys[i]);
         console.error(`Spray toggle: "${keys[i]}" failed to load and was dropped from the merge:`, r.reason);
@@ -656,7 +654,6 @@
       deduped.push(d);
     }
     deduped.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-    console.log(`[spray-toggle] merged ${combined.length} raw -> ${deduped.length} after dedupe, keys: ${survivingKeys.join(", ")}`);
     return deduped;
   }
 
@@ -670,10 +667,21 @@
         main.innerHTML = stateBlock({ glyph: "∅", title: "NO SIGNAL", body: "No dispatches available right now." });
         return;
       }
+      // A single active source stays capped at 60 (unchanged, matches every
+      // prior session's behavior). With MULTIPLE sources merged, ANY fixed
+      // cap can mathematically exclude an entire lower-volume source — e.g.
+      // 175 YouTube + 40 Bluesky items can fill every available slot on
+      // recency alone, even though 60 real Headlines items are also present
+      // in the true chronological order, just older on average. No cap at
+      // all is the only guarantee that can't happen — reordering to
+      // interleave sources instead would violate the locked "no
+      // algorithmic reordering, strictly reverse-chronological" rule, so
+      // showing more (not reordering) is the correct fix.
+      const cap = activeSprayKeys.size > 1 ? Infinity : 60;
       const shown = items
         .slice()
         .sort((a, b) => new Date(b.date) - new Date(a.date))
-        .slice(0, 60);
+        .slice(0, cap);
 
       // Paint immediately with no trending badges yet — a badge is a pure
       // enhancement (a small chip / "see the conversation" link), never
