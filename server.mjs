@@ -432,7 +432,7 @@ async function migrateDateFormats() {
   const rows = await dbAll(`SELECT id, date FROM dispatches WHERE date IS NOT NULL AND date != ''`);
   let fixed = 0;
   for (const row of rows) {
-    if (/^\d{4}-\d{2}-\d{2}$/.test(row.date)) continue; // already ISO
+    if (/^\d{4}-\d{2}-\d{2}/.test(row.date)) continue; // already ISO (date-only or full timestamp)
     const parsed = new Date(`${row.date}, 2026`);
     if (!isNaN(parsed)) {
       await dbRun(`UPDATE dispatches SET date = ? WHERE id = ?`, [parsed.toISOString().slice(0, 10), row.id]);
@@ -3967,7 +3967,14 @@ function truncate(str, max = 160) {
 }
 function formatDate(pubDate) {
   const d = new Date(pubDate);
-  return isNaN(d) ? "" : d.toISOString().slice(0, 10); // sortable ISO date, e.g. "2026-07-18"
+  // Preserve the FULL timestamp (was previously truncated to just the
+  // calendar day via .slice(0,10) — "sortable ISO date, e.g. 2026-07-18").
+  // That truncation was itself the bug: every article published on the
+  // same day got an IDENTICAL date value with no time-of-day info, so
+  // relative-time badges showed the same age for genuinely different
+  // publish times, and sort order within a day fell back to arbitrary
+  // insertion order instead of true chronological order.
+  return isNaN(d) ? "" : d.toISOString();
 }
 function pickBeat(text, beatKeywords = {}, fallbackBeat = "General") {
   const lower = text.toLowerCase();
