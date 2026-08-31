@@ -613,6 +613,8 @@
       if (r.status === "fulfilled") {
         survivingKeys.push(keys[i]);
         combined = combined.concat(r.value);
+        // eslint-disable-next-line no-console
+        console.log(`[spray-toggle] "${keys[i]}" contributed ${r.value.length} item(s)`);
       } else {
         failures.push(keys[i]);
         console.error(`Spray toggle: "${keys[i]}" failed to load and was dropped from the merge:`, r.reason);
@@ -654,6 +656,7 @@
       deduped.push(d);
     }
     deduped.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    console.log(`[spray-toggle] merged ${combined.length} raw -> ${deduped.length} after dedupe, keys: ${survivingKeys.join(", ")}`);
     return deduped;
   }
 
