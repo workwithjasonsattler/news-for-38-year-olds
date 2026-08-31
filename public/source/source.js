@@ -573,9 +573,23 @@
         excerpt: "",
       }));
     }
-    const mix = await api(`/api/mixes/${encodeURIComponent(key)}`);
-    mixMetaCache.set(key, { name: mix.name, is_owner: !!mix.is_owner, is_official: !!mix.is_official });
-    return Array.isArray(mix.items) ? mix.items : [];
+    try {
+      const mix = await api(`/api/mixes/${encodeURIComponent(key)}`);
+      mixMetaCache.set(key, { name: mix.name, is_owner: !!mix.is_owner, is_official: !!mix.is_official });
+      return Array.isArray(mix.items) ? mix.items : [];
+    } catch (err) {
+      if (key === OFFICIAL_NEWS_SLUG) {
+        // The flagship Spray is just a live mirror of the default Wire —
+        // if its own dedicated mix endpoint fails for any reason, fall
+        // back to the exact same underlying data via /api/dispatches
+        // rather than silently dropping "Headlines" out of a multi-select
+        // merge with no visible sign anything went wrong.
+        console.error("Headlines mix fetch failed, falling back to /api/dispatches:", err);
+        const dispatches = await api("/api/dispatches");
+        return Array.isArray(dispatches) ? dispatches : [];
+      }
+      throw err;
+    }
   }
 
   // Resolves the items to show in Read based on the active toggle
@@ -594,12 +608,19 @@
 
     const survivingKeys = [];
     let combined = [];
+    const failures = [];
     results.forEach((r, i) => {
       if (r.status === "fulfilled") {
         survivingKeys.push(keys[i]);
         combined = combined.concat(r.value);
+      } else {
+        failures.push(keys[i]);
+        console.error(`Spray toggle: "${keys[i]}" failed to load and was dropped from the merge:`, r.reason);
       }
     });
+    if (failures.length > 0) {
+      toast(failures.length === 1 ? "One selected source didn't load — showing the rest" : "Some selected sources didn't load — showing the rest");
+    }
 
     if (survivingKeys.length === 0) {
       activeSprayKeys = new Set(["all"]);

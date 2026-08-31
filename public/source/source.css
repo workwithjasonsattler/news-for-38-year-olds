@@ -1318,6 +1318,7 @@ body[data-layout="desktop"] #main.read-layout {
    own sizing, still comfortable to read at speed. */
 body[data-layout="desktop"] #main.read-scroll-desktop {
   display: block;
+  width: 100%;
   max-width: 680px;
   margin: 0 auto;
 }
