@@ -1,0 +1,15 @@
+{
+  "appId": "com.newsfor38yearolds.source",
+  "appName": "SOURCE!",
+  "webDir": "www",
+  "server": {
+    "url": "https://news-for-38-year-olds.onrender.com/source/",
+    "cleartext": false
+  },
+  "ios": {
+    "contentInset": "automatic"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
+}
