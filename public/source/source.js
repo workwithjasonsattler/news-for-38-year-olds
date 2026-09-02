@@ -1100,6 +1100,19 @@
   let sourcesDetailOutlet = null; // which registry row is expanded
   let sourcesDetailMixes = null;  // cached for-source() result for it
 
+  // ----- Sprays shelf: Headlines (starter pack) + your own Sprays + New -----
+  let myMixesCache = null; // [{slug,name,is_public,is_official,...}], reader's own
+  async function loadMyMixes(force) {
+    if (!currentUser) { myMixesCache = []; return myMixesCache; }
+    if (myMixesCache && !force) return myMixesCache;
+    try {
+      myMixesCache = await api("/api/my/mixes");
+    } catch (e) {
+      myMixesCache = [];
+    }
+    return myMixesCache;
+  }
+
   async function loadSourceSuggestions() {
     if (sourceSuggestCache) return sourceSuggestCache;
     try {
@@ -1111,16 +1124,270 @@
     return sourceSuggestCache;
   }
 
+  function renderSpraysShelf(bar, myMixes) {
+    const followingHeadlines = (bar?.sprays || []).some(s => s.slug === OFFICIAL_NEWS_SLUG);
+    const headlinesTile = `
+      <button class="spray-tile spray-tile-official" data-tile="headlines">
+        ${followingHeadlines ? `<span class="spray-tile-badge">Following</span>` : ""}
+        <span class="spray-tile-icon">📰</span>
+        <span class="spray-tile-name">Headlines: Best in the World</span>
+        <span class="spray-tile-meta">Starter pack</span>
+      </button>`;
+
+    const ownTiles = (myMixes || []).filter(m => !m.is_official).map(m => `
+      <button class="spray-tile" data-tile="own" data-slug="${escapeHtml(m.slug)}">
+        <span class="spray-tile-icon">🗂️</span>
+        <span class="spray-tile-name">${escapeHtml(m.name)}</span>
+        <span class="spray-tile-meta">${m.is_public ? "Public" : "Private"}</span>
+      </button>`).join("");
+
+    const newTile = `
+      <button class="spray-tile spray-tile-new" data-tile="new">
+        <span class="spray-tile-plus">+</span>
+        <span class="spray-tile-name">New Spray</span>
+      </button>`;
+
+    return `<div class="spray-shelf">${headlinesTile}${ownTiles}${newTile}</div>`;
+  }
+
+  function wireSpraysShelf() {
+    document.querySelectorAll("[data-tile]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const type = btn.dataset.tile;
+        if (type === "new") return openCreateFlow();
+        if (type === "headlines") return openTileSheet({ type: "headlines" });
+        if (type === "own") return openTileSheet({ type: "own", slug: btn.dataset.slug });
+      });
+    });
+  }
+
+  // ----- Tile detail sheet: one bottom-sheet shape, two contents.
+  // Headlines gets a real follow/unfollow toggle (adds/removes the
+  // official Spray from the reader's own Read-toggle bar — a genuine,
+  // reversible action, not a one-time setup step) plus "Copy and
+  // customize" (creates a brand-new, independently editable Spray
+  // pre-filled with whatever Headlines currently carries, since the
+  // official Spray itself has no stored source list to edit — it
+  // auto-syncs to the live Wire). An owned Spray gets rename,
+  // public/private, and its source list with add/remove — this is now
+  // the one place a Spray's OWN contents get edited, reached from its
+  // tile instead of being buried behind the individual-source registry. -----
+  let tileSheetTarget = null; // {type:'headlines'} | {type:'own', slug}
+  let tileSheetData = null;   // full GET /api/mixes/:slug response
+  let tileSheetLoading = false;
+
+  function closeTileSheet() {
+    const el = document.getElementById("tileSheetOverlay");
+    if (el) el.remove();
+    tileSheetTarget = null;
+    tileSheetData = null;
+    // Refresh the Sources tab behind it so shelf badges / tile lists
+    // reflect anything just changed (follow toggle, rename, source edits).
+    if (activeTab === "sources") renderSources();
+  }
+
+  async function openTileSheet(target) {
+    tileSheetTarget = target;
+    tileSheetData = null;
+    tileSheetLoading = true;
+    renderTileSheet();
+    try {
+      const slug = target.type === "headlines" ? OFFICIAL_NEWS_SLUG : target.slug;
+      tileSheetData = await api(`/api/mixes/${encodeURIComponent(slug)}`);
+    } catch (e) {
+      tileSheetData = null;
+      toast(e.message || "Couldn't load that Spray.");
+    }
+    tileSheetLoading = false;
+    renderTileSheet();
+  }
+
+  function renderTileSheet() {
+    let el = document.getElementById("tileSheetOverlay");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "tileSheetOverlay";
+      el.className = "spray-picker-overlay";
+      document.body.appendChild(el);
+      el.addEventListener("click", (e) => { if (e.target === el) closeTileSheet(); });
+    }
+    if (!tileSheetTarget) return;
+
+    if (tileSheetLoading || !tileSheetData) {
+      el.innerHTML = `<div class="spray-picker-card"><div class="state-block-mini">Loading…</div></div>`;
+      return;
+    }
+
+    const mix = tileSheetData;
+    const isHeadlines = tileSheetTarget.type === "headlines";
+    const rssUrl = `${location.origin}/api/mixes/${encodeURIComponent(mix.slug)}/rss`;
+    let body;
+
+    if (isHeadlines) {
+      const following = (sprayBarData?.sprays || []).some(s => s.slug === OFFICIAL_NEWS_SLUG);
+      body = `
+        <div class="tile-sheet-badge">Starter pack</div>
+        <div class="tile-sheet-title">${escapeHtml(mix.name)}</div>
+        <div class="tile-sheet-sub">Auto-updates with whatever's live — ${mix.sources.length} sources right now.</div>
+        <div class="tile-sheet-toggle-row">
+          <span>In your Read toggle</span>
+          <button class="tile-sheet-switch${following ? " on" : ""}" id="tileFollowToggle" role="switch" aria-checked="${following}" aria-label="Follow Headlines"></button>
+        </div>
+        <button class="btn" id="tileCopyBtn" style="width:100%; margin-top:12px;">Copy and customize</button>
+        <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>`;
+    } else {
+      const sourcesHtml = (mix.sources || []).map(s => `
+        <span class="tile-sheet-chip">
+          ${escapeHtml(s.outlet || s.name || "Custom source")}
+          <span class="tile-sheet-chip-x" data-remove-outlet="${escapeHtml(s.outlet || "")}" data-remove-custom="${s.custom_source_id || ""}">×</span>
+        </span>`).join("");
+      body = `
+        <input class="create-flow-input" id="tileRenameInput" value="${escapeHtml(mix.name)}" maxlength="80">
+        <div class="tile-sheet-toggle-row" style="margin-top:10px;">
+          <span>Public</span>
+          <button class="tile-sheet-switch${mix.is_public ? " on" : ""}" id="tileVisibilityToggle" role="switch" aria-checked="${mix.is_public}" aria-label="Make this Spray public"></button>
+        </div>
+        <div class="tile-sheet-sources">${sourcesHtml}</div>
+        <input class="create-flow-input" id="tileAddSourceInput" placeholder="Search sources to add…" style="margin-top:10px;">
+        <div id="tileAddSourceResults"></div>
+        <button class="btn" id="tileSaveBtn" style="width:100%; margin-top:14px;">Save</button>
+        <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>`;
+    }
+
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span>${isHeadlines ? "Headlines: Best in the World" : "Edit Spray"}</span>
+          <button class="spray-picker-close" id="tileSheetClose" aria-label="Close">×</button>
+        </div>
+        ${body}
+      </div>`;
+
+    document.getElementById("tileSheetClose").addEventListener("click", closeTileSheet);
+    if (isHeadlines) {
+      document.getElementById("tileFollowToggle").addEventListener("click", toggleHeadlinesFollow);
+      document.getElementById("tileCopyBtn").addEventListener("click", copyHeadlinesAndEdit);
+    } else {
+      wireTileSheetEdit(mix);
+    }
+  }
+
+  async function toggleHeadlinesFollow() {
+    const btn = document.getElementById("tileFollowToggle");
+    const following = btn.classList.contains("on");
+    btn.disabled = true;
+    try {
+      if (following) {
+        await api(`/api/my/spray-bar/${encodeURIComponent(OFFICIAL_NEWS_SLUG)}`, { method: "DELETE" });
+      } else {
+        await api("/api/my/spray-bar/add", { method: "POST", body: JSON.stringify({ slug: OFFICIAL_NEWS_SLUG }) });
+      }
+      await loadSprayBar(true);
+      renderTileSheet();
+      toast(following ? "Removed from your Read toggle." : "Added to your Read toggle.");
+    } catch (e) {
+      toast(e.message || "Couldn't update that.");
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  async function copyHeadlinesAndEdit() {
+    const btn = document.getElementById("tileCopyBtn");
+    btn.disabled = true;
+    btn.textContent = "Copying…";
+    try {
+      const sources = tileSheetData.sources.map(s => ({ source_type: s.source_type, outlet: s.outlet, custom_source_id: s.custom_source_id || null }));
+      const created = await api("/api/mixes", {
+        method: "POST",
+        body: JSON.stringify({ name: "My Headlines (copy)", sources, is_public: false }),
+      });
+      await loadMyMixes(true);
+      toast(`Created "${created.name}" — now yours to edit.`);
+      openTileSheet({ type: "own", slug: created.slug });
+    } catch (e) {
+      toast(e.message || "Couldn't copy Headlines.");
+      btn.disabled = false;
+      btn.textContent = "Copy and customize";
+    }
+  }
+
+  function wireTileSheetEdit(mix) {
+    document.querySelectorAll("[data-remove-outlet], [data-remove-custom]").forEach(chip => {
+      chip.addEventListener("click", async () => {
+        const outlet = chip.dataset.removeOutlet;
+        const customId = chip.dataset.removeCustom;
+        try {
+          const body = customId
+            ? { source_type: "custom", custom_source_id: Number(customId) }
+            : { source_type: "admin_outlet", outlet };
+          await api(`/api/my/mixes/${encodeURIComponent(mix.slug)}/toggle-source`, { method: "POST", body: JSON.stringify(body) });
+          await openTileSheet({ type: "own", slug: mix.slug }); // refetch + re-render
+        } catch (e) {
+          toast(e.message || "Couldn't remove that source — a Spray needs at least one.");
+        }
+      });
+    });
+
+    const addInput = document.getElementById("tileAddSourceInput");
+    const results = document.getElementById("tileAddSourceResults");
+    if (addInput) {
+      addInput.addEventListener("input", debounce(() => {
+        const q = addInput.value.trim().toLowerCase();
+        const already = new Set((mix.sources || []).map(s => s.outlet).filter(Boolean));
+        const pool = sourcesRegistryCache || [];
+        const matches = q
+          ? pool.filter(s => !already.has(s.outlet) && (s.outlet || "").toLowerCase().includes(q)).slice(0, 6)
+          : [];
+        results.innerHTML = matches.map(s => `<button class="tile-sheet-add-row" data-add-outlet="${escapeHtml(s.outlet)}">+ ${escapeHtml(s.outlet)}</button>`).join("");
+        results.querySelectorAll("[data-add-outlet]").forEach(b => {
+          b.addEventListener("click", async () => {
+            try {
+              await api(`/api/my/mixes/${encodeURIComponent(mix.slug)}/toggle-source`, {
+                method: "POST",
+                body: JSON.stringify({ source_type: "admin_outlet", outlet: b.dataset.addOutlet }),
+              });
+              await openTileSheet({ type: "own", slug: mix.slug });
+            } catch (e) {
+              toast(e.message || "Couldn't add that source.");
+            }
+          });
+        });
+      }, 200));
+    }
+
+    document.getElementById("tileSaveBtn").addEventListener("click", async () => {
+      const name = (document.getElementById("tileRenameInput").value || "").trim();
+      if (!name) { toast("Name your Spray first."); return; }
+      const isPublic = document.getElementById("tileVisibilityToggle").classList.contains("on");
+      try {
+        await api(`/api/mixes/${encodeURIComponent(mix.slug)}`, {
+          method: "PUT",
+          body: JSON.stringify({ name, is_public: isPublic }),
+        });
+        await loadMyMixes(true);
+        toast("Saved.");
+        closeTileSheet();
+      } catch (e) {
+        toast(e.message || "Couldn't save that Spray.");
+      }
+    });
+
+    const visToggle = document.getElementById("tileVisibilityToggle");
+    if (visToggle) visToggle.addEventListener("click", () => visToggle.classList.toggle("on"));
+  }
+
   async function renderSources() {
     if (createFlowState) return renderCreateFlow();
 
     const main = document.getElementById("main");
     main.innerHTML = stateBlock({ title: "LOADING SOURCE LIST", body: "Querying the registry...", spin: true });
     try {
-      const [sources, bar, suggestions] = await Promise.all([
+      const [sources, bar, suggestions, myMixes] = await Promise.all([
         sourcesRegistryCache || api("/api/sources"),
         loadSprayBar(),
         loadSourceSuggestions(),
+        loadMyMixes(),
       ]);
       // Sources is for building Sprays out of Organizations — Individuals (Bluesky-only
       // people) don't produce dispatch items on their own and belong to Buzz, not here.
@@ -1129,21 +1396,36 @@
       sourcesRegistryCache = (Array.isArray(sources) ? sources : []).filter(s => s.feed_type !== "journalist");
       const orgSources = sourcesRegistryCache;
 
-      // ----- AREA 1: Your Sources -----
+      // ----- AREA 0: the Sprays shelf — the front door. Headlines pinned
+      // first (with a real follow/unfollow toggle in its detail sheet),
+      // then the reader's own Sprays, then a "+ New Spray" tile. Tapping
+      // any tile opens the SAME detail sheet shape, just with different
+      // contents — one interaction pattern for everything. -----
       let html = `
         <div class="sources-area-head">
           <div class="sources-area-rule"></div>
-          <div class="sources-area-title">Your Sources</div>
-          <div class="sources-area-sub">Everything you can build a Spray from. Tap one to see where it already lives.</div>
+          <div class="sources-area-title">Your Sprays</div>
+          <div class="sources-area-sub">Tap any tile to follow, edit, or build something new.</div>
         </div>`;
+      html += renderSpraysShelf(bar, myMixes);
 
+      // ----- AREA 1: registry browsing — now secondary, reached AFTER the
+      // shelf rather than being the front door. Reordering your Read
+      // toggle (which Sprays show up as pills, and in what order) is a
+      // separate concern from the shelf above, so it keeps its own
+      // section rather than being folded in. -----
       if (currentUser) {
-        html += `<div class="section-label">Your Sprays</div>` + renderYourSpraysSection(bar);
+        html += `<div class="section-label" style="margin-top:28px;">Reading order</div>` + renderYourSpraysSection(bar);
       } else {
         html += `<p class="sources-signin-hint">Sign in (on the You tab) to save and organize your own Sprays.</p>`;
       }
 
-      html += `<div class="section-label" style="margin-top:22px;">All sources (${orgSources.length})</div>`;
+      html += `<div class="sources-area-head" style="margin-top:34px;">
+          <div class="sources-area-rule"></div>
+          <div class="sources-area-title">Your Sources</div>
+          <div class="sources-area-sub">Everything you can build a Spray from. Tap one to see where it already lives.</div>
+        </div>`;
+      html += `<div class="section-label" style="margin-top:8px;">All sources (${orgSources.length})</div>`;
       html += `<input class="create-flow-input" id="sourcesBrowseSearch" placeholder="Search sources..." value="${escapeHtml(sourcesBrowseFilter)}" style="margin:8px 0 10px;">`;
 
       const filtered = sourcesBrowseFilter
@@ -1173,6 +1455,7 @@
 
       main.innerHTML = html;
 
+      wireSpraysShelf();
       wireYourSpraysSection();
       wireSourcesArea1();
 

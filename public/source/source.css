@@ -959,6 +959,192 @@ button { font-family: inherit; cursor: pointer; }
   margin-top: 2px;
 }
 
+/* Sprays shelf — horizontal tile row, Headlines pinned first, then the
+   reader's own Sprays, then a dashed "New Spray" tile last. One tap
+   pattern for everything: any tile opens the same bottom-sheet shape
+   (.spray-picker-overlay/.spray-picker-card, reused), just with
+   different contents inside — a follow toggle for Headlines, or
+   rename/visibility/sources for an owned Spray. */
+.spray-shelf {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.spray-shelf::-webkit-scrollbar { display: none; }
+.spray-tile {
+  flex: 0 0 132px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  cursor: pointer;
+}
+.spray-tile-official { border-color: var(--accent); }
+.spray-tile-icon { font-size: 18px; margin-bottom: 20px; }
+.spray-tile-name {
+  font-family: var(--body);
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--ink);
+  line-height: 1.3;
+}
+.spray-tile-meta {
+  font-family: var(--data);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--ink-muted);
+  margin-top: 6px;
+}
+.spray-tile-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-family: var(--data);
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent-dim);
+  background: var(--accent-soft);
+  padding: 2px 7px;
+  border-radius: 20px;
+}
+.spray-tile-new {
+  border-style: dashed;
+  border-color: var(--ink-muted);
+  background: none;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+.spray-tile-plus {
+  font-size: 20px;
+  color: var(--ink-muted);
+  line-height: 1;
+  margin-bottom: 6px;
+}
+.spray-tile-new .spray-tile-name { color: var(--ink-muted); }
+
+/* Tile detail sheet — reuses .spray-picker-overlay/.spray-picker-card
+   as the container, these are the sheet-specific inner bits. */
+.tile-sheet-badge {
+  display: inline-block;
+  font-family: var(--data);
+  font-size: 10.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent-dim);
+  background: var(--accent-soft);
+  padding: 3px 10px;
+  border-radius: var(--radius, 6px);
+  margin-bottom: 8px;
+}
+.tile-sheet-title {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 17px;
+  color: var(--ink);
+}
+.tile-sheet-sub {
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  margin-top: 4px;
+  line-height: 1.4;
+}
+.tile-sheet-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 16px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border-radius: 10px;
+  font-family: var(--body);
+  font-size: 13.5px;
+  color: var(--ink);
+}
+.tile-sheet-switch {
+  width: 40px;
+  height: 22px;
+  border-radius: 12px;
+  border: none;
+  background: var(--line);
+  position: relative;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+.tile-sheet-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: left 0.15s ease;
+}
+.tile-sheet-switch.on { background: var(--accent); }
+.tile-sheet-switch.on::after { left: 20px; }
+.tile-sheet-rss {
+  display: block;
+  margin-top: 14px;
+  font-family: var(--data);
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--accent-dim);
+}
+.tile-sheet-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.tile-sheet-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 6px 5px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-family: var(--body);
+  font-size: 12px;
+  color: var(--ink);
+}
+.tile-sheet-chip-x {
+  cursor: pointer;
+  color: var(--ink-muted);
+  font-weight: 700;
+  padding: 0 3px;
+}
+.tile-sheet-add-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: none;
+  border: none;
+  text-align: left;
+  font-family: var(--body);
+  font-size: 13px;
+  color: var(--ink);
+}
+.tile-sheet-add-row:hover { background: var(--bg); }
+
 /* Plain text-link toggle (still used elsewhere, e.g. Actions/On Trend
    expand rows) */
 .link-toggle {
