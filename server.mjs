@@ -1598,6 +1598,34 @@ app.put("/api/mixes/:slug", async (req, res) => {
   res.json({ ok: true, slug: mix.slug });
 });
 
+// Delete an owned Spray outright. Distinct from removing it from your own
+// Read-toggle bar (which just unpins it) — this actually retires the mix.
+// The official flagship Spray can never be deleted: it has no real owner
+// (creator_user_id is a sentinel, see seedOfficialHeadlinesSpray()), so the
+// ownership check below already blocks it, but the is_official check is
+// kept explicit rather than relying on that as an accident of implementation.
+app.delete("/api/mixes/:slug", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix) return res.status(404).json({ error: "mix not found" });
+  if (mix.is_official) return res.status(403).json({ error: "the official Spray can't be deleted" });
+  if (mix.creator_user_id !== user.id) return res.status(403).json({ error: "not your mix" });
+
+  await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
+  await dbRun(`DELETE FROM feed_mix_topics WHERE mix_id = ?`, [mix.id]);
+  // Unpin it from anyone's Read-toggle bar (including other readers who'd
+  // pinned this reader's public Spray, not just the owner) and reset
+  // anyone's News override that pointed at it — a deleted Spray can't be
+  // left dangling as a broken reference in either place.
+  await dbRun(`DELETE FROM user_spray_bar WHERE mix_slug = ?`, [mix.slug]);
+  await dbRun(`DELETE FROM user_news_pref WHERE mix_slug = ?`, [mix.slug]);
+  await dbRun(`DELETE FROM feed_mixes WHERE id = ?`, [mix.id]);
+
+  res.json({ ok: true });
+});
+
 app.get("/api/mixes/:slug", async (req, res) => {
   const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
   if (!mix) return res.status(404).json({ error: "mix not found" });

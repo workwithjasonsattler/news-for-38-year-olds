@@ -1105,6 +1105,21 @@ button { font-family: inherit; cursor: pointer; }
   letter-spacing: 0.03em;
   color: var(--accent-dim);
 }
+.tile-sheet-delete {
+  display: block;
+  width: 100%;
+  text-align: center;
+  margin-top: 18px;
+  padding-top: 14px;
+  border: none;
+  border-top: 1px solid var(--line);
+  background: none;
+  font-family: var(--body);
+  font-weight: 600;
+  font-size: 12.5px;
+  color: var(--alert);
+  cursor: pointer;
+}
 .tile-sheet-sources {
   display: flex;
   flex-wrap: wrap;

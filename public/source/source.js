@@ -1251,7 +1251,8 @@
         <input class="create-flow-input" id="tileAddSourceInput" placeholder="Search sources to add…" style="margin-top:10px;">
         <div id="tileAddSourceResults"></div>
         <button class="btn" id="tileSaveBtn" style="width:100%; margin-top:14px;">Save</button>
-        <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>`;
+        <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
+        <button class="tile-sheet-delete" id="tileDeleteBtn">Delete this Spray</button>`;
     }
 
     el.innerHTML = `
@@ -1375,6 +1376,19 @@
 
     const visToggle = document.getElementById("tileVisibilityToggle");
     if (visToggle) visToggle.addEventListener("click", () => visToggle.classList.toggle("on"));
+
+    document.getElementById("tileDeleteBtn").addEventListener("click", async () => {
+      if (!confirm(`Delete "${mix.name}"? This can't be undone — anyone who's pinned it will lose it too.`)) return;
+      try {
+        await api(`/api/mixes/${encodeURIComponent(mix.slug)}`, { method: "DELETE" });
+        await loadMyMixes(true);
+        await loadSprayBar(true);
+        toast("Spray deleted.");
+        closeTileSheet();
+      } catch (e) {
+        toast(e.message || "Couldn't delete that Spray.");
+      }
+    });
   }
 
   async function renderSources() {
