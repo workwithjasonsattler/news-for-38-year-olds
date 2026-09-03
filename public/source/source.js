@@ -112,6 +112,32 @@
     renderDesktopSidePanel();
   }
 
+  // ---------------------------------------------------------------
+  // Windows — Desktop-only VIEW mode: several independent Scroll-style
+  // feeds side by side, each tied to its own Spray you pick when you
+  // open it (not the Read toggle bar's selection — these are separate).
+  // Starts at 2 empty columns, "+" opens more (capped), "×" closes one
+  // back down (never below 1, so there's always something to look at).
+  // Column choices persist locally the same way the toggle bar's order
+  // does — this is a personal layout preference, not shared/synced data.
+  // ---------------------------------------------------------------
+  const READ_WINDOWS_KEY = "source_read_windows";
+  const MAX_READ_WINDOWS = 4;
+  let readWindows = null; // array of Spray slugs (or null = unassigned), lazy-loaded
+  let windowPickerOpenIndex = null;
+
+  function loadReadWindows() {
+    try {
+      const raw = JSON.parse(localStorage.getItem(READ_WINDOWS_KEY));
+      if (Array.isArray(raw) && raw.length > 0) return raw.slice(0, MAX_READ_WINDOWS);
+    } catch (e) { /* fall through to default */ }
+    return [null, null];
+  }
+
+  function saveReadWindows() {
+    localStorage.setItem(READ_WINDOWS_KEY, JSON.stringify(readWindows));
+  }
+
   function renderViewMenu() {
     const el = document.getElementById("viewMenu");
     if (!el) return;
@@ -122,6 +148,7 @@
         <button class="view-menu-item${mode === "headlines" ? " active" : ""}" data-action="headlines">Headlines Only</button>
         <button class="view-menu-item${mode === "expanded" ? " active" : ""}" data-action="expanded">Expanded</button>
         <button class="view-menu-item${mode === "scroll" ? " active" : ""}" data-action="scroll">Scroll</button>
+        <button class="view-menu-item${mode === "windows" ? " active" : ""}${getLayoutMode() !== "desktop" ? " view-menu-item-disabled" : ""}" data-action="windows" ${getLayoutMode() !== "desktop" ? "disabled title=\"Desktop only\"" : ""}>Windows</button>
         <div class="view-menu-sep"></div>
         <button class="view-menu-item" data-action="customize">Customize</button>
       </div>`;
@@ -706,6 +733,10 @@
   async function renderRead() {
     const main = document.getElementById("main");
     renderSprayToggle();
+    if (getReadDisplay() === "windows") {
+      renderReadWindows();
+      return;
+    }
     main.innerHTML = stateBlock({ title: "Loading Fresh RSS Feeds", body: "Just posted", spin: true });
     try {
       const items = await fetchReadItems();
@@ -816,7 +847,153 @@
     renderReaderFeed(shown, trendingLinks);
   }
 
-  // discussUrl: the matching Bluesky post for this story, if one exists —
+  // ---------------------------------------------------------------
+  // Windows — several independent Scroll-style feeds side by side, each
+  // its own Spray. Fully independent of the Read toggle bar's selection
+  // (activeSprayKeys) — a window's Spray choice is a separate, per-column
+  // setting. Every card inside a window renders in Scroll's card style
+  // regardless of the global VIEW setting (that's what "windows" means
+  // here — several simultaneous Scroll feeds, not a 5th distinct card
+  // shape), via renderDispatchCard's forceMode param.
+  // ---------------------------------------------------------------
+  function renderReadWindows() {
+    const main = document.getElementById("main");
+    if (getLayoutMode() !== "desktop") {
+      // Windows is inherently multi-column and doesn't fit a phone-width
+      // screen — same trap-avoidance spirit as getLayoutMode()'s own
+      // guard against a phone getting stuck in Desktop layout. Fall back
+      // rather than try to force columns into no space.
+      setReadDisplay("expanded");
+      return;
+    }
+    if (!readWindows) readWindows = loadReadWindows();
+    main.classList.remove("read-layout", "read-scroll-desktop");
+    main.classList.add("read-windows");
+    main.innerHTML = `
+      <div class="read-windows-row" id="readWindowsRow">
+        ${readWindows.map((slug, i) => renderReadWindowColumn(slug, i)).join("")}
+        ${readWindows.length < MAX_READ_WINDOWS ? `<button class="read-window-add" id="readWindowAddBtn" title="Add a window">+</button>` : ""}
+      </div>`;
+    wireReadWindows();
+    readWindows.forEach((slug, i) => { if (slug) loadReadWindowItems(slug, i); });
+  }
+
+  function renderReadWindowColumn(slug, i) {
+    const showPicker = slug === null || windowPickerOpenIndex === i;
+    const meta = slug ? mixMetaCache.get(slug) : null;
+    return `
+      <div class="read-window" data-window-index="${i}">
+        <div class="read-window-head">
+          <span class="read-window-name${slug ? "" : " read-window-name-empty"}">${slug ? escapeHtml((meta && meta.name) || slug) : "Pick a Spray"}</span>
+          <div class="read-window-head-actions">
+            ${slug ? `<button class="spray-bar-btn" data-window-change="${i}">${windowPickerOpenIndex === i ? "Cancel" : "Change"}</button>` : ""}
+            ${readWindows.length > 1 ? `<button class="read-window-close" data-window-remove="${i}" title="Close this window">×</button>` : ""}
+          </div>
+        </div>
+        ${showPicker ? `
+          <div class="read-window-picker">
+            <input class="create-flow-input" data-window-search="${i}" placeholder="Search public Sprays by name...">
+            <div class="read-window-picker-results" id="readWindowPickerResults-${i}"></div>
+          </div>` : ""}
+        <div class="read-window-body" id="readWindowBody-${i}">
+          ${slug ? "" : `<p class="card-meta" style="padding:16px;">Search above for a public Spray to open here.</p>`}
+        </div>
+      </div>`;
+  }
+
+  function wireReadWindows() {
+    const addBtn = document.getElementById("readWindowAddBtn");
+    if (addBtn) {
+      addBtn.addEventListener("click", () => {
+        if (readWindows.length >= MAX_READ_WINDOWS) return;
+        readWindows.push(null);
+        saveReadWindows();
+        renderReadWindows();
+      });
+    }
+    document.querySelectorAll("[data-window-remove]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.dataset.windowRemove);
+        if (readWindows.length <= 1) return;
+        readWindows.splice(i, 1);
+        windowPickerOpenIndex = null;
+        saveReadWindows();
+        renderReadWindows();
+      });
+    });
+    document.querySelectorAll("[data-window-change]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const i = Number(btn.dataset.windowChange);
+        windowPickerOpenIndex = windowPickerOpenIndex === i ? null : i;
+        renderReadWindows();
+      });
+    });
+    document.querySelectorAll("[data-window-search]").forEach(input => {
+      const i = Number(input.dataset.windowSearch);
+      input.addEventListener("input", debounce(() => runReadWindowPickerSearch(i, input.value), 250));
+      runReadWindowPickerSearch(i, "");
+    });
+  }
+
+  async function runReadWindowPickerSearch(i, query) {
+    const results = document.getElementById(`readWindowPickerResults-${i}`);
+    if (!results) return;
+    try {
+      const directory = await api("/api/mixes");
+      const q = query.trim().toLowerCase();
+      const matches = (Array.isArray(directory) ? directory : [])
+        .filter(m => !q || (m.name || "").toLowerCase().includes(q))
+        .slice(0, 8);
+      results.innerHTML = matches.length === 0
+        ? `<div class="card-meta">No Sprays match.</div>`
+        : matches.map(m => `<button class="btn" style="width:100%; margin-bottom:6px; text-align:left;" data-window-pick="${escapeHtml(m.slug)}">${escapeHtml(m.name)}</button>`).join("");
+      results.querySelectorAll("[data-window-pick]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          readWindows[i] = btn.dataset.windowPick;
+          windowPickerOpenIndex = null;
+          saveReadWindows();
+          renderReadWindows();
+        });
+      });
+    } catch (e) { /* fail soft — leave results untouched */ }
+  }
+
+  async function loadReadWindowItems(slug, i) {
+    const body = document.getElementById(`readWindowBody-${i}`);
+    if (!body) return;
+    body.innerHTML = `<div class="state-block-mini">Loading…</div>`;
+    try {
+      const items = await fetchItemsForSprayKey(slug);
+      // The reader may have changed this column's Spray while the fetch
+      // was in flight — don't let a stale response land in the wrong column.
+      if (readWindows[i] !== slug) return;
+      const nameEl = document.querySelector(`.read-window[data-window-index="${i}"] .read-window-name`);
+      const meta = mixMetaCache.get(slug);
+      if (nameEl && meta) nameEl.textContent = meta.name;
+      if (!Array.isArray(items) || items.length === 0) {
+        body.innerHTML = `<p class="card-meta" style="padding:16px;">Nothing in this Spray yet.</p>`;
+        return;
+      }
+      const sorted = items.slice().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 60);
+      body.innerHTML = sorted.map((d, idx) => renderDispatchCard({ ...d, id: d.id ?? `${slug}-${idx}` }, false, false, null, "scroll")).join("");
+      body.querySelectorAll(".spray-add-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const source = JSON.parse(btn.dataset.spraySource);
+          if (btn.dataset.removeSlug) {
+            quickRemoveFromActiveSpray(source, btn.dataset.removeSlug, btn, () => loadReadWindowItems(slug, i));
+          } else {
+            openSprayPicker(source);
+          }
+        });
+      });
+      wireSaveButtons(body);
+    } catch (e) {
+      if (readWindows[i] !== slug) return;
+      body.innerHTML = `<p class="card-meta" style="padding:16px;">Couldn't load this Spray — try a different one.</p>`;
+    }
+  }
+
+
   // same Map every other Scroll surface in the app reads from
   // (getTrendingLinks()). Only ever shown as a plain link, never a count.
   function renderReaderPane(d, isTrending, discussUrl) {
@@ -1007,8 +1184,8 @@
     }
   }
 
-  function renderDispatchCard(d, isTrending, featured, discussUrl) {
-    const mode = getReadDisplay();
+  function renderDispatchCard(d, isTrending, featured, discussUrl, forceMode) {
+    const mode = forceMode || getReadDisplay();
     const headlinesOnly = mode === "headlines";
     const title = d.title || d.headline || "";
 
@@ -2437,9 +2614,10 @@
     // Scroll's whole point is a calm, centered, one-story feed — a stats
     // dashboard pinned to the right undermines that (visually pulls the
     // page off-center even though #main itself is still truly centered).
-    // Hidden only while actually on Read in Scroll mode; reappears the
-    // moment either condition changes.
-    if (activeTab === "read" && getReadDisplay() === "scroll") { el.hidden = true; return; }
+    // Windows mode needs every inch of width for its columns for the same
+    // reason, just more so. Hidden only while actually on Read in either
+    // mode; reappears the moment either condition changes.
+    if (activeTab === "read" && (getReadDisplay() === "scroll" || getReadDisplay() === "windows")) { el.hidden = true; return; }
     el.hidden = false;
     await syncPanelPrefsFromAccount();
 
