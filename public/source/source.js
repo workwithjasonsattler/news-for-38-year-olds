@@ -1471,6 +1471,32 @@
         </div>`;
       html += renderSpraysShelf(bar, myMixes);
 
+      // ----- AREA 0.5: quick "Add a feed" — a fast, Spray-free path to
+      // add a single custom RSS URL. POST /api/my/custom-sources has
+      // existed since Super RSS Reader Session 1 and works standalone,
+      // but the only UI that ever called it was buried inside the guided
+      // Create-a-Spray flow (name it, pick a topic, add sources, save).
+      // Someone who already knows exactly which feed they want shouldn't
+      // have to build a whole Spray around it first — this box adds it
+      // directly to their reading list (custom sources already blend
+      // into the unfiltered wire automatically) and offers the Spray
+      // picker as an optional next step, not a required one. -----
+      html += `
+        <div class="sources-area-head" style="margin-top:28px;">
+          <div class="sources-area-rule"></div>
+          <div class="sources-area-title">Add a Feed</div>
+          <div class="sources-area-sub">Paste an RSS URL — it starts showing up in your reading list right away, no Spray required.</div>
+        </div>`;
+      if (currentUser) {
+        html += `
+          <div class="quick-add-feed-row">
+            <input type="text" class="create-flow-input" id="quickAddFeedInput" placeholder="https://example.com/feed" style="flex:1;">
+            <button class="btn primary" id="quickAddFeedBtn">+ Add</button>
+          </div>`;
+      } else {
+        html += `<p class="sources-signin-hint">Sign in (on the You tab) to add your own RSS feeds.</p>`;
+      }
+
       // ----- AREA 1: registry browsing — now secondary, reached AFTER the
       // shelf rather than being the front door. Reordering your Read
       // toggle (which Sprays show up as pills, and in what order) is a
@@ -1518,6 +1544,7 @@
       main.innerHTML = html;
 
       wireSpraysShelf();
+      wireQuickAddFeed();
       wireYourSpraysSection();
       wireSourcesArea1();
 
@@ -1527,6 +1554,39 @@
       document.getElementById("startNewSprayBtn").addEventListener("click", openCreateFlow);
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "REGISTRY UNREACHABLE", body: e.message || "Could not load sources." });
+    }
+  }
+
+  function wireQuickAddFeed() {
+    const input = document.getElementById("quickAddFeedInput");
+    const btn = document.getElementById("quickAddFeedBtn");
+    if (!input || !btn) return;
+    const submit = () => quickAddFeed(input, btn);
+    btn.addEventListener("click", submit);
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { e.preventDefault(); submit(); }
+    });
+  }
+
+  async function quickAddFeed(input, btn) {
+    const value = input.value.trim();
+    if (!value) { toast("Paste an RSS URL first."); return; }
+    if (!/^https?:\/\//i.test(value)) { toast("That doesn't look like a URL — paste the full feed link."); return; }
+    btn.disabled = true;
+    input.disabled = true;
+    try {
+      const created = await api("/api/my/custom-sources", { method: "POST", body: JSON.stringify({ feed_url: value }) });
+      input.value = "";
+      toast(`"${created.name || value}" added — it's already in your reading list.`);
+      // Optional next step, not required: offer to fold it straight into
+      // an existing Spray (or start a new one) via the same picker every
+      // other "+ Spray" entry point in the app already uses.
+      openSprayPicker({ source_type: "custom", custom_source_id: created.id, label: created.name || value });
+    } catch (e) {
+      toast(e.message || "Couldn't add that feed.");
+    } finally {
+      btn.disabled = false;
+      input.disabled = false;
     }
   }
 

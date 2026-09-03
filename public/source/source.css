@@ -658,6 +658,18 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink);
 }
 
+/* Quick "Add a Feed" row on the Sources tab — a fast, Spray-free way to
+   add a single custom RSS URL, sitting right under the Sprays shelf. */
+.quick-add-feed-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+.quick-add-feed-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
 /* ---------------------------------------------------------------
    Spray toggle — Read tab's All | News | <your Sprays> | Create bar.
    Sits between the header and #main, hidden on every tab except Read.
