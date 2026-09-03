@@ -603,6 +603,13 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink-muted);
   padding: 2px 6px;
 }
+.spray-picker-sub {
+  font-family: var(--body);
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin: -6px 0 12px;
+  line-height: 1.4;
+}
 .spray-picker-list {
   display: flex;
   flex-direction: column;

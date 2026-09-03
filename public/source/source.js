@@ -231,10 +231,17 @@
     return null;
   }
 
-  // "+ Spray" control — a sibling element next to the tip/subscribe badge,
-  // not nested inside the card's outbound <a>, same pattern already used
-  // for the trending badge. Renders nothing when the dispatch can't be
-  // mapped to a real source (sprayableSource returns null).
+  // "+ Follow [source]" control — a sibling element next to the
+  // tip/subscribe badge, not nested inside the card's outbound <a>, same
+  // pattern already used for the trending badge. Renders nothing when the
+  // dispatch can't be mapped to a real source (sprayableSource returns
+  // null).
+  //
+  // Label deliberately says "Follow [outlet]", not "+ Spray" — this
+  // control adds the SOURCE (the whole outlet/individual/feed) to a
+  // Spray, not just this one article. "+ Spray" alone read as if it
+  // saved the specific item, which it never did; the title attribute on
+  // hover/long-press spells out the distinction fully.
   //
   // When the reader is currently viewing exactly ONE of their own,
   // non-official Sprays (see quickRemoveContext below), every item shown
@@ -245,10 +252,12 @@
   function sprayAddButton(d) {
     const src = sprayableSource(d);
     if (!src) return "";
+    const label = src.label || "this source";
+    const shortLabel = label.length > 22 ? label.slice(0, 21) + "…" : label;
     if (quickRemoveContext) {
-      return `<button class="spray-add-btn spray-remove-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' data-remove-slug="${escapeHtml(quickRemoveContext.slug)}" title="Remove from ${escapeHtml(quickRemoveContext.name)}">− ${escapeHtml(quickRemoveContext.name)}</button>`;
+      return `<button class="spray-add-btn spray-remove-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' data-remove-slug="${escapeHtml(quickRemoveContext.slug)}" title="Stop following ${escapeHtml(label)} in ${escapeHtml(quickRemoveContext.name)}">− ${escapeHtml(quickRemoveContext.name)}</button>`;
     }
-    return `<button class="spray-add-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' title="Add to a Spray">+ Spray</button>`;
+    return `<button class="spray-add-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' title="Follow ${escapeHtml(label)} in one of your Sprays — you'll get all of their future posts there too, not just this one">+ Follow ${escapeHtml(shortLabel)}</button>`;
   }
 
   // "Save" control — a lightweight personal bookmark, distinct from
@@ -332,6 +341,43 @@
     const info = tipSubscribeInfo(d);
     if (!info) return "";
     return `<a class="btn tip-btn" href="${escapeHtml(info.url)}" target="_blank" rel="noopener">💛 ${escapeHtml(info.label)}</a>`;
+  }
+
+  // Share — deliberately lives ONLY in the reader pane, never on a card.
+  // A share button on the card would nudge someone to forward a headline
+  // before they've actually read the piece, which is the exact
+  // react-to-the-headline behavior this app exists to opt out of. Putting
+  // it here means it only ever appears once a reader has opened the item.
+  // Shares the real article URL via the native OS share sheet (whatever's
+  // installed — Bluesky, Messages, copy link, etc.) rather than a
+  // SOURCE!-specific composer, so it works the same everywhere and needs
+  // no new backend.
+  function shareButton(d) {
+    if (!d.link) return "";
+    return `<button class="btn" id="readerShareBtn" data-share-url="${escapeHtml(d.link)}" data-share-title="${escapeHtml(d.title || d.headline || "")}">Share ↗</button>`;
+  }
+
+  function wireShareButton(root) {
+    const btn = root.querySelector("#readerShareBtn");
+    if (!btn) return;
+    btn.addEventListener("click", async () => {
+      const url = btn.dataset.shareUrl;
+      const title = btn.dataset.shareTitle;
+      if (navigator.share) {
+        try { await navigator.share({ title, url }); }
+        catch (e) { /* reader cancelled the share sheet — not an error */ }
+        return;
+      }
+      // No native share sheet (most desktop browsers) — fall back to
+      // copying the link, same "always leave the reader with a working
+      // action" spirit as everything else that touches the clipboard.
+      try {
+        await navigator.clipboard.writeText(url);
+        toast("Link copied");
+      } catch (e) {
+        toast(url);
+      }
+    });
   }
 
   // ---------------------------------------------------------------
@@ -804,6 +850,7 @@
           ${tipSubscribeButton(d)}
           ${sprayAddButton(d)}
           ${saveButton(d)}
+          ${shareButton(d)}
         </div>
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         <div class="reader-frame-wrap" id="readerFrameWrap" hidden></div>
@@ -850,6 +897,7 @@
       });
     }
     wireSaveButtons(pane);
+    wireShareButton(pane);
     if (typeof d.id === "number") {
       if (d.id in paywallStatusMap) applyPaywallBadge(d.id, paywallStatusMap[d.id]);
       else loadPaywallStatus([d.id]);
@@ -1737,6 +1785,7 @@
           <span>Add <strong>${escapeHtml(label)}</strong> to a Spray</span>
           <button class="spray-picker-close" id="sprayPickerClose" aria-label="Close">×</button>
         </div>
+        <p class="spray-picker-sub">You'll follow all of ${escapeHtml(label)}'s future posts in the Spray you pick — not just this one article.</p>
         ${body}
         <div class="spray-picker-newrow">
           <input type="text" id="sprayPickerNewName" placeholder="New Spray name…" maxlength="80">
