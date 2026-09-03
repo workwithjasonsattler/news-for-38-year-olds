@@ -841,7 +841,7 @@
       ${d.image_url ? `<img class="reader-image${scrollMode ? " reader-image-scroll" : ""}" src="${escapeHtml(d.image_url)}" alt="" loading="lazy">` : ""}
       <div class="reader-body${noImage ? " reader-body-textonly" : ""}${scrollMode ? " reader-body-scroll" : ""}">
         <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
-        <h2 class="reader-title${noImage ? " reader-title-large" : ""}${scrollMode ? " reader-title-scroll" : ""}">${escapeHtml(title)}</h2>
+        <h2 class="reader-title${noImage ? " reader-title-large" : ""}${scrollMode ? " reader-title-scroll" : ""}">${d.link ? `<a class="reader-title-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">${escapeHtml(title)}</a>` : escapeHtml(title)}</h2>
         ${excerpt ? `<p class="reader-excerpt${scrollMode ? " reader-excerpt-scroll" : ""}">${escapeHtml(excerpt)}</p>` : ""}
         ${scrollMode && discussUrl ? `<a class="reader-discuss-scroll" href="${escapeHtml(discussUrl)}" target="_blank" rel="noopener">See the conversation on Bluesky ↗</a>` : ""}
         <div class="reader-actions">
@@ -2777,7 +2777,7 @@
     el.innerHTML = `
       <div class="ob-wordmark">SOURCE!</div>
       <div class="ob-rule"></div>
-      <h1>Take Back Your Mind</h1>
+      <h1>Take Back Your Morning</h1>
       <button class="ob-btn" id="obStart">Just dig in</button>
       <button class="ob-btn secondary" id="obOwn">Pick my own sources</button>
       <a href="#" class="ob-whats-this" id="obWhatsThis">What's this?</a>

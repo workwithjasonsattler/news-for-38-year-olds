@@ -1781,6 +1781,8 @@ body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-discuss {
 }
 .reader-title-large { font-size: 30px; }
 .reader-title-scroll { font-size: 22px; line-height: 1.25; margin: 10px 0 10px; }
+.reader-title-link { color: inherit; text-decoration: none; }
+.reader-title-link:hover { color: var(--accent-dim); text-decoration: none; }
 
 .reader-excerpt {
   font-size: 15.5px;
