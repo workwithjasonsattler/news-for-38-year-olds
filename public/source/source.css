@@ -171,13 +171,6 @@ button { font-family: inherit; cursor: pointer; }
   font-weight: 700;
 }
 
-.view-menu-item-disabled,
-.view-menu-item-disabled:hover {
-  color: var(--ink-muted);
-  background: transparent;
-  cursor: default;
-}
-
 .view-menu-sep {
   height: 1px;
   background: var(--line);
@@ -1584,30 +1577,30 @@ body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-discuss {
 }
 
 /* ---------------------------------------------------------------
-   Windows — Desktop-only VIEW mode: several independent Scroll-style
+   Columns — Desktop-only VIEW mode: several independent Scroll-style
    feeds side by side, each its own Spray. Needs real width to be
    useful with more than 2 columns, so it's the one Read layout that
    breaks .source-main's normal 720/960px content cap — :has() (same
    modern-CSS-feature bar already accepted elsewhere in this project,
    e.g. the homepage's :has(input:checked) filter styling) widens the
-   centered column specifically when a Windows row is present.
+   centered column specifically when a Columns row is present.
    --------------------------------------------------------------- */
-body[data-layout="desktop"] .source-main:has(#main.read-windows) {
+body[data-layout="desktop"] .source-main:has(#main.read-columns) {
   max-width: 100%;
   padding-left: 32px;
   padding-right: 32px;
 }
-body[data-layout="desktop"] #main.read-windows {
+body[data-layout="desktop"] #main.read-columns {
   display: block;
 }
-.read-windows-row {
+.read-columns-row {
   display: flex;
   gap: 18px;
   align-items: flex-start;
   overflow-x: auto;
   padding-bottom: 12px;
 }
-.read-window {
+.read-column {
   flex: 1 1 340px;
   min-width: 320px;
   max-width: 440px;
@@ -1619,7 +1612,7 @@ body[data-layout="desktop"] #main.read-windows {
   max-height: calc(100vh - 170px);
   overflow: hidden;
 }
-.read-window-head {
+.read-column-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1628,7 +1621,7 @@ body[data-layout="desktop"] #main.read-windows {
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
 }
-.read-window-name {
+.read-column-name {
   font-family: var(--display);
   font-weight: 700;
   font-size: 15px;
@@ -1637,9 +1630,9 @@ body[data-layout="desktop"] #main.read-windows {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.read-window-name-empty { color: var(--ink-muted); font-weight: 500; }
-.read-window-head-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
-.read-window-close {
+.read-column-name-empty { color: var(--ink-muted); font-weight: 500; }
+.read-column-head-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+.read-column-close {
   border: none;
   background: none;
   color: var(--ink-muted);
@@ -1648,15 +1641,15 @@ body[data-layout="desktop"] #main.read-windows {
   cursor: pointer;
   padding: 2px 6px;
 }
-.read-window-close:hover { color: var(--accent-dim); }
-.read-window-picker {
+.read-column-close:hover { color: var(--accent-dim); }
+.read-column-picker {
   padding: 12px 14px;
   border-bottom: 1px solid var(--line);
   flex-shrink: 0;
 }
-.read-window-picker-results { margin-top: 8px; max-height: 220px; overflow-y: auto; }
-.read-window-body { overflow-y: auto; padding: 4px 0; }
-.read-window-add {
+.read-column-picker-results { margin-top: 8px; max-height: 220px; overflow-y: auto; }
+.read-column-body { overflow-y: auto; padding: 4px 0; }
+.read-column-add {
   flex: 0 0 56px;
   width: 56px;
   height: 56px;
@@ -1670,7 +1663,7 @@ body[data-layout="desktop"] #main.read-windows {
   line-height: 1;
   cursor: pointer;
 }
-.read-window-add:hover { color: var(--accent-dim); border-color: var(--accent); }
+.read-column-add:hover { color: var(--accent-dim); border-color: var(--accent); }
 
 /* ---------------------------------------------------------------
    Desktop side panel — fills the dead space beyond the centered main

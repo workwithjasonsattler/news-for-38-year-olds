@@ -113,7 +113,7 @@
   }
 
   // ---------------------------------------------------------------
-  // Windows — Desktop-only VIEW mode: several independent Scroll-style
+  // Columns — Desktop-only VIEW mode: several independent Scroll-style
   // feeds side by side, each tied to its own Spray you pick when you
   // open it (not the Read toggle bar's selection — these are separate).
   // Starts at 2 empty columns, "+" opens more (capped), "×" closes one
@@ -121,21 +121,21 @@
   // Column choices persist locally the same way the toggle bar's order
   // does — this is a personal layout preference, not shared/synced data.
   // ---------------------------------------------------------------
-  const READ_WINDOWS_KEY = "source_read_windows";
-  const MAX_READ_WINDOWS = 4;
-  let readWindows = null; // array of Spray slugs (or null = unassigned), lazy-loaded
-  let windowPickerOpenIndex = null;
+  const READ_COLUMNS_KEY = "source_read_columns";
+  const MAX_READ_COLUMNS = 4;
+  let readColumns = null; // array of Spray slugs (or null = unassigned), lazy-loaded
+  let columnPickerOpenIndex = null;
 
-  function loadReadWindows() {
+  function loadReadColumns() {
     try {
-      const raw = JSON.parse(localStorage.getItem(READ_WINDOWS_KEY));
-      if (Array.isArray(raw) && raw.length > 0) return raw.slice(0, MAX_READ_WINDOWS);
+      const raw = JSON.parse(localStorage.getItem(READ_COLUMNS_KEY));
+      if (Array.isArray(raw) && raw.length > 0) return raw.slice(0, MAX_READ_COLUMNS);
     } catch (e) { /* fall through to default */ }
     return [null, null];
   }
 
-  function saveReadWindows() {
-    localStorage.setItem(READ_WINDOWS_KEY, JSON.stringify(readWindows));
+  function saveReadColumns() {
+    localStorage.setItem(READ_COLUMNS_KEY, JSON.stringify(readColumns));
   }
 
   function renderViewMenu() {
@@ -148,7 +148,7 @@
         <button class="view-menu-item${mode === "headlines" ? " active" : ""}" data-action="headlines">Headlines Only</button>
         <button class="view-menu-item${mode === "expanded" ? " active" : ""}" data-action="expanded">Expanded</button>
         <button class="view-menu-item${mode === "scroll" ? " active" : ""}" data-action="scroll">Scroll</button>
-        <button class="view-menu-item${mode === "windows" ? " active" : ""}${getLayoutMode() !== "desktop" ? " view-menu-item-disabled" : ""}" data-action="windows" ${getLayoutMode() !== "desktop" ? "disabled title=\"Desktop only\"" : ""}>Windows</button>
+        ${getLayoutMode() === "desktop" ? `<button class="view-menu-item${mode === "columns" ? " active" : ""}" data-action="columns">Columns</button>` : ""}
         <div class="view-menu-sep"></div>
         <button class="view-menu-item" data-action="customize">Customize</button>
       </div>`;
@@ -733,8 +733,8 @@
   async function renderRead() {
     const main = document.getElementById("main");
     renderSprayToggle();
-    if (getReadDisplay() === "windows") {
-      renderReadWindows();
+    if (getReadDisplay() === "columns") {
+      renderReadColumns();
       return;
     }
     main.innerHTML = stateBlock({ title: "Loading Fresh RSS Feeds", body: "Just posted", spin: true });
@@ -848,95 +848,95 @@
   }
 
   // ---------------------------------------------------------------
-  // Windows — several independent Scroll-style feeds side by side, each
+  // Columns — several independent Scroll-style feeds side by side, each
   // its own Spray. Fully independent of the Read toggle bar's selection
-  // (activeSprayKeys) — a window's Spray choice is a separate, per-column
-  // setting. Every card inside a window renders in Scroll's card style
-  // regardless of the global VIEW setting (that's what "windows" means
+  // (activeSprayKeys) — a column's Spray choice is a separate, per-column
+  // setting. Every card inside a column renders in Scroll's card style
+  // regardless of the global VIEW setting (that's what "columns" means
   // here — several simultaneous Scroll feeds, not a 5th distinct card
   // shape), via renderDispatchCard's forceMode param.
   // ---------------------------------------------------------------
-  function renderReadWindows() {
+  function renderReadColumns() {
     const main = document.getElementById("main");
     if (getLayoutMode() !== "desktop") {
-      // Windows is inherently multi-column and doesn't fit a phone-width
+      // Columns is inherently multi-column and doesn't fit a phone-width
       // screen — same trap-avoidance spirit as getLayoutMode()'s own
       // guard against a phone getting stuck in Desktop layout. Fall back
       // rather than try to force columns into no space.
       setReadDisplay("expanded");
       return;
     }
-    if (!readWindows) readWindows = loadReadWindows();
+    if (!readColumns) readColumns = loadReadColumns();
     main.classList.remove("read-layout", "read-scroll-desktop");
-    main.classList.add("read-windows");
+    main.classList.add("read-columns");
     main.innerHTML = `
-      <div class="read-windows-row" id="readWindowsRow">
-        ${readWindows.map((slug, i) => renderReadWindowColumn(slug, i)).join("")}
-        ${readWindows.length < MAX_READ_WINDOWS ? `<button class="read-window-add" id="readWindowAddBtn" title="Add a window">+</button>` : ""}
+      <div class="read-columns-row" id="readColumnsRow">
+        ${readColumns.map((slug, i) => renderReadColumn(slug, i)).join("")}
+        ${readColumns.length < MAX_READ_COLUMNS ? `<button class="read-column-add" id="readColumnAddBtn" title="Add a column">+</button>` : ""}
       </div>`;
-    wireReadWindows();
-    readWindows.forEach((slug, i) => { if (slug) loadReadWindowItems(slug, i); });
+    wireReadColumns();
+    readColumns.forEach((slug, i) => { if (slug) loadReadColumnItems(slug, i); });
   }
 
-  function renderReadWindowColumn(slug, i) {
-    const showPicker = slug === null || windowPickerOpenIndex === i;
+  function renderReadColumn(slug, i) {
+    const showPicker = slug === null || columnPickerOpenIndex === i;
     const meta = slug ? mixMetaCache.get(slug) : null;
     return `
-      <div class="read-window" data-window-index="${i}">
-        <div class="read-window-head">
-          <span class="read-window-name${slug ? "" : " read-window-name-empty"}">${slug ? escapeHtml((meta && meta.name) || slug) : "Pick a Spray"}</span>
-          <div class="read-window-head-actions">
-            ${slug ? `<button class="spray-bar-btn" data-window-change="${i}">${windowPickerOpenIndex === i ? "Cancel" : "Change"}</button>` : ""}
-            ${readWindows.length > 1 ? `<button class="read-window-close" data-window-remove="${i}" title="Close this window">×</button>` : ""}
+      <div class="read-column" data-column-index="${i}">
+        <div class="read-column-head">
+          <span class="read-column-name${slug ? "" : " read-column-name-empty"}">${slug ? escapeHtml((meta && meta.name) || slug) : "Pick a Spray"}</span>
+          <div class="read-column-head-actions">
+            ${slug ? `<button class="spray-bar-btn" data-column-change="${i}">${columnPickerOpenIndex === i ? "Cancel" : "Change"}</button>` : ""}
+            ${readColumns.length > 1 ? `<button class="read-column-close" data-column-remove="${i}" title="Close this column">×</button>` : ""}
           </div>
         </div>
         ${showPicker ? `
-          <div class="read-window-picker">
-            <input class="create-flow-input" data-window-search="${i}" placeholder="Search public Sprays by name...">
-            <div class="read-window-picker-results" id="readWindowPickerResults-${i}"></div>
+          <div class="read-column-picker">
+            <input class="create-flow-input" data-column-search="${i}" placeholder="Search public Sprays by name...">
+            <div class="read-column-picker-results" id="readColumnPickerResults-${i}"></div>
           </div>` : ""}
-        <div class="read-window-body" id="readWindowBody-${i}">
+        <div class="read-column-body" id="readColumnBody-${i}">
           ${slug ? "" : `<p class="card-meta" style="padding:16px;">Search above for a public Spray to open here.</p>`}
         </div>
       </div>`;
   }
 
-  function wireReadWindows() {
-    const addBtn = document.getElementById("readWindowAddBtn");
+  function wireReadColumns() {
+    const addBtn = document.getElementById("readColumnAddBtn");
     if (addBtn) {
       addBtn.addEventListener("click", () => {
-        if (readWindows.length >= MAX_READ_WINDOWS) return;
-        readWindows.push(null);
-        saveReadWindows();
-        renderReadWindows();
+        if (readColumns.length >= MAX_READ_COLUMNS) return;
+        readColumns.push(null);
+        saveReadColumns();
+        renderReadColumns();
       });
     }
-    document.querySelectorAll("[data-window-remove]").forEach(btn => {
+    document.querySelectorAll("[data-column-remove]").forEach(btn => {
       btn.addEventListener("click", () => {
-        const i = Number(btn.dataset.windowRemove);
-        if (readWindows.length <= 1) return;
-        readWindows.splice(i, 1);
-        windowPickerOpenIndex = null;
-        saveReadWindows();
-        renderReadWindows();
+        const i = Number(btn.dataset.columnRemove);
+        if (readColumns.length <= 1) return;
+        readColumns.splice(i, 1);
+        columnPickerOpenIndex = null;
+        saveReadColumns();
+        renderReadColumns();
       });
     });
-    document.querySelectorAll("[data-window-change]").forEach(btn => {
+    document.querySelectorAll("[data-column-change]").forEach(btn => {
       btn.addEventListener("click", () => {
-        const i = Number(btn.dataset.windowChange);
-        windowPickerOpenIndex = windowPickerOpenIndex === i ? null : i;
-        renderReadWindows();
+        const i = Number(btn.dataset.columnChange);
+        columnPickerOpenIndex = columnPickerOpenIndex === i ? null : i;
+        renderReadColumns();
       });
     });
-    document.querySelectorAll("[data-window-search]").forEach(input => {
-      const i = Number(input.dataset.windowSearch);
-      input.addEventListener("input", debounce(() => runReadWindowPickerSearch(i, input.value), 250));
-      runReadWindowPickerSearch(i, "");
+    document.querySelectorAll("[data-column-search]").forEach(input => {
+      const i = Number(input.dataset.columnSearch);
+      input.addEventListener("input", debounce(() => runReadColumnPickerSearch(i, input.value), 250));
+      runReadColumnPickerSearch(i, "");
     });
   }
 
-  async function runReadWindowPickerSearch(i, query) {
-    const results = document.getElementById(`readWindowPickerResults-${i}`);
+  async function runReadColumnPickerSearch(i, query) {
+    const results = document.getElementById(`readColumnPickerResults-${i}`);
     if (!results) return;
     try {
       const directory = await api("/api/mixes");
@@ -946,28 +946,28 @@
         .slice(0, 8);
       results.innerHTML = matches.length === 0
         ? `<div class="card-meta">No Sprays match.</div>`
-        : matches.map(m => `<button class="btn" style="width:100%; margin-bottom:6px; text-align:left;" data-window-pick="${escapeHtml(m.slug)}">${escapeHtml(m.name)}</button>`).join("");
-      results.querySelectorAll("[data-window-pick]").forEach(btn => {
+        : matches.map(m => `<button class="btn" style="width:100%; margin-bottom:6px; text-align:left;" data-column-pick="${escapeHtml(m.slug)}">${escapeHtml(m.name)}</button>`).join("");
+      results.querySelectorAll("[data-column-pick]").forEach(btn => {
         btn.addEventListener("click", () => {
-          readWindows[i] = btn.dataset.windowPick;
-          windowPickerOpenIndex = null;
-          saveReadWindows();
-          renderReadWindows();
+          readColumns[i] = btn.dataset.columnPick;
+          columnPickerOpenIndex = null;
+          saveReadColumns();
+          renderReadColumns();
         });
       });
     } catch (e) { /* fail soft — leave results untouched */ }
   }
 
-  async function loadReadWindowItems(slug, i) {
-    const body = document.getElementById(`readWindowBody-${i}`);
+  async function loadReadColumnItems(slug, i) {
+    const body = document.getElementById(`readColumnBody-${i}`);
     if (!body) return;
     body.innerHTML = `<div class="state-block-mini">Loading…</div>`;
     try {
       const items = await fetchItemsForSprayKey(slug);
       // The reader may have changed this column's Spray while the fetch
       // was in flight — don't let a stale response land in the wrong column.
-      if (readWindows[i] !== slug) return;
-      const nameEl = document.querySelector(`.read-window[data-window-index="${i}"] .read-window-name`);
+      if (readColumns[i] !== slug) return;
+      const nameEl = document.querySelector(`.read-column[data-column-index="${i}"] .read-column-name`);
       const meta = mixMetaCache.get(slug);
       if (nameEl && meta) nameEl.textContent = meta.name;
       if (!Array.isArray(items) || items.length === 0) {
@@ -980,7 +980,7 @@
         btn.addEventListener("click", () => {
           const source = JSON.parse(btn.dataset.spraySource);
           if (btn.dataset.removeSlug) {
-            quickRemoveFromActiveSpray(source, btn.dataset.removeSlug, btn, () => loadReadWindowItems(slug, i));
+            quickRemoveFromActiveSpray(source, btn.dataset.removeSlug, btn, () => loadReadColumnItems(slug, i));
           } else {
             openSprayPicker(source);
           }
@@ -988,7 +988,7 @@
       });
       wireSaveButtons(body);
     } catch (e) {
-      if (readWindows[i] !== slug) return;
+      if (readColumns[i] !== slug) return;
       body.innerHTML = `<p class="card-meta" style="padding:16px;">Couldn't load this Spray — try a different one.</p>`;
     }
   }
@@ -2614,10 +2614,10 @@
     // Scroll's whole point is a calm, centered, one-story feed — a stats
     // dashboard pinned to the right undermines that (visually pulls the
     // page off-center even though #main itself is still truly centered).
-    // Windows mode needs every inch of width for its columns for the same
+    // Columns mode needs every inch of width for its columns for the same
     // reason, just more so. Hidden only while actually on Read in either
     // mode; reappears the moment either condition changes.
-    if (activeTab === "read" && (getReadDisplay() === "scroll" || getReadDisplay() === "windows")) { el.hidden = true; return; }
+    if (activeTab === "read" && (getReadDisplay() === "scroll" || getReadDisplay() === "columns")) { el.hidden = true; return; }
     el.hidden = false;
     await syncPanelPrefsFromAccount();
 
