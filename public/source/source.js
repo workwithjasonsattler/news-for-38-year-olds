@@ -149,6 +149,7 @@
         <button class="view-menu-item${mode === "expanded" ? " active" : ""}" data-action="expanded">Expanded</button>
         <button class="view-menu-item${mode === "scroll" ? " active" : ""}" data-action="scroll">Scroll</button>
         ${getLayoutMode() === "desktop" ? `<button class="view-menu-item${mode === "columns" ? " active" : ""}" data-action="columns">Columns</button>` : ""}
+        ${getLayoutMode() === "desktop" ? `<button class="view-menu-item${mode === "classic" ? " active" : ""}" data-action="classic">Classic</button>` : ""}
         <div class="view-menu-sep"></div>
         <button class="view-menu-item" data-action="customize">Customize</button>
       </div>`;
@@ -581,18 +582,30 @@
     renderRead();
   }
 
-  async function renderSprayToggle() {
-    const el = document.getElementById("sprayToggle");
-    if (!el) return;
-    if (activeTab !== "read") { el.hidden = true; return; }
+  // Shared by both the horizontal pill bar (renderSprayToggle) and the
+  // Classic view's vertical sidebar (renderClassicSidebar) — same
+  // underlying list, two different renderings of it, so they can never
+  // drift out of sync with each other.
+  async function getSprayBarPills() {
     await loadSprayBar();
-    el.hidden = false;
-    const pills = [
+    return [
       { key: "all", label: "All" },
       { key: sprayBarData.news.slug, label: sprayDisplayName(sprayBarData.news.slug, sprayBarData.news.name) || "News" },
       { key: "__youtube", label: "Best of YouTube" },
       { key: "__bluesky", label: "Best of Bluesky" },
     ].concat(sprayBarData.sprays.map(s => ({ key: s.slug, label: sprayDisplayName(s.slug, s.name) })));
+  }
+
+  async function renderSprayToggle() {
+    const el = document.getElementById("sprayToggle");
+    if (!el) return;
+    // Classic view has its own vertical sidebar showing this exact same
+    // list (see renderClassicSidebar) — the horizontal pill bar would
+    // just be a redundant second copy of the same control while it's
+    // active, so it hides itself rather than double up.
+    if (activeTab !== "read" || getReadDisplay() === "classic") { el.hidden = true; return; }
+    const pills = await getSprayBarPills();
+    el.hidden = false;
     el.innerHTML = pills.map(p => {
       const active = activeSprayKeys.has(p.key);
       return `
@@ -789,6 +802,19 @@
 
   function renderReadBody(shown, trendingLinks) {
     const main = document.getElementById("main");
+    // Classic (see renderReadClassic) is Desktop-only, same trap-
+    // avoidance spirit as getLayoutMode()'s own guard and Columns'
+    // fallback — if a resize/preview-toggle drops us out of Desktop
+    // while Classic was selected, fall back to Expanded rather than
+    // let a phone-width screen get stuck trying to render 3 columns.
+    if (getReadDisplay() === "classic" && getLayoutMode() !== "desktop") {
+      setReadDisplay("expanded");
+      return;
+    }
+    if (getLayoutMode() === "desktop" && getReadDisplay() === "classic") {
+      renderReadClassic(shown, trendingLinks);
+      return;
+    }
     // Scroll is a continuous, one-story-at-a-time feed — that's
     // fundamentally incompatible with the two-pane click-to-select
     // reader layout, no matter how the pane itself is sized. So Scroll
@@ -845,6 +871,55 @@
       <div class="reader-feed" id="readerFeed"></div>`;
     renderReaderPane(selectedDispatch, trendingLinks.has(selectedDispatch.link), trendingLinks.get(selectedDispatch.link));
     renderReaderFeed(shown, trendingLinks);
+  }
+
+  // ---------------------------------------------------------------
+  // Classic — a true 3-pane "Google Reader" arrangement: a persistent
+  // vertical sidebar of your RSS Packs (left), a dense one-line item
+  // list (middle), and a reading pane (right) — reading-pane-on-the-
+  // right is the classic convention, the mirror of the regular Desktop
+  // reader above (which puts the pane on the LEFT). Reuses the exact
+  // same selection state (activeSprayKeys) and reading-pane component
+  // (renderReaderPane) as the regular Desktop reader — Classic is a new
+  // ARRANGEMENT of existing pieces, not a new data model.
+  // ---------------------------------------------------------------
+  function renderReadClassic(shown, trendingLinks) {
+    const main = document.getElementById("main");
+    main.classList.remove("read-scroll-desktop", "read-columns", "read-layout");
+    main.classList.add("read-classic");
+    if (!selectedDispatch || !shown.some(d => d.id === selectedDispatch.id)) {
+      selectedDispatch = shown[0];
+    }
+    main.innerHTML = `
+      <div class="classic-sidebar" id="classicSidebar"></div>
+      <div class="reader-feed reader-feed-classic" id="readerFeed"></div>
+      <div class="reader-pane" id="readerPane"></div>`;
+    renderClassicSidebar();
+    renderReaderPane(selectedDispatch, trendingLinks.has(selectedDispatch.link), trendingLinks.get(selectedDispatch.link));
+    renderReaderFeed(shown, trendingLinks);
+  }
+
+  // Vertical counterpart to renderSprayToggle's horizontal pill bar —
+  // same getSprayBarPills() data, same toggleActiveSpray() click
+  // behavior (a click toggles that key in/out of the active selection;
+  // clicking an already-active row turns it off, same as clicking an
+  // active pill), just listed top-to-bottom instead of side-to-side.
+  async function renderClassicSidebar() {
+    const el = document.getElementById("classicSidebar");
+    if (!el) return;
+    const pills = await getSprayBarPills();
+    el.innerHTML = `<div class="classic-sidebar-head">RSS Packs</div>` +
+      pills.map(p => {
+        const active = activeSprayKeys.has(p.key);
+        return `<button class="classic-sidebar-item${active ? " active" : ""}" data-key="${escapeHtml(p.key)}" title="${escapeHtml(p.label)}">${escapeHtml(p.label)}</button>`;
+      }).join("") +
+      `<button class="classic-sidebar-item classic-sidebar-create" data-key="__create">+ Create</button>`;
+    el.querySelectorAll(".classic-sidebar-item").forEach(btn => {
+      btn.addEventListener("click", () => {
+        if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
+        toggleActiveSpray(btn.dataset.key);
+      });
+    });
   }
 
   // ---------------------------------------------------------------
@@ -1086,6 +1161,35 @@
     if (!feed) return;
     const mode = getReadDisplay();
     const headlinesOnly = mode === "headlines";
+    const classicMode = mode === "classic";
+    // Classic — the true "Google Reader" list style: a hairline-
+    // separated row, no card border/background/radius, title clipped
+    // to one line so a screenful shows many items at once. Denser than
+    // Headlines Only's own boxed-card treatment on purpose.
+    if (classicMode) {
+      feed.innerHTML = shown.map(d => {
+        const active = selectedDispatch && d.id === selectedDispatch.id;
+        return `
+          <button class="feed-item-classic${active ? " active" : ""}" data-id="${escapeHtml(String(d.id))}">
+            <span class="feed-item-classic-title">${escapeHtml(d.title || d.headline || "")}</span>
+            <span class="feed-item-classic-meta">
+              <span class="feed-item-classic-source">${escapeHtml(d.outlet || d.source || "")}</span>
+              <span class="feed-item-classic-time">${relTime(d.date)}</span>
+            </span>
+          </button>`;
+      }).join("");
+      feed.querySelectorAll(".feed-item-classic").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const d = shown.find(x => String(x.id) === btn.dataset.id);
+          if (!d) return;
+          selectedDispatch = d;
+          renderReaderPane(d, trendingLinks.has(d.link), trendingLinks.get(d.link));
+          feed.querySelectorAll(".feed-item-classic").forEach(b => b.classList.remove("active"));
+          btn.classList.add("active");
+        });
+      });
+      return;
+    }
     // Scroll — same list, same order, no new fetch. Roomier treatment
     // (bigger thumb, more excerpt, "see the conversation" link when one
     // exists) matching Scroll's card treatment elsewhere in the app —
