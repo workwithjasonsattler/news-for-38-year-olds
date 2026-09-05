@@ -284,7 +284,7 @@
     if (quickRemoveContext) {
       return `<button class="spray-add-btn spray-remove-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' data-remove-slug="${escapeHtml(quickRemoveContext.slug)}" title="Stop following ${escapeHtml(label)} in ${escapeHtml(quickRemoveContext.name)}">− ${escapeHtml(quickRemoveContext.name)}</button>`;
     }
-    return `<button class="spray-add-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' title="Follow ${escapeHtml(label)} in one of your Sprays — you'll get all of their future posts there too, not just this one">+ Follow ${escapeHtml(shortLabel)}</button>`;
+    return `<button class="spray-add-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' title="Follow ${escapeHtml(label)} in one of your RSS Packs — you'll get all of their future posts there too, not just this one">+ Follow ${escapeHtml(shortLabel)}</button>`;
   }
 
   // "Save" control — a lightweight personal bookmark, distinct from
@@ -354,7 +354,7 @@
         // silent mismatch between what's shown and what's actually saved.
         await api(`/api/my/mixes/${encodeURIComponent(slug)}/toggle-source`, { method: "POST", body: JSON.stringify(body) });
       }
-      toast(`Removed from ${quickRemoveContext ? quickRemoveContext.name : "that Spray"}.`);
+      toast(`Removed from ${quickRemoveContext ? quickRemoveContext.name : "that RSS Pack"}.`);
       if (onSuccess) onSuccess();
     } catch (e) {
       if (btnEl) btnEl.disabled = false;
@@ -884,7 +884,7 @@
     return `
       <div class="read-column" data-column-index="${i}">
         <div class="read-column-head">
-          <span class="read-column-name${slug ? "" : " read-column-name-empty"}">${slug ? escapeHtml((meta && meta.name) || slug) : "Pick a Spray"}</span>
+          <span class="read-column-name${slug ? "" : " read-column-name-empty"}">${slug ? escapeHtml((meta && meta.name) || slug) : "Pick an RSS Pack"}</span>
           <div class="read-column-head-actions">
             ${slug ? `<button class="spray-bar-btn" data-column-change="${i}">${columnPickerOpenIndex === i ? "Cancel" : "Change"}</button>` : ""}
             ${readColumns.length > 1 ? `<button class="read-column-close" data-column-remove="${i}" title="Close this column">×</button>` : ""}
@@ -892,11 +892,11 @@
         </div>
         ${showPicker ? `
           <div class="read-column-picker">
-            <input class="create-flow-input" data-column-search="${i}" placeholder="Search public Sprays by name...">
+            <input class="create-flow-input" data-column-search="${i}" placeholder="Search public RSS Packs by name...">
             <div class="read-column-picker-results" id="readColumnPickerResults-${i}"></div>
           </div>` : ""}
         <div class="read-column-body" id="readColumnBody-${i}">
-          ${slug ? "" : `<p class="card-meta" style="padding:16px;">Search above for a public Spray to open here.</p>`}
+          ${slug ? "" : `<p class="card-meta" style="padding:16px;">Search above for a public RSS Pack to open here.</p>`}
         </div>
       </div>`;
   }
@@ -945,7 +945,7 @@
         .filter(m => !q || (m.name || "").toLowerCase().includes(q))
         .slice(0, 8);
       results.innerHTML = matches.length === 0
-        ? `<div class="card-meta">No Sprays match.</div>`
+        ? `<div class="card-meta">No RSS Packs match.</div>`
         : matches.map(m => `<button class="btn" style="width:100%; margin-bottom:6px; text-align:left;" data-column-pick="${escapeHtml(m.slug)}">${escapeHtml(m.name)}</button>`).join("");
       results.querySelectorAll("[data-column-pick]").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -971,7 +971,7 @@
       const meta = mixMetaCache.get(slug);
       if (nameEl && meta) nameEl.textContent = meta.name;
       if (!Array.isArray(items) || items.length === 0) {
-        body.innerHTML = `<p class="card-meta" style="padding:16px;">Nothing in this Spray yet.</p>`;
+        body.innerHTML = `<p class="card-meta" style="padding:16px;">Nothing in this RSS Pack yet.</p>`;
         return;
       }
       const sorted = items.slice().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 60);
@@ -989,7 +989,7 @@
       wireSaveButtons(body);
     } catch (e) {
       if (readColumns[i] !== slug) return;
-      body.innerHTML = `<p class="card-meta" style="padding:16px;">Couldn't load this Spray — try a different one.</p>`;
+      body.innerHTML = `<p class="card-meta" style="padding:16px;">Couldn't load this RSS Pack — try a different one.</p>`;
     }
   }
 
@@ -1369,7 +1369,7 @@
     const newTile = `
       <button class="spray-tile spray-tile-new" data-tile="new">
         <span class="spray-tile-plus">+</span>
-        <span class="spray-tile-name">New Spray</span>
+        <span class="spray-tile-name">New RSS Pack</span>
       </button>`;
 
     return `<div class="spray-shelf">${headlinesTile}${ownTiles}${newTile}</div>`;
@@ -1421,7 +1421,7 @@
       tileSheetData = await api(`/api/mixes/${encodeURIComponent(slug)}`);
     } catch (e) {
       tileSheetData = null;
-      toast(e.message || "Couldn't load that Spray.");
+      toast(e.message || "Couldn't load that RSS Pack.");
     }
     tileSheetLoading = false;
     renderTileSheet();
@@ -1470,20 +1470,20 @@
         <input class="create-flow-input" id="tileRenameInput" value="${escapeHtml(mix.name)}" maxlength="80">
         <div class="tile-sheet-toggle-row" style="margin-top:10px;">
           <span>Public</span>
-          <button class="tile-sheet-switch${mix.is_public ? " on" : ""}" id="tileVisibilityToggle" role="switch" aria-checked="${mix.is_public}" aria-label="Make this Spray public"></button>
+          <button class="tile-sheet-switch${mix.is_public ? " on" : ""}" id="tileVisibilityToggle" role="switch" aria-checked="${mix.is_public}" aria-label="Make this RSS Pack public"></button>
         </div>
         <div class="tile-sheet-sources">${sourcesHtml}</div>
         <input class="create-flow-input" id="tileAddSourceInput" placeholder="Search sources to add…" style="margin-top:10px;">
         <div id="tileAddSourceResults"></div>
         <button class="btn" id="tileSaveBtn" style="width:100%; margin-top:14px;">Save</button>
         <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
-        <button class="tile-sheet-delete" id="tileDeleteBtn">Delete this Spray</button>`;
+        <button class="tile-sheet-delete" id="tileDeleteBtn">Delete this RSS Pack</button>`;
     }
 
     el.innerHTML = `
       <div class="spray-picker-card">
         <div class="spray-picker-head">
-          <span>${isHeadlines ? "Headlines: Best in the World" : "Edit Spray"}</span>
+          <span>${isHeadlines ? "Headlines: Best in the World" : "Edit RSS Pack"}</span>
           <button class="spray-picker-close" id="tileSheetClose" aria-label="Close">×</button>
         </div>
         ${body}
@@ -1550,7 +1550,7 @@
           await api(`/api/my/mixes/${encodeURIComponent(mix.slug)}/toggle-source`, { method: "POST", body: JSON.stringify(body) });
           await openTileSheet({ type: "own", slug: mix.slug }); // refetch + re-render
         } catch (e) {
-          toast(e.message || "Couldn't remove that source — a Spray needs at least one.");
+          toast(e.message || "Couldn't remove that source — an RSS Pack needs at least one.");
         }
       });
     });
@@ -1584,7 +1584,7 @@
 
     document.getElementById("tileSaveBtn").addEventListener("click", async () => {
       const name = (document.getElementById("tileRenameInput").value || "").trim();
-      if (!name) { toast("Name your Spray first."); return; }
+      if (!name) { toast("Name your RSS Pack first."); return; }
       const isPublic = document.getElementById("tileVisibilityToggle").classList.contains("on");
       try {
         await api(`/api/mixes/${encodeURIComponent(mix.slug)}`, {
@@ -1595,7 +1595,7 @@
         toast("Saved.");
         closeTileSheet();
       } catch (e) {
-        toast(e.message || "Couldn't save that Spray.");
+        toast(e.message || "Couldn't save that RSS Pack.");
       }
     });
 
@@ -1608,10 +1608,10 @@
         await api(`/api/mixes/${encodeURIComponent(mix.slug)}`, { method: "DELETE" });
         await loadMyMixes(true);
         await loadSprayBar(true);
-        toast("Spray deleted.");
+        toast("RSS Pack deleted.");
         closeTileSheet();
       } catch (e) {
-        toast(e.message || "Couldn't delete that Spray.");
+        toast(e.message || "Couldn't delete that RSS Pack.");
       }
     });
   }
@@ -1643,7 +1643,7 @@
       let html = `
         <div class="sources-area-head">
           <div class="sources-area-rule"></div>
-          <div class="sources-area-title">Your Sprays</div>
+          <div class="sources-area-title">Your RSS Packs</div>
           <div class="sources-area-sub">Tap any tile to follow, edit, or build something new.</div>
         </div>`;
       html += renderSpraysShelf(bar, myMixes);
@@ -1662,7 +1662,7 @@
         <div class="sources-area-head" style="margin-top:28px;">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Add a Feed</div>
-          <div class="sources-area-sub">Paste an RSS URL — it starts showing up in your reading list right away, no Spray required.</div>
+          <div class="sources-area-sub">Paste an RSS URL — it starts showing up in your reading list right away, no RSS Pack required.</div>
         </div>`;
       if (currentUser) {
         html += `
@@ -1682,13 +1682,13 @@
       if (currentUser) {
         html += `<div class="section-label" style="margin-top:28px;">Reading order</div>` + renderYourSpraysSection(bar);
       } else {
-        html += `<p class="sources-signin-hint">Sign in (on the You tab) to save and organize your own Sprays.</p>`;
+        html += `<p class="sources-signin-hint">Sign in (on the You tab) to save and organize your own RSS Packs.</p>`;
       }
 
       html += `<div class="sources-area-head" style="margin-top:34px;">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Your Sources</div>
-          <div class="sources-area-sub">Everything you can build a Spray from. Tap one to see where it already lives.</div>
+          <div class="sources-area-sub">Everything you can build an RSS Pack from. Tap one to see where it already lives.</div>
         </div>`;
       html += `<div class="section-label" style="margin-top:8px;">All sources (${orgSources.length})</div>`;
       html += `<input class="create-flow-input" id="sourcesBrowseSearch" placeholder="Search sources..." value="${escapeHtml(sourcesBrowseFilter)}" style="margin:8px 0 10px;">`;
@@ -1706,7 +1706,7 @@
         <div class="sources-area-head" style="margin-top:34px;">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Expand Your Mind</div>
-          <div class="sources-area-sub">A few you might like — tap one to add it to a Spray, or start something brand new.</div>
+          <div class="sources-area-sub">A few you might like — tap one to add it to an RSS Pack, or start something brand new.</div>
         </div>`;
 
       if (suggestions.length > 0) {
@@ -1716,7 +1716,7 @@
             </button>`).join("")}
           </div>`;
       }
-      html += `<button class="btn" id="startNewSprayBtn" style="margin-top:14px;width:100%;">+ Start a brand-new Spray</button>`;
+      html += `<button class="btn" id="startNewSprayBtn" style="margin-top:14px;width:100%;">+ Start a brand-new RSS Pack</button>`;
 
       main.innerHTML = html;
 
@@ -1778,16 +1778,16 @@
     let detail = "";
     if (isOpen) {
       if (!currentUser) {
-        detail = `<div class="source-row-detail"><p class="sources-signin-hint" style="margin:0;">Sign in on the You tab to add this to a Spray.</p></div>`;
+        detail = `<div class="source-row-detail"><p class="sources-signin-hint" style="margin:0;">Sign in on the You tab to add this to an RSS Pack.</p></div>`;
       } else if (!sourcesDetailMixes) {
         detail = `<div class="source-row-detail"><div class="state-block-mini">Loading…</div></div>`;
       } else {
         const inMixes = sourcesDetailMixes.filter(m => m.has_source);
         detail = `<div class="source-row-detail">
           ${inMixes.length > 0
-            ? `<div class="source-row-in">In your Sprays: ${inMixes.map(m => escapeHtml(m.name)).join(", ")}</div>`
-            : `<div class="source-row-in muted">Not in any of your Sprays yet.</div>`}
-          <button class="btn" data-detail-add="${escapeHtml(outlet)}">+ Add to a Spray</button>
+            ? `<div class="source-row-in">In your RSS Packs: ${inMixes.map(m => escapeHtml(m.name)).join(", ")}</div>`
+            : `<div class="source-row-in muted">Not in any of your RSS Packs yet.</div>`}
+          <button class="btn" data-detail-add="${escapeHtml(outlet)}">+ Add to an RSS Pack</button>
         </div>`;
       }
     }
@@ -1863,13 +1863,13 @@
         </div>
         ${newsPickerOpen ? `
           <div style="margin-top:10px;">
-            <input class="create-flow-input" id="newsPickerSearch" placeholder="Search public Sprays by name...">
+            <input class="create-flow-input" id="newsPickerSearch" placeholder="Search public RSS Packs by name...">
             <div id="newsPickerResults" style="margin-top:8px;"></div>
           </div>` : ""}
       </div>`;
 
     const barRows = bar.sprays.length === 0
-      ? `<div class="card"><div class="card-meta">Nothing added to your Read toggle yet — add one when you create a Spray, or from any Spray's page.</div></div>`
+      ? `<div class="card"><div class="card-meta">Nothing added to your Read toggle yet — add one when you create an RSS Pack, or from any RSS Pack's page.</div></div>`
       : `<div class="card" style="padding:0;">` + bar.sprays.map((s, i) => `
         <div class="spray-bar-row${i > 0 ? " " : ""}" style="${i > 0 ? "border-top:1px solid var(--line);" : ""}" data-slug="${escapeHtml(s.slug)}">
           <span class="spray-bar-name">${escapeHtml(s.name)}</span>
@@ -1928,7 +1928,7 @@
         .filter(m => !q || (m.name || "").toLowerCase().includes(q))
         .slice(0, 8);
       results.innerHTML = matches.length === 0
-        ? `<div class="card-meta">No Sprays match.</div>`
+        ? `<div class="card-meta">No RSS Packs match.</div>`
         : matches.map(m => `<button class="btn" style="width:100%; margin-bottom:6px; text-align:left;" data-slug="${escapeHtml(m.slug)}">${escapeHtml(m.name)}</button>`).join("");
       results.querySelectorAll("[data-slug]").forEach(btn => {
         btn.addEventListener("click", async () => {
@@ -1976,8 +1976,8 @@
   }
 
   async function openSprayPicker(source) {
-    if (!currentUser) { toast("Sign in on the You tab to add this to a Spray."); return; }
-    if (!source) { toast("Can't add this to a Spray."); return; }
+    if (!currentUser) { toast("Sign in on the You tab to add this to an RSS Pack."); return; }
+    if (!source) { toast("Can't add this to an RSS Pack."); return; }
     sprayPickerSource = source;
     sprayPickerMixes = null;
     renderSprayPicker(true);
@@ -1988,7 +1988,7 @@
       sprayPickerMixes = await api(`/api/my/mixes/for-source?${params}`);
     } catch (e) {
       sprayPickerMixes = [];
-      toast(e.message || "Couldn't load your Sprays.");
+      toast(e.message || "Couldn't load your RSS Packs.");
     }
     renderSprayPicker(false);
   }
@@ -2006,9 +2006,9 @@
     const label = sprayPickerSource.label || "this source";
     let body;
     if (loading) {
-      body = `<div class="state-block-mini">Loading your Sprays…</div>`;
+      body = `<div class="state-block-mini">Loading your RSS Packs…</div>`;
     } else if (!sprayPickerMixes || sprayPickerMixes.length === 0) {
-      body = `<div class="spray-picker-empty">You don't have any Sprays yet — start one below.</div>`;
+      body = `<div class="spray-picker-empty">You don't have any RSS Packs yet — start one below.</div>`;
     } else {
       body = `<div class="spray-picker-list">` + sprayPickerMixes.map(m => `
         <label class="spray-picker-row">
@@ -2019,13 +2019,13 @@
     el.innerHTML = `
       <div class="spray-picker-card">
         <div class="spray-picker-head">
-          <span>Add <strong>${escapeHtml(label)}</strong> to a Spray</span>
+          <span>Add <strong>${escapeHtml(label)}</strong> to an RSS Pack</span>
           <button class="spray-picker-close" id="sprayPickerClose" aria-label="Close">×</button>
         </div>
-        <p class="spray-picker-sub">You'll follow all of ${escapeHtml(label)}'s future posts in the Spray you pick — not just this one article.</p>
+        <p class="spray-picker-sub">You'll follow all of ${escapeHtml(label)}'s future posts in the RSS Pack you pick — not just this one article.</p>
         ${body}
         <div class="spray-picker-newrow">
-          <input type="text" id="sprayPickerNewName" placeholder="New Spray name…" maxlength="80">
+          <input type="text" id="sprayPickerNewName" placeholder="New RSS Pack name…" maxlength="80">
           <button class="btn" id="sprayPickerNewBtn">+ New</button>
         </div>
       </div>`;
@@ -2054,7 +2054,7 @@
       toast(result.added ? "Added." : "Removed.");
     } catch (e) {
       checkboxEl.checked = !checkboxEl.checked;
-      toast(e.message || "Couldn't update that Spray.");
+      toast(e.message || "Couldn't update that RSS Pack.");
     } finally {
       checkboxEl.disabled = false;
     }
@@ -2063,7 +2063,7 @@
   async function createSprayFromPicker() {
     const input = document.getElementById("sprayPickerNewName");
     const name = (input.value || "").trim();
-    if (!name) { toast("Name your Spray first."); return; }
+    if (!name) { toast("Name your RSS Pack first."); return; }
     const btn = document.getElementById("sprayPickerNewBtn");
     btn.disabled = true;
     try {
@@ -2076,7 +2076,7 @@
       toast(`Created "${name}."`);
       renderSprayPicker(false);
     } catch (e) {
-      toast(e.message || "Couldn't create that Spray.");
+      toast(e.message || "Couldn't create that RSS Pack.");
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -2085,7 +2085,7 @@
   // ----- Guided Create flow: name -> add one -> suggest 5 -> repeat -----
 
   function openCreateFlow() {
-    if (!currentUser) { toast("Sign in on the You tab to create a Spray."); return; }
+    if (!currentUser) { toast("Sign in on the You tab to create an RSS Pack."); return; }
     createFlowState = newCreateFlowState();
     renderSources();
   }
@@ -2139,7 +2139,7 @@
     if (state.topicIds.includes(id)) {
       state.topicIds = state.topicIds.filter(t => t !== id);
     } else {
-      if (state.topicIds.length >= MIX_TOPIC_CAP) { toast(`Sprays can carry up to ${MIX_TOPIC_CAP} tags.`); return; }
+      if (state.topicIds.length >= MIX_TOPIC_CAP) { toast(`RSS Packs can carry up to ${MIX_TOPIC_CAP} tags.`); return; }
       state.topicIds.push(id);
       state.topicLabels[id] = name;
     }
@@ -2300,7 +2300,7 @@
       <button class="btn" id="cfBack" style="margin-bottom:14px;">‹ Back</button>
 
       <div class="create-flow-step">
-        <div class="create-flow-label">Name your Spray</div>
+        <div class="create-flow-label">Name your RSS Pack</div>
         <input class="create-flow-input" id="cfName" placeholder="e.g. Movies, AI, Local Politics" value="${escapeHtml(state.name)}">
       </div>
 
@@ -2330,10 +2330,10 @@
       </div>
       <div class="create-flow-checkbox-row">
         <input type="checkbox" id="cfPublic" ${state.isPublic ? "checked" : ""}>
-        <label for="cfPublic">Public — visible in the Spray directory</label>
+        <label for="cfPublic">Public — visible in the RSS Pack directory</label>
       </div>
 
-      <button class="btn primary" id="cfSave" style="width:100%; margin-top:6px;">Save Spray</button>
+      <button class="btn primary" id="cfSave" style="width:100%; margin-top:6px;">Save RSS Pack</button>
     `;
 
     document.getElementById("cfBack").addEventListener("click", closeCreateFlow);
@@ -2396,7 +2396,7 @@
   async function saveCreateFlow() {
     const state = createFlowState;
     const name = state.name.trim();
-    if (!name) { toast("Give your Spray a name first."); return; }
+    if (!name) { toast("Give your RSS Pack a name first."); return; }
     if (state.picked.length === 0) { toast("Add at least one source."); return; }
 
     try {
@@ -2414,7 +2414,7 @@
       closeCreateFlow();
       toast(`"${name}" created.`);
     } catch (e) {
-      toast(e.message || "Couldn't save that Spray.");
+      toast(e.message || "Couldn't save that RSS Pack.");
     }
   }
 
@@ -2784,7 +2784,7 @@
       main.innerHTML = `
         <div class="card">
           <div class="card-meta"><span>ACCESS</span></div>
-          <div class="card-title" style="margin-bottom:10px;">Sign in to save your Sprays across devices.</div>
+          <div class="card-title" style="margin-bottom:10px;">Sign in to save your RSS Packs across devices.</div>
           <input id="youEmail" type="email" placeholder="you@domain.com"
             style="width:100%; padding:9px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--body); font-size:14px; margin-bottom:8px; border-radius:8px;">
           <button class="btn primary" id="youSendLink">SEND ACCESS LINK</button>
@@ -2823,10 +2823,10 @@
       </div>
       <button class="btn" id="youSignOut" style="margin-top:10px;">SIGN OUT</button>
       <div class="section-label" style="margin-top:22px;">MY SAVES</div>
-      <div class="section-sub">${saves.length} saved item${saves.length === 1 ? "" : "s"} — a personal reading list, not a Spray.</div>
+      <div class="section-sub">${saves.length} saved item${saves.length === 1 ? "" : "s"} — a personal reading list, not an RSS Pack.</div>
       ${renderMySavesSection(saves, visibility)}
       <div class="section-label" style="margin-top:22px; color: var(--alert);">DELETE MY ACCOUNT</div>
-      <div class="section-sub">Permanently erases your saves, Sprays, custom sources, and preferences. This can't be undone.</div>
+      <div class="section-sub">Permanently erases your saves, RSS Packs, custom sources, and preferences. This can't be undone.</div>
       <button class="btn" id="youDeleteAccount" style="margin-top:8px; border-color: var(--alert); color: var(--alert);">Delete my account</button>
       <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:22px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>
       <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; margin-top:6px; font-size:13px; color: var(--ink-muted);">Support</a>
@@ -2840,7 +2840,7 @@
     });
     document.getElementById("youDeleteAccount").addEventListener("click", async () => {
       const ok = confirm(
-        "Delete your account? This permanently erases your saves, your Sprays, your custom sources, and every preference — there's no undoing this. Type OK to confirm."
+        "Delete your account? This permanently erases your saves, your RSS Packs, your custom sources, and every preference — there's no undoing this. Type OK to confirm."
       );
       if (!ok) return;
       try {
@@ -2948,7 +2948,7 @@
   // ---------------------------------------------------------------
   const ONBOARDED_KEY = "source_onboarded";
 
-  const WHATS_THIS_COPY = "SOURCE! gives you the news you need, without the billionaires' algorithms. Choose from handpicked Sprays of vetted RSS feeds. Or create your own and share it with anyone as its own RSS feed.";
+  const WHATS_THIS_COPY = "SOURCE! gives you the news you need, without the billionaires' algorithms. Choose from handpicked RSS Packs of vetted sources. Or create your own and share it with anyone as its own RSS feed.";
 
   function showOnboarding() {
     const el = document.createElement("div");
@@ -3017,7 +3017,7 @@
     const items = data.items || [];
     main.innerHTML = `
       <div class="section-label">SHARED SAVES</div>
-      <div class="section-sub">${items.length} item${items.length === 1 ? "" : "s"} someone chose to keep — read-only, not a Spray.</div>
+      <div class="section-sub">${items.length} item${items.length === 1 ? "" : "s"} someone chose to keep — read-only, not an RSS Pack.</div>
       ${items.length === 0
         ? `<div class="card"><div class="card-meta">Nothing here yet.</div></div>`
         : items.map(it => `
