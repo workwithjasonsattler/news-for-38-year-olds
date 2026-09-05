@@ -15,6 +15,13 @@
   --accent-dim: #8C6300;
   --accent-soft: #FFF4DC;
   --alert: #B8123A;
+  /* Distinct from --accent on purpose — "Follow" (subscribe to a whole
+     source going forward) needs its own color so it never gets read as
+     the same action as "Save" (bookmark one article), whose success
+     state already uses --accent/--accent-dim. Reusing amber for both
+     would give the same color two different meanings on the same row. */
+  --follow: #2E5F82;
+  --follow-soft: #EAF2F7;
 
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -502,28 +509,33 @@ button { font-family: inherit; cursor: pointer; }
   text-decoration: none;
 }
 
-/* "+ Spray" control — small and quiet on purpose, a secondary action next
-   to (never competing with) tip-badge/buzz-badge. Sits on its own row
-   under them since both are block-level. */
+/* "+ Follow [outlet]" control — deliberately FILLED (soft blue tint),
+   not just an outline like Save below. This is a bigger commitment
+   (subscribes to the whole source going forward) than a one-article
+   bookmark, and the filled treatment + distinct --follow color is the
+   visual cue: Follow reads as "heavier"/blue, Save reads as "lighter"/
+   neutral-outline. See NEW-USER-WALKTHROUGH-launch-notes.txt item 3 —
+   these two used to be visually identical siblings on the same row. */
 .spray-add-btn {
   display: inline-flex;
   align-items: center;
   margin-top: 6px;
   padding: 5px 10px;
-  background: transparent;
-  color: var(--ink-muted);
-  border: 1px solid var(--line);
+  background: var(--follow-soft);
+  color: var(--follow);
+  border: 1px solid var(--follow);
   border-radius: 8px;
   font-family: var(--body);
   font-weight: 600;
   font-size: 11.5px;
 }
-.spray-add-btn:hover { color: var(--ink); border-color: var(--ink-muted); }
+.spray-add-btn:hover { background: var(--follow); color: #fff; border-color: var(--follow); }
 
 /* Quick-remove state — one tap, no picker, when the reader is viewing a
    Spray they own. Uses the alert color so it visually reads as a removal,
    not a duplicate "add" affordance. */
 .spray-remove-btn {
+  background: transparent;
   color: var(--alert);
   border-color: var(--alert);
 }
