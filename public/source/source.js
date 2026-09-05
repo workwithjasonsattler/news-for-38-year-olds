@@ -2790,7 +2790,8 @@
           <button class="btn primary" id="youSendLink">SEND ACCESS LINK</button>
           ${isStandaloneApp() ? `<p style="font-size:12.5px; color: var(--ink-muted); margin-top:10px;">Heads up: on an installed/Home-Screen app, the sign-in link opens in your regular browser, not this app — you'll need to sign in there for now. We're working on fixing this for the installed app.</p>` : ""}
         </div>
-        <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:14px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>`;
+        <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:14px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>
+        <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; margin-top:6px; font-size:13px; color: var(--ink-muted);">Support</a>`;
       document.getElementById("youSendLink").addEventListener("click", async () => {
         const email = document.getElementById("youEmail").value.trim();
         if (!email) return;
@@ -2828,6 +2829,7 @@
       <div class="section-sub">Permanently erases your saves, Sprays, custom sources, and preferences. This can't be undone.</div>
       <button class="btn" id="youDeleteAccount" style="margin-top:8px; border-color: var(--alert); color: var(--alert);">Delete my account</button>
       <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:22px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>
+      <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; margin-top:6px; font-size:13px; color: var(--ink-muted);">Support</a>
     `;
     document.getElementById("youSignOut").addEventListener("click", async () => {
       try { await api("/api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
@@ -2980,6 +2982,7 @@
     panel.innerHTML = `
       <p>${escapeHtml(WHATS_THIS_COPY)}</p>
       <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:10px; font-size:13px;">Privacy Policy</a>
+      <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; margin-top:4px; font-size:13px;">Support</a>
       <button class="ob-whats-this-close" id="obWhatsThisClose" aria-label="Close">×</button>
     `;
     el.appendChild(panel);
