@@ -38,7 +38,7 @@
   .logo-img{max-width:640px;width:100%;height:auto;margin:6px auto 0;display:block;}
   .top-headlines{max-width:900px;margin:0 auto 10px;}
   .top-headlines a{display:block;font-family:Arial,Helvetica,sans-serif;font-weight:700;color:#111;
-    font-size:clamp(24px,4.2vw,40px);line-height:1.15;margin:6px 0;text-decoration:underline;}
+    font-size:clamp(24px,4.2vw,40px);line-height:1.15;margin:6px 0;text-decoration:underline;text-transform:uppercase;}
   .top-headlines a:hover{opacity:.75;}
   .top-headlines a.thl-red{color:var(--wire-red);}
   .top-headlines a.thl-black{color:#111;}
@@ -953,7 +953,6 @@ function renderTopHeadline(){
   el.innerHTML = `
     ${top.image_url ? `<img class="thl-img" src="${top.image_url}" alt="">` : ''}
     <a class="thl-red" href="${top.link}" target="_blank" rel="noopener">${top.headline}</a>
-    ${top.outlet ? `<span class="thl-subhead">${top.outlet}</span>` : ''}
   `;
 }
 
