@@ -56,17 +56,23 @@
   const LAYOUT_REVIEW_BREAKPOINT = 700; // matches the CSS breakpoint that hides the review toggle below this width
 
   function getLayoutMode() {
-    const stored = localStorage.getItem(LAYOUT_KEY) || "mobile";
+    const stored = localStorage.getItem(LAYOUT_KEY);
+    // No explicit choice yet (first visit, or nothing ever saved) ->
+    // default based on actual screen width: a genuinely wide screen
+    // gets the Desktop experience out of the box, a real phone still
+    // gets Mobile. Once a reader explicitly picks one via the PREVIEW
+    // toggle, that stored choice always wins over this width guess.
+    const resolved = stored || (window.innerWidth >= LAYOUT_REVIEW_BREAKPOINT ? "desktop" : "mobile");
     // The Desktop preview toggle only exists (visually) at >=700px — it's a review tool for
     // wide screens, not a real reader-facing setting. If a narrow viewport somehow has
     // "desktop" stored (e.g. localStorage carried over from testing on a wider screen, or a
     // resize), never actually render Desktop there: there'd be no way to switch back, since
     // the only control for it is hidden below this width. Mobile is always safe/correct below
     // the breakpoint regardless of what's stored.
-    if (stored === "desktop" && window.innerWidth < LAYOUT_REVIEW_BREAKPOINT) {
+    if (resolved === "desktop" && window.innerWidth < LAYOUT_REVIEW_BREAKPOINT) {
       return "mobile";
     }
-    return stored;
+    return resolved;
   }
 
   function setLayoutMode(mode) {
@@ -101,7 +107,13 @@
   const READ_DISPLAY_KEY = "source_read_display";
 
   function getReadDisplay() {
-    return localStorage.getItem(READ_DISPLAY_KEY) || "expanded";
+    // Classic (the 3-pane Google Reader layout) is now the default —
+    // it only actually renders on Desktop layout though; the existing
+    // trap-avoidance check in renderRead() downgrades to "expanded" and
+    // persists that the moment a reader is on Mobile layout, same as it
+    // already does for anyone who explicitly picked Classic and then
+    // opened the app on a phone.
+    return localStorage.getItem(READ_DISPLAY_KEY) || "classic";
   }
 
   function setReadDisplay(mode) {
