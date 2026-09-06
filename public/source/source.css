@@ -1065,8 +1065,15 @@ button { font-family: inherit; cursor: pointer; }
 }
 .spray-tile-new .spray-tile-name { color: var(--ink-muted); }
 
-/* Tile detail sheet — reuses .spray-picker-overlay/.spray-picker-card
-   as the container, these are the sheet-specific inner bits. */
+/* tile-sheet-* — originally built for a bottom sheet; that sheet was
+   retired in favor of the full-screen Manage RSS Packs view (see
+   manage-screen-* below and renderManageScreen() in source.js), but
+   these inner-content classes (badge/toggle-row/switch/chip/etc.)
+   still do the job well and are reused there directly. The
+   openSprayPicker() quick-add popup (a separate, smaller "add this to
+   a Pack" control opened from a card, not from Sources) still uses
+   .spray-picker-overlay/.spray-picker-card as ITS container — that
+   one wasn't touched by this change. */
 .tile-sheet-badge {
   display: inline-block;
   font-family: var(--data);
@@ -1080,18 +1087,26 @@ button { font-family: inherit; cursor: pointer; }
   border-radius: var(--radius, 6px);
   margin-bottom: 8px;
 }
-.tile-sheet-title {
+/* Manage RSS Packs — the full-page screen, roomier than the old
+   sheet's cramped fields on purpose (that cramped feel was the actual
+   complaint that led to building this page). */
+.manage-screen-head { margin-bottom: 18px; }
+.manage-screen-title {
   font-family: var(--display);
   font-weight: 700;
-  font-size: 17px;
+  font-size: 24px;
   color: var(--ink);
+  margin: 4px 0 0;
 }
-.tile-sheet-sub {
-  font-size: 12.5px;
+.manage-screen-stat {
+  font-family: var(--data);
+  font-size: 11.5px;
   color: var(--ink-muted);
-  margin-top: 4px;
-  line-height: 1.4;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  margin-top: 6px;
 }
+.manage-screen-field { margin-top: 20px; }
 .tile-sheet-toggle-row {
   display: flex;
   align-items: center;

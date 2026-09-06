@@ -1484,85 +1484,87 @@
       btn.addEventListener("click", () => {
         const type = btn.dataset.tile;
         if (type === "new") return openCreateFlow();
-        if (type === "headlines") return openTileSheet({ type: "headlines" });
-        if (type === "own") return openTileSheet({ type: "own", slug: btn.dataset.slug });
+        if (type === "headlines") return openManageHeadlines();
+        if (type === "own") return openManageEdit(btn.dataset.slug);
       });
     });
   }
 
-  // ----- Tile detail sheet: one bottom-sheet shape, two contents.
-  // Headlines gets a real follow/unfollow toggle (adds/removes the
-  // official Spray from the reader's own Read-toggle bar — a genuine,
-  // reversible action, not a one-time setup step) plus "Copy and
+  // ----- Manage RSS Packs: a full screen within Sources (same "own
+  // screen, ‹ Back returns" pattern the guided Create flow already
+  // uses), not a bottom sheet. Headlines gets a real follow/unfollow
+  // toggle (adds/removes the official Spray from the reader's own
+  // Read-toggle bar — a genuine, reversible action) plus "Copy and
   // customize" (creates a brand-new, independently editable Spray
   // pre-filled with whatever Headlines currently carries, since the
   // official Spray itself has no stored source list to edit — it
   // auto-syncs to the live Wire). An owned Spray gets rename,
-  // public/private, and its source list with add/remove — this is now
-  // the one place a Spray's OWN contents get edited, reached from its
-  // tile instead of being buried behind the individual-source registry. -----
-  let tileSheetTarget = null; // {type:'headlines'} | {type:'own', slug}
-  let tileSheetData = null;   // full GET /api/mixes/:slug response
-  let tileSheetLoading = false;
+  // public/private, its source list with add/remove, and its follower
+  // (clone) count — this is the one place a Spray's OWN contents get
+  // edited, reached by tapping its tile on the shelf. -----
+  let manageState = null; // null = not in Manage mode
+  // { view: 'headlines' } | { view: 'edit', slug }, plus .data (full
+  // GET /api/mixes/:slug response, null while loading) and .loading
 
-  function closeTileSheet() {
-    const el = document.getElementById("tileSheetOverlay");
-    if (el) el.remove();
-    tileSheetTarget = null;
-    tileSheetData = null;
-    // Refresh the Sources tab behind it so shelf badges / tile lists
-    // reflect anything just changed (follow toggle, rename, source edits).
-    if (activeTab === "sources") renderSources();
+  function closeManageScreen() {
+    manageState = null;
+    renderSources();
   }
 
-  async function openTileSheet(target) {
-    tileSheetTarget = target;
-    tileSheetData = null;
-    tileSheetLoading = true;
-    renderTileSheet();
+  async function openManageHeadlines() {
+    manageState = { view: "headlines", data: null, loading: true };
+    renderManageScreen();
     try {
-      const slug = target.type === "headlines" ? OFFICIAL_NEWS_SLUG : target.slug;
-      tileSheetData = await api(`/api/mixes/${encodeURIComponent(slug)}`);
+      manageState.data = await api(`/api/mixes/${encodeURIComponent(OFFICIAL_NEWS_SLUG)}`);
     } catch (e) {
-      tileSheetData = null;
+      manageState.data = null;
+      toast(e.message || "Couldn't load Headlines.");
+    }
+    manageState.loading = false;
+    renderManageScreen();
+  }
+
+  async function openManageEdit(slug) {
+    manageState = { view: "edit", slug, data: null, loading: true };
+    renderManageScreen();
+    try {
+      manageState.data = await api(`/api/mixes/${encodeURIComponent(slug)}`);
+    } catch (e) {
+      manageState.data = null;
       toast(e.message || "Couldn't load that RSS Pack.");
     }
-    tileSheetLoading = false;
-    renderTileSheet();
+    manageState.loading = false;
+    renderManageScreen();
   }
 
-  function renderTileSheet() {
-    let el = document.getElementById("tileSheetOverlay");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "tileSheetOverlay";
-      el.className = "spray-picker-overlay";
-      document.body.appendChild(el);
-      el.addEventListener("click", (e) => { if (e.target === el) closeTileSheet(); });
-    }
-    if (!tileSheetTarget) return;
+  function renderManageScreen() {
+    const main = document.getElementById("main");
+    if (!manageState) return;
 
-    if (tileSheetLoading || !tileSheetData) {
-      el.innerHTML = `<div class="spray-picker-card"><div class="state-block-mini">Loading…</div></div>`;
+    if (manageState.loading || !manageState.data) {
+      main.innerHTML = `<button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back to Sources</button>` +
+        stateBlock({ title: "LOADING", body: "Just a moment...", spin: true });
+      document.getElementById("mgBack").addEventListener("click", closeManageScreen);
       return;
     }
 
-    const mix = tileSheetData;
-    const isHeadlines = tileSheetTarget.type === "headlines";
+    const mix = manageState.data;
     const rssUrl = `${location.origin}/api/mixes/${encodeURIComponent(mix.slug)}/rss`;
     let body;
 
-    if (isHeadlines) {
+    if (manageState.view === "headlines") {
       const following = (sprayBarData?.sprays || []).some(s => s.slug === OFFICIAL_NEWS_SLUG);
       body = `
-        <div class="tile-sheet-badge">Starter pack</div>
-        <div class="tile-sheet-title">${escapeHtml(mix.name)}</div>
-        <div class="tile-sheet-sub">Auto-updates with whatever's live — ${mix.sources.length} sources right now.</div>
+        <div class="manage-screen-head">
+          <div class="tile-sheet-badge">Starter pack</div>
+          <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
+          <div class="manage-screen-stat">${mix.sources.length} sources right now · auto-updates with whatever's live</div>
+        </div>
         <div class="tile-sheet-toggle-row">
           <span>In your Read toggle</span>
-          <button class="tile-sheet-switch${following ? " on" : ""}" id="tileFollowToggle" role="switch" aria-checked="${following}" aria-label="Follow Headlines"></button>
+          <button class="tile-sheet-switch${following ? " on" : ""}" id="mgFollowToggle" role="switch" aria-checked="${following}" aria-label="Follow Headlines"></button>
         </div>
-        <button class="btn" id="tileCopyBtn" style="width:100%; margin-top:12px;">Copy and customize</button>
+        <button class="btn" id="mgCopyBtn" style="width:100%; margin-top:14px;">Copy and customize</button>
         <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>`;
     } else {
       const sourcesHtml = (mix.sources || []).map(s => `
@@ -1571,39 +1573,42 @@
           <span class="tile-sheet-chip-x" data-remove-outlet="${escapeHtml(s.outlet || "")}" data-remove-custom="${s.custom_source_id || ""}">×</span>
         </span>`).join("");
       body = `
-        <input class="create-flow-input" id="tileRenameInput" value="${escapeHtml(mix.name)}" maxlength="80">
-        <div class="tile-sheet-toggle-row" style="margin-top:10px;">
-          <span>Public</span>
-          <button class="tile-sheet-switch${mix.is_public ? " on" : ""}" id="tileVisibilityToggle" role="switch" aria-checked="${mix.is_public}" aria-label="Make this RSS Pack public"></button>
+        <div class="manage-screen-head">
+          <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
+          <div class="manage-screen-stat">${mix.sources.length} source${mix.sources.length === 1 ? "" : "s"} · ${mix.clone_count || 0} follower${mix.clone_count === 1 ? "" : "s"}</div>
         </div>
-        <div class="tile-sheet-sources">${sourcesHtml}</div>
-        <input class="create-flow-input" id="tileAddSourceInput" placeholder="Search sources to add…" style="margin-top:10px;">
-        <div id="tileAddSourceResults"></div>
-        <button class="btn" id="tileSaveBtn" style="width:100%; margin-top:14px;">Save</button>
+        <div class="manage-screen-field">
+          <div class="create-flow-label">Name</div>
+          <input class="create-flow-input" id="mgRenameInput" value="${escapeHtml(mix.name)}" maxlength="80">
+        </div>
+        <div class="tile-sheet-toggle-row">
+          <span>Public</span>
+          <button class="tile-sheet-switch${mix.is_public ? " on" : ""}" id="mgVisibilityToggle" role="switch" aria-checked="${mix.is_public}" aria-label="Make this RSS Pack public"></button>
+        </div>
+        <div class="manage-screen-field">
+          <div class="create-flow-label">Sources</div>
+          <div class="tile-sheet-sources">${sourcesHtml}</div>
+          <input class="create-flow-input" id="mgAddSourceInput" placeholder="Search sources to add…" style="margin-top:10px;">
+          <div id="mgAddSourceResults"></div>
+        </div>
+        <button class="btn primary" id="mgSaveBtn" style="width:100%; margin-top:14px;">Save</button>
         <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
-        <button class="tile-sheet-delete" id="tileDeleteBtn">Delete this RSS Pack</button>`;
+        <button class="tile-sheet-delete" id="mgDeleteBtn">Delete this RSS Pack</button>`;
     }
 
-    el.innerHTML = `
-      <div class="spray-picker-card">
-        <div class="spray-picker-head">
-          <span>${isHeadlines ? "Headlines: Best in the World" : "Edit RSS Pack"}</span>
-          <button class="spray-picker-close" id="tileSheetClose" aria-label="Close">×</button>
-        </div>
-        ${body}
-      </div>`;
+    main.innerHTML = `<button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back to Sources</button>` + body;
+    document.getElementById("mgBack").addEventListener("click", closeManageScreen);
 
-    document.getElementById("tileSheetClose").addEventListener("click", closeTileSheet);
-    if (isHeadlines) {
-      document.getElementById("tileFollowToggle").addEventListener("click", toggleHeadlinesFollow);
-      document.getElementById("tileCopyBtn").addEventListener("click", copyHeadlinesAndEdit);
+    if (manageState.view === "headlines") {
+      document.getElementById("mgFollowToggle").addEventListener("click", toggleHeadlinesFollow);
+      document.getElementById("mgCopyBtn").addEventListener("click", copyHeadlinesAndEdit);
     } else {
-      wireTileSheetEdit(mix);
+      wireManageEdit(mix);
     }
   }
 
   async function toggleHeadlinesFollow() {
-    const btn = document.getElementById("tileFollowToggle");
+    const btn = document.getElementById("mgFollowToggle");
     const following = btn.classList.contains("on");
     btn.disabled = true;
     try {
@@ -1613,7 +1618,7 @@
         await api("/api/my/spray-bar/add", { method: "POST", body: JSON.stringify({ slug: OFFICIAL_NEWS_SLUG }) });
       }
       await loadSprayBar(true);
-      renderTileSheet();
+      renderManageScreen();
       toast(following ? "Removed from your Read toggle." : "Added to your Read toggle.");
     } catch (e) {
       toast(e.message || "Couldn't update that.");
@@ -1623,18 +1628,18 @@
   }
 
   async function copyHeadlinesAndEdit() {
-    const btn = document.getElementById("tileCopyBtn");
+    const btn = document.getElementById("mgCopyBtn");
     btn.disabled = true;
     btn.textContent = "Copying…";
     try {
-      const sources = tileSheetData.sources.map(s => ({ source_type: s.source_type, outlet: s.outlet, custom_source_id: s.custom_source_id || null }));
+      const sources = manageState.data.sources.map(s => ({ source_type: s.source_type, outlet: s.outlet, custom_source_id: s.custom_source_id || null }));
       const created = await api("/api/mixes", {
         method: "POST",
         body: JSON.stringify({ name: "My Headlines (copy)", sources, is_public: false }),
       });
       await loadMyMixes(true);
       toast(`Created "${created.name}" — now yours to edit.`);
-      openTileSheet({ type: "own", slug: created.slug });
+      openManageEdit(created.slug);
     } catch (e) {
       toast(e.message || "Couldn't copy Headlines.");
       btn.disabled = false;
@@ -1642,7 +1647,7 @@
     }
   }
 
-  function wireTileSheetEdit(mix) {
+  function wireManageEdit(mix) {
     document.querySelectorAll("[data-remove-outlet], [data-remove-custom]").forEach(chip => {
       chip.addEventListener("click", async () => {
         const outlet = chip.dataset.removeOutlet;
@@ -1652,15 +1657,15 @@
             ? { source_type: "custom", custom_source_id: Number(customId) }
             : { source_type: "admin_outlet", outlet };
           await api(`/api/my/mixes/${encodeURIComponent(mix.slug)}/toggle-source`, { method: "POST", body: JSON.stringify(body) });
-          await openTileSheet({ type: "own", slug: mix.slug }); // refetch + re-render
+          await openManageEdit(mix.slug); // refetch + re-render
         } catch (e) {
           toast(e.message || "Couldn't remove that source — an RSS Pack needs at least one.");
         }
       });
     });
 
-    const addInput = document.getElementById("tileAddSourceInput");
-    const results = document.getElementById("tileAddSourceResults");
+    const addInput = document.getElementById("mgAddSourceInput");
+    const results = document.getElementById("mgAddSourceResults");
     if (addInput) {
       addInput.addEventListener("input", debounce(() => {
         const q = addInput.value.trim().toLowerCase();
@@ -1677,7 +1682,7 @@
                 method: "POST",
                 body: JSON.stringify({ source_type: "admin_outlet", outlet: b.dataset.addOutlet }),
               });
-              await openTileSheet({ type: "own", slug: mix.slug });
+              await openManageEdit(mix.slug);
             } catch (e) {
               toast(e.message || "Couldn't add that source.");
             }
@@ -1686,10 +1691,10 @@
       }, 200));
     }
 
-    document.getElementById("tileSaveBtn").addEventListener("click", async () => {
-      const name = (document.getElementById("tileRenameInput").value || "").trim();
+    document.getElementById("mgSaveBtn").addEventListener("click", async () => {
+      const name = (document.getElementById("mgRenameInput").value || "").trim();
       if (!name) { toast("Name your RSS Pack first."); return; }
-      const isPublic = document.getElementById("tileVisibilityToggle").classList.contains("on");
+      const isPublic = document.getElementById("mgVisibilityToggle").classList.contains("on");
       try {
         await api(`/api/mixes/${encodeURIComponent(mix.slug)}`, {
           method: "PUT",
@@ -1697,23 +1702,23 @@
         });
         await loadMyMixes(true);
         toast("Saved.");
-        closeTileSheet();
+        closeManageScreen();
       } catch (e) {
         toast(e.message || "Couldn't save that RSS Pack.");
       }
     });
 
-    const visToggle = document.getElementById("tileVisibilityToggle");
+    const visToggle = document.getElementById("mgVisibilityToggle");
     if (visToggle) visToggle.addEventListener("click", () => visToggle.classList.toggle("on"));
 
-    document.getElementById("tileDeleteBtn").addEventListener("click", async () => {
+    document.getElementById("mgDeleteBtn").addEventListener("click", async () => {
       if (!confirm(`Delete "${mix.name}"? This can't be undone — anyone who's pinned it will lose it too.`)) return;
       try {
         await api(`/api/mixes/${encodeURIComponent(mix.slug)}`, { method: "DELETE" });
         await loadMyMixes(true);
         await loadSprayBar(true);
         toast("RSS Pack deleted.");
-        closeTileSheet();
+        closeManageScreen();
       } catch (e) {
         toast(e.message || "Couldn't delete that RSS Pack.");
       }
@@ -1721,6 +1726,7 @@
   }
 
   async function renderSources() {
+    if (manageState) return renderManageScreen();
     if (createFlowState) return renderCreateFlow();
 
     const main = document.getElementById("main");
