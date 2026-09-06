@@ -686,6 +686,15 @@ button { font-family: inherit; cursor: pointer; }
    Spray toggle — Read tab's All | News | <your Sprays> | Create bar.
    Sits between the header and #main, hidden on every tab except Read.
    --------------------------------------------------------------- */
+/* [hidden] has the same specificity as .spray-toggle below, and author
+   styles always beat the browser's own [hidden] default — without this
+   explicit rule, JS setting el.hidden = true has zero visible effect and
+   the bar stays on screen (this was a real bug: Classic view's sidebar
+   is supposed to replace this bar entirely, but the bar kept rendering
+   on top of it because of exactly this cascade gap). */
+.spray-toggle[hidden] {
+  display: none;
+}
 .spray-toggle {
   display: flex;
   /* row-reverse both right-justifies the bar AND mirrors pill order

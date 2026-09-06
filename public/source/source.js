@@ -474,7 +474,28 @@
   function switchTab(key) {
     activeTab = key;
     renderTabBar();
-    renderActiveTab();
+    // Returns the render promise (renderSources/renderRead/etc. are all
+    // async) so a caller that needs to act after the new tab has actually
+    // painted — e.g. jumping straight to a specific control on it — can
+    // await this. Existing callers that don't care just ignore the
+    // return value, so this is a safe, backward-compatible addition.
+    return renderActiveTab();
+  }
+
+  // Used by both the "+ Add a Feed" pill and the Classic sidebar's
+  // equivalent button: jumps to Sources and drops the reader straight
+  // into the quick-add-feed input (same one built for the Sources tab's
+  // own "Add a Feed" box) instead of just landing on the tab and making
+  // them scroll/hunt for it themselves.
+  async function jumpToAddFeed() {
+    await switchTab("sources");
+    const input = document.getElementById("quickAddFeedInput");
+    if (input) {
+      input.scrollIntoView({ behavior: "smooth", block: "center" });
+      input.focus();
+    }
+    // Signed-out readers see the sign-in hint instead of the input on
+    // Sources — nothing to focus, and that hint already explains why.
   }
 
   function renderActiveTab() {
@@ -612,7 +633,9 @@
         <button class="spray-pill${active ? " active" : ""}" data-key="${escapeHtml(p.key)}" title="${escapeHtml(p.label)}">
           <span class="spray-pill-label">${escapeHtml(p.label)}</span>${active && p.key !== "all" ? `<span class="spray-pill-x" data-key="${escapeHtml(p.key)}">×</span>` : ""}
         </button>`;
-    }).join("") + `<button class="spray-pill spray-pill-create" data-key="__create">+ Create</button>`;
+    }).join("")
+      + `<button class="spray-pill spray-pill-create" data-key="__addfeed">+ Add a Feed</button>`
+      + `<button class="spray-pill spray-pill-create" data-key="__create">+ Create an RSS Pack</button>`;
     el.querySelectorAll(".spray-pill-x").forEach(x => {
       x.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -622,6 +645,7 @@
     el.querySelectorAll(".spray-pill").forEach(btn => {
       btn.addEventListener("click", () => {
         if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
+        if (btn.dataset.key === "__addfeed") { jumpToAddFeed(); return; }
         toggleActiveSpray(btn.dataset.key);
       });
     });
@@ -913,10 +937,12 @@
         const active = activeSprayKeys.has(p.key);
         return `<button class="classic-sidebar-item${active ? " active" : ""}" data-key="${escapeHtml(p.key)}" title="${escapeHtml(p.label)}">${escapeHtml(p.label)}</button>`;
       }).join("") +
-      `<button class="classic-sidebar-item classic-sidebar-create" data-key="__create">+ Create</button>`;
+      `<button class="classic-sidebar-item classic-sidebar-create" data-key="__addfeed">+ Add a Feed</button>` +
+      `<button class="classic-sidebar-item classic-sidebar-create" data-key="__create">+ Create an RSS Pack</button>`;
     el.querySelectorAll(".classic-sidebar-item").forEach(btn => {
       btn.addEventListener("click", () => {
         if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
+        if (btn.dataset.key === "__addfeed") { jumpToAddFeed(); return; }
         toggleActiveSpray(btn.dataset.key);
       });
     });
