@@ -193,6 +193,10 @@ Some Video Creator | | Indie Media | | | | | | @somecreator"></textarea>
       <thead><tr><th>Pin</th><th>Name</th><th>Outlet</th><th>Beat</th><th>Headline</th><th>Link</th><th></th></tr></thead>
       <tbody id="dispatchRows"></tbody>
     </table>
+    <p id="dispatchLoadMoreWrap" style="margin-top:10px;">
+      <button class="btn-secondary" onclick="loadMoreDispatches()">Load 10 more</button>
+      <span id="dispatchCountLabel" style="font-family:var(--mono);font-size:11px;color:#666;margin-left:8px;"></span>
+    </p>
   </div>
 
   <div class="panel">
@@ -295,10 +299,19 @@ async function loadStats(){
 let allDispatches = [];
 let editingDispatchId = null;
 
+const DISPATCH_BATCH_SIZE = 10;
+let dispatchesShown = DISPATCH_BATCH_SIZE;
+
 async function loadDispatches(){
   const res = await fetch('/api/dispatches');
   allDispatches = await res.json();
-  document.getElementById('dispatchRows').innerHTML = allDispatches.map(d => `
+  dispatchesShown = DISPATCH_BATCH_SIZE;
+  renderDispatchRows();
+}
+
+function renderDispatchRows(){
+  const visible = allDispatches.slice(0, dispatchesShown);
+  document.getElementById('dispatchRows').innerHTML = visible.map(d => `
     <tr>
       <td>${d.pinned ? '📌' : ''}</td>
       <td>${d.name}</td>
@@ -312,6 +325,14 @@ async function loadDispatches(){
       </td>
     </tr>
   `).join('');
+  const remaining = allDispatches.length - visible.length;
+  document.getElementById('dispatchLoadMoreWrap').style.display = remaining > 0 ? 'block' : 'none';
+  document.getElementById('dispatchCountLabel').textContent = `Showing ${visible.length} of ${allDispatches.length}`;
+}
+
+function loadMoreDispatches(){
+  dispatchesShown += DISPATCH_BATCH_SIZE;
+  renderDispatchRows();
 }
 
 function editDispatch(id){
