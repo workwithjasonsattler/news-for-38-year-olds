@@ -195,6 +195,39 @@ Some Video Creator | | Indie Media | | | | | | @somecreator"></textarea>
     </table>
   </div>
 
+  <div class="panel">
+    <h2 style="font-family:var(--mono);font-size:14px;">RSS PACKS</h2>
+    <p style="font-size:13px;color:#666;">Curate official Packs (featured, admin-built) and moderate reader-made public ones. The auto-syncing flagship ("Headlines: Best in the World") always mirrors the live Wire and has no editable source list — everything else here is a real, editor-picked list.</p>
+
+    <h3 style="font-family:var(--mono);font-size:12px;margin-top:20px;">OFFICIAL PACKS</h3>
+    <table id="officialPackTable">
+      <thead><tr><th>Name</th><th>Sources</th><th>Topics</th><th>Followers</th><th></th></tr></thead>
+      <tbody id="officialPackRows"></tbody>
+    </table>
+
+    <h3 style="font-family:var(--mono);font-size:12px;margin-top:24px;border-top:1px solid rgba(0,0,0,.1);padding-top:16px;" id="packFormTitle">CREATE AN OFFICIAL PACK</h3>
+    <label>Name</label><input id="pk_name">
+    <label>Location (optional)</label><input id="pk_location" placeholder="e.g. Ann Arbor, MI">
+    <label>Topics (optional — comma-separated, must be existing approved topic names)</label>
+    <input id="pk_topics" placeholder="Politics, Climate Change" list="pk_topics_datalist">
+    <datalist id="pk_topics_datalist"></datalist>
+    <label>Sources — search and add from the outlet/individual registry</label>
+    <input id="pk_source_search" placeholder="Start typing an outlet or individual name…" oninput="renderPackSourceSearch()">
+    <div id="pk_source_search_results" style="max-height:160px;overflow-y:auto;border:1px solid rgba(0,0,0,.15);border-radius:3px;margin-top:4px;"></div>
+    <div id="pk_source_chips" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:10px;"></div>
+    <button class="btn-primary" id="packSubmitBtn" onclick="submitPack()">Create Pack</button>
+    <button class="btn-secondary" onclick="clearPackForm()">Clear / Cancel edit</button>
+    <p id="packFormMsg" style="font-family:var(--mono);font-size:12px;"></p>
+
+    <h3 style="font-family:var(--mono);font-size:12px;margin-top:28px;border-top:1px solid rgba(0,0,0,.1);padding-top:20px;">PUBLIC PACKS — MODERATION</h3>
+    <p style="font-size:13px;color:#666;">Every reader-made public Pack, most recent first. Hide unlists it everywhere (directory, RSS, view, clone) without deleting; Delete removes it outright.</p>
+    <input id="pk_moderation_search" placeholder="Search by name…" oninput="loadPublicPacks()" style="margin-bottom:10px;">
+    <table id="publicPackTable">
+      <thead><tr><th>Name</th><th>Creator</th><th>Sources</th><th>Followers</th><th>Status</th><th></th></tr></thead>
+      <tbody id="publicPackRows"></tbody>
+    </table>
+  </div>
+
 </div>
 
 <script>
@@ -222,6 +255,9 @@ async function showAdmin(){
   await loadDispatches();
   await loadFeeds();
   await loadHeadlines();
+  await loadTopicsForPacks();
+  await loadOfficialPacks();
+  await loadPublicPacks();
 }
 
 async function loadStats(){
@@ -695,6 +731,170 @@ async function deleteHeadline(id){
   if (!confirm('Delete this headline?')) return;
   await fetch(`/api/headlines/${id}`, {method:'DELETE', headers: authHeaders()});
   await loadHeadlines();
+}
+
+// ---------- RSS Packs: official-Pack curation + public-Pack moderation ----------
+let allTopics = [];
+let allPackSources = [];
+let editingPackSlug = null;
+
+async function loadTopicsForPacks(){
+  const res = await fetch('/api/topics');
+  if (!res.ok) return;
+  allTopics = await res.json();
+  const dl = document.getElementById('pk_topics_datalist');
+  if (dl) dl.innerHTML = allTopics.map(t => `<option value="${t.name}">`).join('');
+}
+
+function renderPackSourceSearch(){
+  const q = document.getElementById('pk_source_search').value.trim().toLowerCase();
+  const results = document.getElementById('pk_source_search_results');
+  if (!q) { results.innerHTML = ''; return; }
+  const matches = allFeeds.filter(f => f.outlet.toLowerCase().includes(q) && !allPackSources.includes(f.outlet)).slice(0, 15);
+  results.innerHTML = matches.map(f => `
+    <div style="padding:6px 8px;cursor:pointer;font-size:13px;border-bottom:1px solid rgba(0,0,0,.06);" onclick="addPackSource('${f.outlet.replace(/'/g, "\\'")}')">${f.outlet}${f.feed_type === 'journalist' ? ' <span style="color:#999;font-size:11px;">(individual)</span>' : ''}</div>
+  `).join('') || '<div style="padding:6px 8px;color:#999;font-size:12px;">No matches</div>';
+}
+
+function addPackSource(outlet){
+  if (!allPackSources.includes(outlet)) allPackSources.push(outlet);
+  document.getElementById('pk_source_search').value = '';
+  document.getElementById('pk_source_search_results').innerHTML = '';
+  renderPackSourceChips();
+}
+
+function removePackSource(outlet){
+  allPackSources = allPackSources.filter(o => o !== outlet);
+  renderPackSourceChips();
+}
+
+function renderPackSourceChips(){
+  document.getElementById('pk_source_chips').innerHTML = allPackSources.map(o => `
+    <span style="background:#eee;border-radius:12px;padding:4px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;">
+      ${o} <span style="cursor:pointer;color:#B33A3A;font-weight:700;" onclick="removePackSource('${o.replace(/'/g, "\\'")}')">×</span>
+    </span>
+  `).join('');
+}
+
+async function loadOfficialPacks(){
+  const res = await fetch('/api/admin/mixes/official', {headers: authHeaders()});
+  if (!res.ok) return;
+  const rows = await res.json();
+  window._officialPacks = rows;
+  document.getElementById('officialPackRows').innerHTML = rows.map(p => `
+    <tr>
+      <td>${p.name}${p.auto_sync ? ' <span style="color:#999;font-size:11px;">(auto-syncs to live Wire)</span>' : ''}</td>
+      <td>${p.auto_sync ? '<span style="color:#999;">—</span>' : (p.sources || []).join(', ') || '<span style="color:#999;">—</span>'}</td>
+      <td>${(p.topics || []).map(t => t.name).join(', ') || '<span style="color:#999;">—</span>'}</td>
+      <td>${p.clone_count}</td>
+      <td>
+        ${p.auto_sync ? '' : `<button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="editPack('${p.slug}')">Edit</button>
+        <button class="btn-danger" onclick="deletePack('${p.slug}')">Delete</button>`}
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="5" style="color:#666;">No official Packs yet.</td></tr>';
+}
+
+function editPack(slug){
+  const p = (window._officialPacks || []).find(x => x.slug === slug);
+  if (!p) return;
+  editingPackSlug = slug;
+  document.getElementById('pk_name').value = p.name;
+  document.getElementById('pk_location').value = p.location_label || '';
+  document.getElementById('pk_topics').value = (p.topics || []).map(t => t.name).join(', ');
+  allPackSources = [...(p.sources || [])];
+  renderPackSourceChips();
+  document.getElementById('packFormTitle').textContent = `EDITING PACK: ${p.name}`;
+  document.getElementById('packSubmitBtn').textContent = 'Update Pack';
+  window.scrollTo({top: document.getElementById('packFormTitle').offsetTop - 20, behavior: 'smooth'});
+}
+
+function resolveTopicIdsFromInput(){
+  const raw = document.getElementById('pk_topics').value.split(',').map(s => s.trim()).filter(Boolean);
+  const ids = [], unknown = [];
+  for (const name of raw) {
+    const match = allTopics.find(t => t.name.toLowerCase() === name.toLowerCase());
+    if (match) ids.push(match.id); else unknown.push(name);
+  }
+  return { ids, unknown };
+}
+
+async function submitPack(){
+  const msg = document.getElementById('packFormMsg');
+  const name = document.getElementById('pk_name').value.trim();
+  if (!name) { msg.style.color = '#B33A3A'; msg.textContent = 'Name is required.'; return; }
+  if (allPackSources.length === 0) { msg.style.color = '#B33A3A'; msg.textContent = 'Add at least one source.'; return; }
+  const { ids: topic_ids, unknown } = resolveTopicIdsFromInput();
+  if (unknown.length) {
+    msg.style.color = '#B33A3A';
+    msg.textContent = `Unknown topic(s): ${unknown.join(', ')} — leave blank or use an existing approved topic name.`;
+    return;
+  }
+  const body = {
+    name,
+    location_label: document.getElementById('pk_location').value.trim() || null,
+    sources: allPackSources,
+    topic_ids,
+  };
+  const url = editingPackSlug ? `/api/admin/mixes/${editingPackSlug}` : '/api/admin/mixes';
+  const method = editingPackSlug ? 'PUT' : 'POST';
+  const res = await fetch(url, {method, headers: authHeaders(), body: JSON.stringify(body)});
+  const data = await res.json();
+  if (res.ok) {
+    msg.style.color = 'green'; msg.textContent = editingPackSlug ? 'Pack updated.' : 'Pack created.';
+    clearPackForm();
+    await loadOfficialPacks();
+  } else {
+    msg.style.color = '#B33A3A'; msg.textContent = data.error || 'Error saving Pack.';
+  }
+}
+
+function clearPackForm(){
+  document.getElementById('pk_name').value = '';
+  document.getElementById('pk_location').value = '';
+  document.getElementById('pk_topics').value = '';
+  document.getElementById('pk_source_search').value = '';
+  document.getElementById('pk_source_search_results').innerHTML = '';
+  allPackSources = [];
+  renderPackSourceChips();
+  editingPackSlug = null;
+  document.getElementById('packFormTitle').textContent = 'CREATE AN OFFICIAL PACK';
+  document.getElementById('packSubmitBtn').textContent = 'Create Pack';
+}
+
+async function deletePack(slug){
+  if (!confirm('Delete this Pack? This cannot be undone.')) return;
+  const res = await fetch(`/api/admin/mixes/${slug}`, {method: 'DELETE', headers: authHeaders()});
+  const data = await res.json();
+  if (!res.ok) { alert(data.error || 'Could not delete.'); return; }
+  await loadOfficialPacks();
+  await loadPublicPacks();
+}
+
+async function loadPublicPacks(){
+  const qEl = document.getElementById('pk_moderation_search');
+  const q = qEl ? qEl.value.trim() : '';
+  const res = await fetch(`/api/admin/mixes/public${q ? '?q=' + encodeURIComponent(q) : ''}`, {headers: authHeaders()});
+  if (!res.ok) return;
+  const rows = await res.json();
+  document.getElementById('publicPackRows').innerHTML = rows.map(p => `
+    <tr>
+      <td>${p.name}</td>
+      <td style="color:#666;">${p.creator_email || '—'}</td>
+      <td>${p.source_count}</td>
+      <td>${p.clone_count}</td>
+      <td>${p.admin_hidden ? '<span style="color:#B33A3A;">Hidden</span>' : '<span style="color:#2F6F62;">Visible</span>'}</td>
+      <td>
+        <button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="togglePackHidden('${p.slug}')">${p.admin_hidden ? 'Unhide' : 'Hide'}</button>
+        <button class="btn-danger" onclick="deletePack('${p.slug}')">Delete</button>
+      </td>
+    </tr>
+  `).join('') || '<tr><td colspan="6" style="color:#666;">No public Packs yet.</td></tr>';
+}
+
+async function togglePackHidden(slug){
+  await fetch(`/api/admin/mixes/${slug}/toggle-hidden`, {method: 'POST', headers: authHeaders()});
+  await loadPublicPacks();
 }
 
 if (TOKEN) showAdmin();

@@ -366,6 +366,16 @@ async function initSchema() {
     `ALTER TABLE feed_mixes ADD COLUMN topic_id INTEGER`,
     `ALTER TABLE feed_mixes ADD COLUMN clone_count INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE feed_mixes ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0`,
+    // auto_sync is split out from is_official (see the note above
+    // seedOfficialHeadlinesSpray()) so a real, editor-curated official Pack
+    // (its own stored feed_mix_sources) can coexist with the one true
+    // auto-syncing flagship, which alone pulls its sources live from
+    // `dispatches` instead of a stored list.
+    `ALTER TABLE feed_mixes ADD COLUMN auto_sync INTEGER NOT NULL DEFAULT 0`,
+    // admin_hidden lets a moderator unlist a reader-made public Pack from
+    // every public surface (directory, RSS, view, clone) without deleting
+    // it outright — a softer takedown than DELETE /api/admin/mixes/:slug.
+    `ALTER TABLE feed_mixes ADD COLUMN admin_hidden INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE topics ADD COLUMN category TEXT`,
     `ALTER TABLE users ADD COLUMN last_active_at TEXT`,
   ]) {
@@ -522,11 +532,20 @@ const STARTER_YOUTUBE_CHANNELS = [
 // subset — it IS the existing default blend of curated outlets already
 // powering the unfiltered Wire, auto-synced rather than a separately
 // maintained source list that could drift out of sync. It's implemented as
-// a single seeded, unchanging feed_mixes row (is_official=1) whose actual
-// sources/items are resolved LIVE at request time in resolveMixSources()
-// (see below) rather than stored in feed_mix_sources — so there is nothing
-// to keep in sync, it always reflects whatever outlets currently have
-// dispatches live.
+// a single seeded, unchanging feed_mixes row (is_official=1, auto_sync=1)
+// whose actual sources/items are resolved LIVE at request time in
+// resolveMixSources() (see below) rather than stored in feed_mix_sources —
+// so there is nothing to keep in sync, it always reflects whatever outlets
+// currently have dispatches live.
+//
+// is_official vs. auto_sync: is_official just means "admin-curated/
+// featured," used to exclude a Pack from the general reader-made directory
+// and reader self-edit surfaces. auto_sync means "no stored source list —
+// pull live from dispatches instead," which is true ONLY of this one
+// flagship row. An admin can create other real, editor-picked official
+// Packs (see POST /api/admin/mixes below) that are is_official=1 but
+// auto_sync=0 — those have a genuine, editable feed_mix_sources list like
+// any reader-made Pack, just admin-owned and featured.
 const OFFICIAL_HEADLINES_SPRAY_SLUG = "headlines-best-in-the-world";
 // One-time backfill: copy any existing feed_mixes.topic_id values into the
 // new feed_mix_topics join table, so mixes tagged before the multi-tag
@@ -544,13 +563,19 @@ async function migrateTopicIdToJoinTable() {
 }
 
 async function seedOfficialHeadlinesSpray() {
-  const existing = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [OFFICIAL_HEADLINES_SPRAY_SLUG]);
-  if (existing) return;
+  const existing = await dbGet(`SELECT id, auto_sync FROM feed_mixes WHERE slug = ?`, [OFFICIAL_HEADLINES_SPRAY_SLUG]);
+  if (existing) {
+    // Backfill for a row created before auto_sync existed as its own
+    // column (see the is_official/auto_sync split note above) — makes
+    // sure the flagship's live-dispatch behavior survives the migration.
+    if (!existing.auto_sync) await dbRun(`UPDATE feed_mixes SET auto_sync = 1 WHERE id = ?`, [existing.id]);
+    return;
+  }
   // creator_user_id has no FK constraint; 0 is a safe "system" sentinel since
   // real users.id starts at 1 (AUTOINCREMENT) and never reaches 0.
   await dbRun(
-    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, is_official)
-     VALUES (?, 'Headlines: Best in the World', 0, NULL, 1, 1)`,
+    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, is_official, auto_sync)
+     VALUES (?, 'Headlines: Best in the World', 0, NULL, 1, 1, 1)`,
     [OFFICIAL_HEADLINES_SPRAY_SLUG]
   );
 }
@@ -1402,9 +1427,9 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
   // mix may be passed as either the full row (preferred) or a bare id for
   // backward compatibility with any caller that hasn't been updated.
   const mixId = typeof mix === "object" ? mix.id : mix;
-  const isOfficial = typeof mix === "object" && !!mix.is_official;
+  const isAutoSync = typeof mix === "object" && !!mix.auto_sync;
 
-  if (isOfficial) {
+  if (isAutoSync) {
     // Auto-synced: sources = every outlet actually contributing to the
     // current unfiltered wire right now (not a stored, driftable list).
     const outletRows = await dbAll(`SELECT DISTINCT outlet FROM dispatches ORDER BY outlet ASC`);
@@ -1633,6 +1658,7 @@ app.get("/api/mixes/:slug", async (req, res) => {
   const user = await getCurrentUser(req);
   const isOwner = !!(user && user.id === mix.creator_user_id);
   if (!mix.is_public && !isOwner) return res.status(404).json({ error: "mix not found" });
+  if (mix.admin_hidden && !isOwner) return res.status(404).json({ error: "mix not found" });
 
   const topics = await dbAll(
     `SELECT t.name, t.slug, t.category FROM feed_mix_topics fmt JOIN topics t ON t.id = fmt.topic_id WHERE fmt.mix_id = ?`,
@@ -1646,6 +1672,7 @@ app.get("/api/mixes/:slug", async (req, res) => {
     is_public: !!mix.is_public,
     is_owner: isOwner,
     is_official: !!mix.is_official,
+    admin_hidden: !!mix.admin_hidden,
     created_at: mix.created_at,
     clone_count: mix.clone_count,
     topics,
@@ -1722,7 +1749,7 @@ app.get("/api/mixes/:slug/rss", async (req, res) => {
   const slug = req.params.slug;
   try {
     const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [slug]);
-    if (!mix || !mix.is_public) return res.status(404).type("text/plain").send("feed not found");
+    if (!mix || !mix.is_public || mix.admin_hidden) return res.status(404).type("text/plain").send("feed not found");
 
     const cached = rssFeedCache.get(slug);
     if (cached && Date.now() - cached.fetchedAt < RSS_FEED_CACHE_TTL_MS) {
@@ -2236,11 +2263,14 @@ app.post("/api/mixes/:slug/clone", async (req, res) => {
   if (!mix) return res.status(404).json({ error: "mix not found" });
   const isOwner = user.id === mix.creator_user_id;
   if (!mix.is_public && !isOwner) return res.status(404).json({ error: "mix not found" });
+  if (mix.admin_hidden && !isOwner) return res.status(404).json({ error: "mix not found" });
 
-  // Official Spray: no stored feed_mix_sources rows to read — clone the
-  // live outlet list (whatever's actually contributing to the wire right
-  // now), same auto-sync principle as resolveMixSources() above.
-  const sourceRows = mix.is_official
+  // Auto-sync flagship: no stored feed_mix_sources rows to read — clone
+  // the live outlet list (whatever's actually contributing to the wire
+  // right now), same principle as resolveMixSources() above. Other
+  // official (admin-curated) Packs have a real stored list, same as any
+  // reader-made Pack, so they fall through to the normal query below.
+  const sourceRows = mix.auto_sync
     ? (await dbAll(`SELECT DISTINCT outlet FROM dispatches`)).map((r) => ({ source_type: "admin_outlet", outlet: r.outlet }))
     : await dbAll(
         `SELECT fms.*, ucs.name AS custom_name, ucs.feed_url AS custom_feed_url, ucs.submission_status AS custom_status
@@ -2497,7 +2527,7 @@ app.get("/api/topics", async (req, res) => {
     `SELECT t.id, t.name, t.slug, t.category, COALESCE(SUM(fm.clone_count), 0) AS followers
      FROM topics t
      LEFT JOIN feed_mix_topics fmt ON fmt.topic_id = t.id
-     LEFT JOIN feed_mixes fm ON fm.id = fmt.mix_id AND fm.is_public = 1
+     LEFT JOIN feed_mixes fm ON fm.id = fmt.mix_id AND fm.is_public = 1 AND fm.admin_hidden = 0
      WHERE ${where}
      GROUP BY t.id
      ORDER BY followers DESC, t.name ASC`,
@@ -2557,7 +2587,7 @@ app.delete("/api/admin/topics/:id", requireAdmin, async (req, res) => {
 // tie-broken by most recent.
 app.get("/api/mixes", async (req, res) => {
   const { topic, location } = req.query;
-  const conditions = [`fm.is_public = 1`, `fm.is_official = 0`];
+  const conditions = [`fm.is_public = 1`, `fm.is_official = 0`, `fm.admin_hidden = 0`];
   const params = [];
 
   if (topic) {
@@ -2587,6 +2617,186 @@ app.get("/api/mixes", async (req, res) => {
     );
   }
   res.json(rows);
+});
+
+// ---------- Admin: RSS Pack curation + moderation ----------
+// Lets an admin build genuinely curated "official" Packs — distinct from
+// the one auto-syncing flagship (Headlines: Best in the World, which
+// alone mirrors the live Wire) — and moderate reader-created public
+// Packs (hide without deleting, or delete outright as a real takedown).
+// Reuses the exact same feed_mixes/feed_mix_sources/feed_mix_topics
+// tables and resolveMixSources() query path every other Pack already
+// uses — no new content-fetching mechanism, this is a curation/
+// moderation surface over existing infra.
+
+app.get("/api/admin/mixes/official", requireAdmin, async (req, res) => {
+  const rows = await dbAll(
+    `SELECT id, slug, name, location_label, auto_sync, clone_count, created_at
+     FROM feed_mixes WHERE is_official = 1 ORDER BY auto_sync DESC, created_at ASC`
+  );
+  for (const row of rows) {
+    row.source_count = row.auto_sync
+      ? null
+      : (await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [row.id])).n;
+    row.topics = await dbAll(
+      `SELECT t.id, t.name, t.slug FROM feed_mix_topics fmt JOIN topics t ON t.id = fmt.topic_id WHERE fmt.mix_id = ?`,
+      [row.id]
+    );
+    if (!row.auto_sync) {
+      row.sources = (await dbAll(
+        `SELECT outlet FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'admin_outlet' ORDER BY sort_order ASC`,
+        [row.id]
+      )).map((r) => r.outlet);
+    }
+    row.auto_sync = !!row.auto_sync;
+  }
+  res.json(rows);
+});
+
+// Official Packs are curated from the shared outlet/individual registry
+// only — no reader's private custom RSS sources, since an official Pack
+// has no real "owner" who could vouch for a custom feed's validity.
+async function validateAdminOutletSources(rawSources) {
+  const validated = [];
+  for (const s of rawSources || []) {
+    const outlet = String((s && s.outlet) || s || "").trim();
+    if (!outlet) continue;
+    const exists = await dbGet(`SELECT id FROM feeds WHERE outlet = ? AND submission_status = 'approved'`, [outlet]);
+    if (!exists) return { error: `Unknown source: ${outlet}` };
+    validated.push(outlet);
+  }
+  return { validated };
+}
+
+app.post("/api/admin/mixes", requireAdmin, async (req, res) => {
+  const name = String(req.body?.name || "").trim().slice(0, 100);
+  if (!name) return res.status(400).json({ error: "name is required" });
+
+  const rawSources = Array.isArray(req.body?.sources) ? req.body.sources : [];
+  if (rawSources.length === 0) return res.status(400).json({ error: "a Pack needs at least one source" });
+  if (rawSources.length > MIX_SOURCE_CAP) return res.status(400).json({ error: `Packs are capped at ${MIX_SOURCE_CAP} sources` });
+  const { validated, error } = await validateAdminOutletSources(rawSources);
+  if (error) return res.status(400).json({ error });
+
+  const rawTopicIds = Array.isArray(req.body?.topic_ids) ? req.body.topic_ids.map(Number).filter(Boolean) : [];
+  if (rawTopicIds.length > MIX_TOPIC_CAP) return res.status(400).json({ error: `Packs are capped at ${MIX_TOPIC_CAP} topics` });
+  const topicIds = await validateTopicIds(rawTopicIds);
+  if (topicIds === null) return res.status(400).json({ error: "Unknown or unapproved topic" });
+
+  const locationLabel = req.body?.location_label ? String(req.body.location_label).trim().slice(0, 100) : null;
+
+  const slug = await generateUniqueMixSlug(name);
+  // creator_user_id = 0 is the same "system" sentinel already used for the
+  // auto-syncing flagship — no FK constraint on this column, real
+  // users.id starts at 1, so 0 never collides with a real reader.
+  const info = await dbRun(
+    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, is_official, auto_sync)
+     VALUES (?, ?, 0, ?, 1, 1, 0)`,
+    [slug, name, locationLabel]
+  );
+  for (let i = 0; i < validated.length; i++) {
+    await dbRun(
+      `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, 'admin_outlet', ?, NULL, ?)`,
+      [info.lastInsertRowid, validated[i], i]
+    );
+  }
+  for (const tid of topicIds) {
+    await dbRun(`INSERT OR IGNORE INTO feed_mix_topics (mix_id, topic_id) VALUES (?, ?)`, [info.lastInsertRowid, tid]);
+  }
+  res.json({ ok: true, slug, name });
+});
+
+app.put("/api/admin/mixes/:slug", requireAdmin, async (req, res) => {
+  const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix) return res.status(404).json({ error: "Pack not found" });
+  if (!mix.is_official) return res.status(400).json({ error: "not an official Pack" });
+  if (mix.auto_sync) return res.status(400).json({ error: "this Pack auto-syncs to the live Wire and has no editable source list" });
+
+  const name = req.body?.name !== undefined ? String(req.body.name).trim().slice(0, 100) : mix.name;
+  if (!name) return res.status(400).json({ error: "name is required" });
+  const locationLabel = req.body?.location_label !== undefined
+    ? (req.body.location_label ? String(req.body.location_label).trim().slice(0, 100) : null)
+    : mix.location_label;
+
+  await dbRun(
+    `UPDATE feed_mixes SET name = ?, location_label = ?, updated_at = datetime('now') WHERE id = ?`,
+    [name, locationLabel, mix.id]
+  );
+
+  if (Array.isArray(req.body?.sources)) {
+    if (req.body.sources.length === 0) return res.status(400).json({ error: "a Pack needs at least one source" });
+    if (req.body.sources.length > MIX_SOURCE_CAP) return res.status(400).json({ error: `Packs are capped at ${MIX_SOURCE_CAP} sources` });
+    const { validated, error } = await validateAdminOutletSources(req.body.sources);
+    if (error) return res.status(400).json({ error });
+    await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
+    for (let i = 0; i < validated.length; i++) {
+      await dbRun(
+        `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, 'admin_outlet', ?, NULL, ?)`,
+        [mix.id, validated[i], i]
+      );
+    }
+  }
+
+  if (Array.isArray(req.body?.topic_ids)) {
+    if (req.body.topic_ids.length > MIX_TOPIC_CAP) return res.status(400).json({ error: `Packs are capped at ${MIX_TOPIC_CAP} topics` });
+    const topicIds = await validateTopicIds(req.body.topic_ids);
+    if (topicIds === null) return res.status(400).json({ error: "Unknown or unapproved topic" });
+    await dbRun(`DELETE FROM feed_mix_topics WHERE mix_id = ?`, [mix.id]);
+    for (const tid of topicIds) {
+      await dbRun(`INSERT OR IGNORE INTO feed_mix_topics (mix_id, topic_id) VALUES (?, ?)`, [mix.id, tid]);
+    }
+  }
+
+  res.json({ ok: true, slug: mix.slug });
+});
+
+// Moderation delete — unlike the reader-facing DELETE /api/mixes/:slug
+// (owner-only), this can remove ANY Pack (official or reader-made) as a
+// real takedown action. The one thing it still refuses is the true
+// auto-syncing flagship — "News" default and a lot of reader spray-bar
+// state assume that slug always resolves to something.
+app.delete("/api/admin/mixes/:slug", requireAdmin, async (req, res) => {
+  const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix) return res.status(404).json({ error: "Pack not found" });
+  if (mix.auto_sync) return res.status(403).json({ error: "the auto-syncing flagship Pack can't be deleted" });
+
+  await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
+  await dbRun(`DELETE FROM feed_mix_topics WHERE mix_id = ?`, [mix.id]);
+  await dbRun(`DELETE FROM user_spray_bar WHERE mix_slug = ?`, [mix.slug]);
+  await dbRun(`DELETE FROM user_news_pref WHERE mix_slug = ?`, [mix.slug]);
+  await dbRun(`DELETE FROM feed_mixes WHERE id = ?`, [mix.id]);
+  res.json({ ok: true });
+});
+
+// Moderation browse: every public, non-official Pack, most recent first —
+// a real browsable queue (not just newly-flagged ones), so an admin can
+// proactively review anything a reader has made public. Optional ?q=
+// substring-matches the Pack name.
+app.get("/api/admin/mixes/public", requireAdmin, async (req, res) => {
+  const q = req.query.q ? String(req.query.q).trim() : null;
+  const conditions = [`fm.is_public = 1`, `fm.is_official = 0`];
+  const params = [];
+  if (q) { conditions.push(`fm.name LIKE ?`); params.push(`%${q}%`); }
+  const rows = await dbAll(
+    `SELECT fm.id, fm.slug, fm.name, fm.location_label, fm.clone_count, fm.admin_hidden, fm.created_at, u.email AS creator_email
+     FROM feed_mixes fm LEFT JOIN users u ON u.id = fm.creator_user_id
+     WHERE ${conditions.join(" AND ")}
+     ORDER BY fm.created_at DESC LIMIT 200`,
+    params
+  );
+  for (const row of rows) {
+    row.source_count = (await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [row.id])).n;
+    row.admin_hidden = !!row.admin_hidden;
+  }
+  res.json(rows);
+});
+
+app.post("/api/admin/mixes/:slug/toggle-hidden", requireAdmin, async (req, res) => {
+  const mix = await dbGet(`SELECT id, admin_hidden FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix) return res.status(404).json({ error: "Pack not found" });
+  const next = mix.admin_hidden ? 0 : 1;
+  await dbRun(`UPDATE feed_mixes SET admin_hidden = ? WHERE id = ?`, [next, mix.id]);
+  res.json({ ok: true, admin_hidden: !!next });
 });
 
 app.post("/api/login", (req, res) => {
