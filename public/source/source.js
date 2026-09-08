@@ -1436,6 +1436,9 @@
   // /api/my/custom-sources, /api/spray-suggestions.
   // ---------------------------------------------------------------
   let sourcesRegistryCache = null; // [{outlet, feed_url, ...}] — fetched once, reused by both the registry list and Create's add-a-source matching
+  let officialPacksCache = null; // [{slug, name, auto_sync, clone_count}] — every admin-curated official Pack, not just the flagship
+  let publicPacksCache = null; // [{slug, name, location_label, clone_count}] — the full public directory, fetched once and filtered client-side by the browse screen's search box
+  let browseState = null; // null | { query, loading } — the "Public RSS Packs" browse screen
   let createFlowState = null; // null = not in Create mode
 
   // Branch/leaf tag picker state lives inside createFlowState. Branches
@@ -1491,15 +1494,17 @@
     return sourceSuggestCache;
   }
 
-  function renderSpraysShelf(bar, myMixes) {
-    const followingHeadlines = (bar?.sprays || []).some(s => s.slug === OFFICIAL_NEWS_SLUG);
-    const headlinesTile = `
-      <button class="spray-tile spray-tile-official" data-tile="headlines">
-        ${followingHeadlines ? `<span class="spray-tile-badge">Following</span>` : ""}
-        <span class="spray-tile-icon">📰</span>
-        <span class="spray-tile-name">Headlines: Best in the World</span>
-        <span class="spray-tile-meta">Starter pack</span>
-      </button>`;
+  function renderSpraysShelf(bar, myMixes, officialPacks) {
+    const officialTiles = (officialPacks || []).map((p) => {
+      const following = (bar?.sprays || []).some(s => s.slug === p.slug);
+      return `
+        <button class="spray-tile spray-tile-official" data-tile="official" data-slug="${escapeHtml(p.slug)}">
+          ${following ? `<span class="spray-tile-badge">Following</span>` : ""}
+          <span class="spray-tile-icon">📰</span>
+          <span class="spray-tile-name">${escapeHtml(p.name)}</span>
+          <span class="spray-tile-meta">${p.auto_sync ? "Starter pack" : "Official"}</span>
+        </button>`;
+    }).join("");
 
     const ownTiles = (myMixes || []).filter(m => !m.is_official).map(m => `
       <button class="spray-tile" data-tile="own" data-slug="${escapeHtml(m.slug)}">
@@ -1514,7 +1519,7 @@
         <span class="spray-tile-name">New RSS Pack</span>
       </button>`;
 
-    return `<div class="spray-shelf">${headlinesTile}${ownTiles}${newTile}</div>`;
+    return `<div class="spray-shelf">${officialTiles}${ownTiles}${newTile}</div>`;
   }
 
   function wireSpraysShelf() {
@@ -1522,8 +1527,8 @@
       btn.addEventListener("click", () => {
         const type = btn.dataset.tile;
         if (type === "new") return openCreateFlow();
-        if (type === "headlines") return openManageHeadlines();
-        if (type === "own") return openManageEdit(btn.dataset.slug);
+        if (type === "browse-public") return openBrowsePublicScreen();
+        if (type === "official" || type === "own" || type === "public") return openManagePack(btn.dataset.slug);
       });
     });
   }
@@ -1549,24 +1554,82 @@
     renderSources();
   }
 
-  async function openManageHeadlines() {
-    manageState = { view: "headlines", data: null, loading: true };
-    renderManageScreen();
-    try {
-      manageState.data = await api(`/api/mixes/${encodeURIComponent(OFFICIAL_NEWS_SLUG)}`);
-    } catch (e) {
-      manageState.data = null;
-      toast(e.message || "Couldn't load Headlines.");
-    }
-    manageState.loading = false;
-    renderManageScreen();
+  // ----- Browse Public RSS Packs: a searchable directory of every OTHER
+  // reader's public Pack (GET /api/mixes is already anonymous-safe — no
+  // sign-in required to browse or view one, only to Follow/Clone it).
+  // Search is client-side over the one fetched list rather than a new
+  // backend query param, since the directory is capped at 60 rows
+  // server-side already and this keeps typing instant. -----
+  function closeBrowseScreen() {
+    browseState = null;
+    renderSources();
   }
 
-  async function openManageEdit(slug) {
-    manageState = { view: "edit", slug, data: null, loading: true };
+  async function openBrowsePublicScreen() {
+    browseState = { query: "", loading: !publicPacksCache };
+    renderBrowseScreen();
+    if (!publicPacksCache) {
+      try {
+        publicPacksCache = await api("/api/mixes");
+      } catch (e) {
+        publicPacksCache = [];
+        toast(e.message || "Couldn't load public RSS Packs.");
+      }
+      browseState.loading = false;
+      renderBrowseScreen();
+    }
+  }
+
+  function renderBrowseScreen() {
+    const main = document.getElementById("main");
+    if (!browseState) return;
+    main.innerHTML = `
+      <button class="btn" id="browseBack" style="margin-bottom:14px;">‹ Back to Sources</button>
+      <h2 class="manage-screen-title">Public RSS Packs</h2>
+      <div class="manage-screen-stat" style="margin-bottom:12px;">Made and shared by other readers — follow one into your Read toggle, or copy it to make it your own.</div>
+      <input class="create-flow-input" id="browseSearchInput" placeholder="Search by name or place…" style="margin-bottom:14px;">
+      <div id="browseResults"></div>`;
+    document.getElementById("browseBack").addEventListener("click", closeBrowseScreen);
+    const searchInput = document.getElementById("browseSearchInput");
+    searchInput.value = browseState.query;
+    searchInput.addEventListener("input", debounce(() => {
+      browseState.query = searchInput.value;
+      renderBrowseResults();
+    }, 150));
+    if (browseState.loading) {
+      document.getElementById("browseResults").innerHTML = stateBlock({ title: "LOADING", body: "Just a moment...", spin: true });
+    } else {
+      renderBrowseResults();
+    }
+  }
+
+  function renderBrowseResults() {
+    const container = document.getElementById("browseResults");
+    if (!container) return;
+    const q = browseState.query.trim().toLowerCase();
+    const pool = publicPacksCache || [];
+    const filtered = q
+      ? pool.filter(p => (p.name || "").toLowerCase().includes(q) || (p.location_label || "").toLowerCase().includes(q))
+      : pool;
+    container.innerHTML = filtered.length === 0
+      ? `<div class="card"><div class="card-meta">No public RSS Packs match.</div></div>`
+      : filtered.map(p => `
+          <button class="card" style="width:100%;text-align:left;display:block;margin-bottom:8px;" data-slug="${escapeHtml(p.slug)}">
+            <div class="card-title" style="margin-bottom:2px;">${escapeHtml(p.name)}</div>
+            <div class="card-meta">${p.location_label ? escapeHtml(p.location_label) + " · " : ""}${p.clone_count} follower${p.clone_count === 1 ? "" : "s"}</div>
+          </button>`).join("");
+    container.querySelectorAll("[data-slug]").forEach(btn => {
+      btn.addEventListener("click", () => openManagePack(btn.dataset.slug));
+    });
+  }
+
+  async function openManagePack(slug) {
+    manageState = { view: "loading", slug, data: null, loading: true };
     renderManageScreen();
     try {
-      manageState.data = await api(`/api/mixes/${encodeURIComponent(slug)}`);
+      const data = await api(`/api/mixes/${encodeURIComponent(slug)}`);
+      manageState.data = data;
+      manageState.view = data.is_owner ? "edit" : (data.auto_sync ? "headlines" : "view");
     } catch (e) {
       manageState.data = null;
       toast(e.message || "Couldn't load that RSS Pack.");
@@ -1591,7 +1654,7 @@
     let body;
 
     if (manageState.view === "headlines") {
-      const following = (sprayBarData?.sprays || []).some(s => s.slug === OFFICIAL_NEWS_SLUG);
+      const following = (sprayBarData?.sprays || []).some(s => s.slug === mix.slug);
       body = `
         <div class="manage-screen-head">
           <div class="tile-sheet-badge">Starter pack</div>
@@ -1600,7 +1663,31 @@
         </div>
         <div class="tile-sheet-toggle-row">
           <span>In your Read toggle</span>
-          <button class="tile-sheet-switch${following ? " on" : ""}" id="mgFollowToggle" role="switch" aria-checked="${following}" aria-label="Follow Headlines"></button>
+          <button class="tile-sheet-switch${following ? " on" : ""}" id="mgFollowToggle" role="switch" aria-checked="${following}" aria-label="Follow ${escapeHtml(mix.name)}"></button>
+        </div>
+        <button class="btn" id="mgCopyBtn" style="width:100%; margin-top:14px;">Copy and customize</button>
+        <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>`;
+    } else if (manageState.view === "view") {
+      // Read-only: an official (but non-auto-sync) Pack, or any public Pack
+      // made by another reader. No edit controls — Follow (add to your own
+      // Read toggle, reversible) and Clone (copy it into your own account
+      // to actually customize) cover "take it whole or pick-and-choose".
+      const following = (sprayBarData?.sprays || []).some(s => s.slug === mix.slug);
+      const sourcesHtml = (mix.sources || []).map(s => `
+        <span class="tile-sheet-chip">${escapeHtml(s.outlet || s.name || "Custom source")}</span>`).join("");
+      body = `
+        <div class="manage-screen-head">
+          ${mix.is_official ? `<div class="tile-sheet-badge">Official</div>` : ""}
+          <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
+          <div class="manage-screen-stat">${mix.sources.length} source${mix.sources.length === 1 ? "" : "s"} · ${mix.clone_count || 0} follower${mix.clone_count === 1 ? "" : "s"}${mix.location_label ? " · " + escapeHtml(mix.location_label) : ""}</div>
+        </div>
+        <div class="manage-screen-field">
+          <div class="create-flow-label">Sources</div>
+          <div class="tile-sheet-sources">${sourcesHtml}</div>
+        </div>
+        <div class="tile-sheet-toggle-row">
+          <span>In your Read toggle</span>
+          <button class="tile-sheet-switch${following ? " on" : ""}" id="mgFollowToggle" role="switch" aria-checked="${following}" aria-label="Follow ${escapeHtml(mix.name)}"></button>
         </div>
         <button class="btn" id="mgCopyBtn" style="width:100%; margin-top:14px;">Copy and customize</button>
         <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>`;
@@ -1637,23 +1724,23 @@
     main.innerHTML = `<button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back to Sources</button>` + body;
     document.getElementById("mgBack").addEventListener("click", closeManageScreen);
 
-    if (manageState.view === "headlines") {
-      document.getElementById("mgFollowToggle").addEventListener("click", toggleHeadlinesFollow);
-      document.getElementById("mgCopyBtn").addEventListener("click", copyHeadlinesAndEdit);
+    if (manageState.view === "headlines" || manageState.view === "view") {
+      document.getElementById("mgFollowToggle").addEventListener("click", () => toggleFollowPack(mix.slug));
+      document.getElementById("mgCopyBtn").addEventListener("click", () => cloneAndEditPack(mix));
     } else {
       wireManageEdit(mix);
     }
   }
 
-  async function toggleHeadlinesFollow() {
+  async function toggleFollowPack(slug) {
     const btn = document.getElementById("mgFollowToggle");
     const following = btn.classList.contains("on");
     btn.disabled = true;
     try {
       if (following) {
-        await api(`/api/my/spray-bar/${encodeURIComponent(OFFICIAL_NEWS_SLUG)}`, { method: "DELETE" });
+        await api(`/api/my/spray-bar/${encodeURIComponent(slug)}`, { method: "DELETE" });
       } else {
-        await api("/api/my/spray-bar/add", { method: "POST", body: JSON.stringify({ slug: OFFICIAL_NEWS_SLUG }) });
+        await api("/api/my/spray-bar/add", { method: "POST", body: JSON.stringify({ slug }) });
       }
       await loadSprayBar(true);
       renderManageScreen();
@@ -1665,21 +1752,21 @@
     }
   }
 
-  async function copyHeadlinesAndEdit() {
+  async function cloneAndEditPack(mix) {
     const btn = document.getElementById("mgCopyBtn");
     btn.disabled = true;
     btn.textContent = "Copying…";
     try {
-      const sources = manageState.data.sources.map(s => ({ source_type: s.source_type, outlet: s.outlet, custom_source_id: s.custom_source_id || null }));
+      const sources = mix.sources.map(s => ({ source_type: s.source_type, outlet: s.outlet, custom_source_id: s.custom_source_id || null }));
       const created = await api("/api/mixes", {
         method: "POST",
-        body: JSON.stringify({ name: "My Headlines (copy)", sources, is_public: false }),
+        body: JSON.stringify({ name: `My ${mix.name} (copy)`, sources, is_public: false }),
       });
       await loadMyMixes(true);
       toast(`Created "${created.name}" — now yours to edit.`);
-      openManageEdit(created.slug);
+      openManagePack(created.slug);
     } catch (e) {
-      toast(e.message || "Couldn't copy Headlines.");
+      toast(e.message || "Couldn't copy that RSS Pack.");
       btn.disabled = false;
       btn.textContent = "Copy and customize";
     }
@@ -1695,7 +1782,7 @@
             ? { source_type: "custom", custom_source_id: Number(customId) }
             : { source_type: "admin_outlet", outlet };
           await api(`/api/my/mixes/${encodeURIComponent(mix.slug)}/toggle-source`, { method: "POST", body: JSON.stringify(body) });
-          await openManageEdit(mix.slug); // refetch + re-render
+          await openManagePack(mix.slug); // refetch + re-render
         } catch (e) {
           toast(e.message || "Couldn't remove that source — an RSS Pack needs at least one.");
         }
@@ -1720,7 +1807,7 @@
                 method: "POST",
                 body: JSON.stringify({ source_type: "admin_outlet", outlet: b.dataset.addOutlet }),
               });
-              await openManageEdit(mix.slug);
+              await openManagePack(mix.slug);
             } catch (e) {
               toast(e.message || "Couldn't add that source.");
             }
@@ -1766,15 +1853,18 @@
   async function renderSources() {
     if (manageState) return renderManageScreen();
     if (createFlowState) return renderCreateFlow();
+    if (browseState) return renderBrowseScreen();
 
     const main = document.getElementById("main");
     main.innerHTML = stateBlock({ title: "LOADING SOURCE LIST", body: "Querying the registry...", spin: true });
     try {
-      const [sources, bar, suggestions, myMixes] = await Promise.all([
+      const [sources, bar, suggestions, myMixes, officialPacks, publicPacks] = await Promise.all([
         sourcesRegistryCache || api("/api/sources"),
         loadSprayBar(),
         loadSourceSuggestions(),
         loadMyMixes(),
+        officialPacksCache || api("/api/mixes/official"),
+        publicPacksCache || api("/api/mixes"),
       ]);
       // Sources is for building Sprays out of Organizations — Individuals (Bluesky-only
       // people) don't produce dispatch items on their own and belong to Buzz, not here.
@@ -1782,9 +1872,12 @@
       // (e.g. Degenerate Art, YouTube-only) and still belong here.
       sourcesRegistryCache = (Array.isArray(sources) ? sources : []).filter(s => s.feed_type !== "journalist");
       const orgSources = sourcesRegistryCache;
+      officialPacksCache = Array.isArray(officialPacks) ? officialPacks : [];
+      publicPacksCache = Array.isArray(publicPacks) ? publicPacks : [];
 
-      // ----- AREA 0: the Sprays shelf — the front door. Headlines pinned
-      // first (with a real follow/unfollow toggle in its detail sheet),
+      // ----- AREA 0: the Sprays shelf — the front door. All official
+      // Packs pinned first (each with its own follow/unfollow toggle,
+      // generalized so there can be more than just the one flagship),
       // then the reader's own Sprays, then a "+ New Spray" tile. Tapping
       // any tile opens the SAME detail sheet shape, just with different
       // contents — one interaction pattern for everything. -----
@@ -1794,7 +1887,36 @@
           <div class="sources-area-title">Your RSS Packs</div>
           <div class="sources-area-sub">Tap any tile to follow, edit, or build something new.</div>
         </div>`;
-      html += renderSpraysShelf(bar, myMixes);
+      html += renderSpraysShelf(bar, myMixes, officialPacksCache);
+
+      // ----- AREA 0.3: Public RSS Packs — made and shared by OTHER
+      // readers. Fully browsable/searchable with no account required
+      // (GET /api/mixes is already anonymous-safe), distinct from the
+      // Official row above and from "Your RSS Packs" (private by
+      // default). A small teaser here, "Browse all" opens the full
+      // searchable screen. -----
+      const teaser = publicPacksCache.slice(0, 3);
+      html += `
+        <div class="sources-area-head" style="margin-top:28px;">
+          <div class="sources-area-rule"></div>
+          <div class="sources-area-title">Public RSS Packs</div>
+          <div class="sources-area-sub">Made and shared by other readers.</div>
+        </div>`;
+      if (teaser.length > 0) {
+        html += `<div class="spray-shelf">` + teaser.map(p => `
+            <button class="spray-tile" data-tile="public" data-slug="${escapeHtml(p.slug)}">
+              <span class="spray-tile-icon">🌐</span>
+              <span class="spray-tile-name">${escapeHtml(p.name)}</span>
+              <span class="spray-tile-meta">${p.clone_count} follower${p.clone_count === 1 ? "" : "s"}</span>
+            </button>`).join("") + `
+            <button class="spray-tile spray-tile-new" data-tile="browse-public">
+              <span class="spray-tile-plus">🔎</span>
+              <span class="spray-tile-name">Browse all</span>
+            </button>
+          </div>`;
+      } else {
+        html += `<button class="btn" id="browsePublicBtn" style="width:100%;">Browse RSS Packs from other readers</button>`;
+      }
 
       // ----- AREA 0.5: quick "Add a feed" — a fast, Spray-free path to
       // add a single custom RSS URL. POST /api/my/custom-sources has
@@ -1872,6 +1994,9 @@
       wireQuickAddFeed();
       wireYourSpraysSection();
       wireSourcesArea1();
+
+      const browsePublicBtn = document.getElementById("browsePublicBtn");
+      if (browsePublicBtn) browsePublicBtn.addEventListener("click", openBrowsePublicScreen);
 
       main.querySelectorAll(".source-suggest-pill").forEach(btn => {
         btn.addEventListener("click", () => openSprayPicker({ source_type: "admin_outlet", outlet: btn.dataset.outlet, label: btn.dataset.outlet }));

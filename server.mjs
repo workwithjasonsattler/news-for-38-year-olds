@@ -1651,6 +1651,18 @@ app.delete("/api/mixes/:slug", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Reader-facing list of official Packs (plural, now that admins can curate
+// more than just the auto-syncing flagship) — deliberately minimal fields,
+// no creator info, no moderation data. Must be registered BEFORE
+// GET /api/mixes/:slug or Express would treat "official" as a :slug value.
+app.get("/api/mixes/official", async (req, res) => {
+  const rows = await dbAll(
+    `SELECT slug, name, location_label, auto_sync, clone_count
+     FROM feed_mixes WHERE is_official = 1 ORDER BY auto_sync DESC, created_at ASC`
+  );
+  res.json(rows.map((r) => ({ ...r, auto_sync: !!r.auto_sync })));
+});
+
 app.get("/api/mixes/:slug", async (req, res) => {
   const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
   if (!mix) return res.status(404).json({ error: "mix not found" });
@@ -1672,6 +1684,7 @@ app.get("/api/mixes/:slug", async (req, res) => {
     is_public: !!mix.is_public,
     is_owner: isOwner,
     is_official: !!mix.is_official,
+    auto_sync: !!mix.auto_sync,
     admin_hidden: !!mix.admin_hidden,
     created_at: mix.created_at,
     clone_count: mix.clone_count,
