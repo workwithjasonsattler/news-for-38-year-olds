@@ -513,6 +513,10 @@
   function renderActiveTab() {
     const main = document.getElementById("main");
     if (main) main.classList.remove("read-layout", "read-scroll-desktop");
+    // Fullscreen reader is a per-visit toggle, not a saved preference —
+    // switching away from Read (or to a different story list) always
+    // starts back in the normal split view.
+    readerFullscreen = false;
     const toggle = document.getElementById("sprayToggle");
     if (toggle && activeTab !== "read") toggle.hidden = true;
     renderDesktopSidePanel();
@@ -533,6 +537,12 @@
   // manual refresh as long as that story is still in the fresh list;
   // falls back to the newest item otherwise.
   let selectedDispatch = null;
+  // Expand-in-place toggle for the Desktop split reader pane (read-layout)
+  // and Classic's 3-pane reader (read-classic) — hides the feed list/
+  // sidebar and lets the reader pane use the full main content width.
+  // Header/nav/tab bar stay visible; this is NOT a true browser-fullscreen
+  // overlay, just a scoped "fill the main area" mode.
+  let readerFullscreen = false;
 
   // Set (non-null) only when the reader is viewing exactly ONE of their
   // own, non-official Sprays via the toggle bar — {slug, name}. Read by
@@ -899,6 +909,7 @@
     const main = document.getElementById("main");
     main.classList.remove("read-scroll-desktop");
     main.classList.add("read-layout");
+    main.classList.toggle("reader-fullscreen", readerFullscreen);
     if (!selectedDispatch || !shown.some(d => d.id === selectedDispatch.id)) {
       selectedDispatch = shown[0];
     }
@@ -923,6 +934,7 @@
     const main = document.getElementById("main");
     main.classList.remove("read-scroll-desktop", "read-columns", "read-layout");
     main.classList.add("read-classic");
+    main.classList.toggle("reader-fullscreen", readerFullscreen);
     if (!selectedDispatch || !shown.some(d => d.id === selectedDispatch.id)) {
       selectedDispatch = shown[0];
     }
@@ -1141,6 +1153,7 @@
           ${sprayAddButton(d)}
           ${saveButton(d)}
           ${shareButton(d)}
+          <button class="btn reader-fullscreen-btn" id="readerFullscreenBtn" title="${readerFullscreen ? "Exit full screen" : "Full screen"}" aria-label="${readerFullscreen ? "Exit full screen" : "Full screen"}">${readerFullscreen ? "⤡" : "⛶"}</button>
         </div>
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         <div class="reader-frame-wrap" id="readerFrameWrap" hidden></div>
@@ -1188,9 +1201,27 @@
     }
     wireSaveButtons(pane);
     wireShareButton(pane);
+    const fsBtn = document.getElementById("readerFullscreenBtn");
+    if (fsBtn) fsBtn.addEventListener("click", toggleReaderFullscreen);
     if (typeof d.id === "number") {
       if (d.id in paywallStatusMap) applyPaywallBadge(d.id, paywallStatusMap[d.id]);
       else loadPaywallStatus([d.id]);
+    }
+  }
+
+  // Flips the reader pane's expand-in-place state and patches just the
+  // toggle button + #main's class — no full re-render needed, since the
+  // layout change is pure CSS (hide the list/sidebar, widen the pane).
+  function toggleReaderFullscreen() {
+    readerFullscreen = !readerFullscreen;
+    const main = document.getElementById("main");
+    if (main) main.classList.toggle("reader-fullscreen", readerFullscreen);
+    const btn = document.getElementById("readerFullscreenBtn");
+    if (btn) {
+      btn.textContent = readerFullscreen ? "⤡" : "⛶";
+      const label = readerFullscreen ? "Exit full screen" : "Full screen";
+      btn.title = label;
+      btn.setAttribute("aria-label", label);
     }
   }
 
@@ -3356,6 +3387,10 @@
         panelList.hidden = true;
         if (panelBtn) panelBtn.setAttribute("aria-expanded", "false");
       }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && readerFullscreen) toggleReaderFullscreen();
     });
 
     const refreshBtn = document.getElementById("refreshBtn");

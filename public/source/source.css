@@ -1563,6 +1563,23 @@ body[data-layout="desktop"] #main.read-layout {
   }
 }
 
+/* Reader fullscreen (Layout mode) — expand-in-place toggle from the
+   reader pane's own action row. Hides the feed list and lets the pane
+   use a wider column; header/nav/tab bar are untouched (not a true
+   browser-fullscreen overlay). Width picked to match the reading-
+   comfort reasoning already used for Desktop Scroll's 680px column,
+   just a bit roomier since the reader pane carries more chrome
+   (meta line, action buttons) than a bare Scroll card. */
+body[data-layout="desktop"] .source-main:has(#main.read-layout.reader-fullscreen) {
+  max-width: 820px;
+}
+body[data-layout="desktop"] #main.read-layout.reader-fullscreen {
+  grid-template-columns: 1fr;
+}
+body[data-layout="desktop"] #main.read-layout.reader-fullscreen .reader-feed {
+  display: none;
+}
+
 /* Desktop Scroll — drops BOTH the reader-pane split (.read-layout) and the
    generic Sources/Buzz masonry grid (#main's own default). A continuous
    scroll feed is single-column by definition; centering it at a modest
@@ -1639,6 +1656,23 @@ body[data-layout="desktop"] #main.read-classic {
   position: static;
   overflow-y: auto;
   max-height: calc(100vh - 210px);
+}
+
+/* Reader fullscreen (Classic mode) — same expand-in-place toggle as
+   Layout mode above, applied to Classic's 3-pane grid: collapses the
+   Pack sidebar + item list, leaving just the reading pane at (nearly)
+   the full width of the 3-pane container. More specific than the
+   plain :has(#main.read-classic) rule above, so this wins regardless
+   of source order. */
+body[data-layout="desktop"] .source-main:has(#main.read-classic.reader-fullscreen) {
+  max-width: 900px;
+}
+body[data-layout="desktop"] #main.read-classic.reader-fullscreen {
+  grid-template-columns: 1fr;
+}
+body[data-layout="desktop"] #main.read-classic.reader-fullscreen .classic-sidebar,
+body[data-layout="desktop"] #main.read-classic.reader-fullscreen .reader-feed-classic {
+  display: none;
 }
 .classic-sidebar {
   border-right: 1px solid var(--line);
