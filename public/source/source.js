@@ -978,7 +978,7 @@
       <div class="reader-feed" id="readerFeed"></div>`;
     renderReaderPane(selectedDispatch, trendingLinks.has(selectedDispatch.link), trendingLinks.get(selectedDispatch.link));
     renderReaderFeed(shown, trendingLinks);
-    wirePaneResizer("layoutResizer", "--layout-reader-w", LAYOUT_READER_WIDTH_KEY, { min: 380, max: 680 });
+    wirePaneResizer("layoutResizer", "--layout-reader-w", LAYOUT_READER_WIDTH_KEY, { min: 380, max: 1100 });
   }
 
   // ---------------------------------------------------------------
@@ -1008,7 +1008,7 @@
     renderClassicSidebar();
     renderReaderPane(selectedDispatch, trendingLinks.has(selectedDispatch.link), trendingLinks.get(selectedDispatch.link));
     renderReaderFeed(shown, trendingLinks);
-    wirePaneResizer("classicResizer", "--classic-list-w", CLASSIC_LIST_WIDTH_KEY, { min: 260, max: 620 });
+    wirePaneResizer("classicResizer", "--classic-list-w", CLASSIC_LIST_WIDTH_KEY, { min: 260, max: 700 });
   }
 
   // Vertical counterpart to renderSprayToggle's horizontal pill bar —
@@ -2976,30 +2976,23 @@
   // reader hides it — collapses to just the header row so the gear
   // icon (the only way back) stays reachable.
   //
-  // .desktop-panel-active on <body> mirrors whether this panel is
-  // actually going to occupy its fixed right-hand zone right now
-  // (shown in EITHER the full or collapsed "Panel hidden" state — both
-  // occupy the same physical box). .source-main's CSS only reserves
-  // space for the panel while this class is present, so hiding the
-  // panel (or being on Scroll/Columns/Mobile, where it never shows)
-  // lets the reader/list panes reclaim that width instead of leaving
-  // it as dead space.
-  function setDesktopPanelActive(active) {
-    document.body.classList.toggle("desktop-panel-active", active);
-  }
+  // Lives in a real flex row with #main (.source-body-row in
+  // index.html) rather than position:fixed — el.hidden = true/false
+  // here is all that's needed to add/remove it from that row; #main
+  // automatically reclaims the space via its own flex:1, no manual
+  // width/margin coordination required.
   async function renderDesktopSidePanel() {
     const el = document.getElementById("desktopSidePanel");
     if (!el) return;
-    if (getLayoutMode() !== "desktop") { el.hidden = true; setDesktopPanelActive(false); return; }
+    if (getLayoutMode() !== "desktop") { el.hidden = true; return; }
     // Scroll's whole point is a calm, centered, one-story feed — a stats
     // dashboard pinned to the right undermines that (visually pulls the
     // page off-center even though #main itself is still truly centered).
     // Columns mode needs every inch of width for its columns for the same
     // reason, just more so. Hidden only while actually on Read in either
     // mode; reappears the moment either condition changes.
-    if (activeTab === "read" && (getReadDisplay() === "scroll" || getReadDisplay() === "columns")) { el.hidden = true; setDesktopPanelActive(false); return; }
+    if (activeTab === "read" && (getReadDisplay() === "scroll" || getReadDisplay() === "columns")) { el.hidden = true; return; }
     el.hidden = false;
-    setDesktopPanelActive(true);
     await syncPanelPrefsFromAccount();
 
     if (getPanelHidden()) {

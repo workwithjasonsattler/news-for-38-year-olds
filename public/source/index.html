@@ -42,10 +42,19 @@
        entirely on Mobile layout and narrower widths via CSS. Reader can
        hide the whole panel or individual modules via the gear icon;
        always collapses to just its header (never fully vanishes) so
-       that control stays reachable. -->
-  <aside class="desktop-side-panel" id="desktopSidePanel" hidden></aside>
+       that control stays reachable.
 
-  <main class="source-main" id="main"></main>
+       Wrapped together with #main in .source-body-row (a real flex
+       row) rather than using position:fixed for the panel — this way
+       the browser's own flex layout keeps them from ever overlapping,
+       and #main automatically reclaims the panel's space the moment
+       it's hidden (display:none removes it from the flex row
+       entirely), instead of relying on manually-computed CSS
+       reservations that have to be kept in sync by hand. -->
+  <div class="source-body-row" id="sourceBodyRow">
+    <main class="source-main" id="main"></main>
+    <aside class="desktop-side-panel" id="desktopSidePanel" hidden></aside>
+  </div>
 
   <nav class="tab-bar" id="tabBar"></nav>
 

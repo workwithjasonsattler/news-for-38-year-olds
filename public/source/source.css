@@ -192,6 +192,24 @@ button { font-family: inherit; cursor: pointer; }
   overflow-y: auto;
   padding: 14px 14px calc(90px + var(--safe-bottom));
   background: var(--bg);
+  min-width: 0;
+}
+
+/* Real flex row (not position:fixed + manual width math) so the
+   browser's own layout engine keeps #main and the side panel from
+   ever overlapping, and #main automatically reclaims the panel's
+   space the moment it's hidden. flex:1 here is what makes this row
+   fill the remaining VERTICAL space between header and tab-bar
+   (.source-main used to do this directly as a flex child of <body>;
+   now the row does it, and .source-main's own flex:1 above means
+   "grow to fill remaining HORIZONTAL space in this row" instead).
+   min-height:0 is required for a flex child with internal
+   overflow:auto scrolling to actually respect its container's height
+   instead of growing to fit its content. */
+.source-body-row {
+  display: flex;
+  flex: 1;
+  min-height: 0;
 }
 
 .state-block {
@@ -1530,30 +1548,12 @@ body[data-layout="desktop"] .state-block {
   grid-column: 1 / -1;
 }
 
-/* BUG FIX — the fixed "Today" side panel (position:fixed; right:28px;
-   width:260px, shows at >=1180px, see .desktop-side-panel below) was
-   never actually accounted for by .source-main's centering. At most
-   ordinary desktop widths .source-main's centered box physically
-   overlapped the panel's reserved zone on the right, which is almost
-   certainly what made the panel's "hide" gear icon feel "impossible
-   to reopen" — it wasn't a logic bug in the hide/show code, the icon
-   was just sitting under other content.
-   Fix: reserve real space on the right via margin-right (NOT a
-   symmetric max-width shrink, which would waste equal space on the
-   left for no reason) — but ONLY while the panel is actually going to
-   render something there. JS toggles .desktop-panel-active on <body>
-   in lockstep with the panel's own visibility (renderDesktopSidePanel/
-   setDesktopPanelActive), so when the panel is hidden — Scroll,
-   Columns, Mobile, or just not applicable — .source-main reclaims the
-   full width instead of leaving it as dead space.
-   margin-left:auto (not the shorthand `margin:0 auto`, which forces
-   BOTH sides auto) means only the LEFT side absorbs slack; the RIGHT
-   side is a fixed 300px (260 panel + 28 offset + buffer) whenever the
-   class is present. max-width still needs a viewport-aware ceiling so
-   a mode's "ideal" width (e.g. Classic's 1340px) doesn't itself force
-   an overflow on narrower-but-still->=1180px screens — but the
-   subtraction only needs to cover the ONE reserved side now (not 2x),
-   so the ceiling is far less aggressive than a symmetric approach. */
+/* Space for the side panel is now handled by real flex layout
+   (.source-body-row in index.html + .desktop-side-panel below), not
+   manual width/margin math — #main and the panel are genuine flex
+   siblings, so the browser's own layout engine keeps them from ever
+   overlapping and #main automatically reclaims the panel's space the
+   moment it's display:none (hidden). No JS/CSS coordination needed. */
 @media (min-width: 900px) {
   body[data-layout="desktop"] .tab-bar,
   body[data-layout="desktop"] .source-main {
@@ -1561,14 +1561,6 @@ body[data-layout="desktop"] .state-block {
   }
   body[data-layout="desktop"] #main {
     grid-template-columns: 1fr 1fr 1fr;
-  }
-}
-
-@media (min-width: 1180px) {
-  body.desktop-panel-active[data-layout="desktop"] .source-main {
-    max-width: min(960px, calc(100vw - 340px));
-    margin-left: auto;
-    margin-right: 300px;
   }
 }
 
@@ -1581,7 +1573,12 @@ body[data-layout="desktop"] .state-block {
    story from — RSS (headlines) or post/social style, per the View
    menu. No badge/label calling out "top story" or "latest" — the
    pane just shows whichever story is selected, full stop.
-   --------------------------------------------------------------- */
+   Wider cap than the generic Sources/Buzz masonry grid (960px) — this
+   is a real 2-pane reader, not a single-column card list, so it
+   benefits from the extra room the same way Classic does. */
+body[data-layout="desktop"] .source-main:has(#main.read-layout) {
+  max-width: 1500px;
+}
 body[data-layout="desktop"] #main.read-layout {
   display: grid;
   grid-template-columns: var(--layout-reader-w, 2fr) 10px 1fr;
@@ -1604,9 +1601,6 @@ body[data-layout="desktop"] #main.read-layout {
    (meta line, action buttons) than a bare Scroll card. */
 body[data-layout="desktop"] .source-main:has(#main.read-layout.reader-fullscreen) {
   max-width: 820px;
-}
-body.desktop-panel-active[data-layout="desktop"] .source-main:has(#main.read-layout.reader-fullscreen) {
-  max-width: min(820px, calc(100vw - 340px));
 }
 body[data-layout="desktop"] #main.read-layout.reader-fullscreen {
   grid-template-columns: 1fr;
@@ -1673,10 +1667,7 @@ body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-discuss {
    as one connected reader, not three separate floating boxes.
    --------------------------------------------------------------- */
 body[data-layout="desktop"] .source-main:has(#main.read-classic) {
-  max-width: 1340px;
-}
-body.desktop-panel-active[data-layout="desktop"] .source-main:has(#main.read-classic) {
-  max-width: min(1340px, calc(100vw - 340px));
+  max-width: 1800px;
 }
 body[data-layout="desktop"] #main.read-classic {
   display: grid;
@@ -1705,9 +1696,6 @@ body[data-layout="desktop"] #main.read-classic {
    of source order. */
 body[data-layout="desktop"] .source-main:has(#main.read-classic.reader-fullscreen) {
   max-width: 900px;
-}
-body.desktop-panel-active[data-layout="desktop"] .source-main:has(#main.read-classic.reader-fullscreen) {
-  max-width: min(900px, calc(100vw - 340px));
 }
 body[data-layout="desktop"] #main.read-classic.reader-fullscreen {
   grid-template-columns: 1fr;
@@ -1946,10 +1934,10 @@ body[data-layout="desktop"] #main.read-columns {
 @media (min-width: 1180px) {
   body[data-layout="desktop"] .desktop-side-panel:not([hidden]) {
     display: block;
-    position: fixed;
-    top: 176px;
-    right: 28px;
+    flex-shrink: 0;
     width: 260px;
+    align-self: flex-start;
+    margin: 14px 28px 0 14px;
     max-height: calc(100vh - 196px);
     overflow-y: auto;
     padding-right: 4px;
