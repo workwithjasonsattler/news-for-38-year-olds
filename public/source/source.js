@@ -1276,6 +1276,10 @@
   // Flips the reader pane's expand-in-place state and patches just the
   // toggle button + #main's class — no full re-render needed, since the
   // layout change is pure CSS (hide the list/sidebar, widen the pane).
+  // Also re-renders the Today side panel, since fullscreen now hides it
+  // too (same "give the reader every inch of width" intent) — this is
+  // the reliable way to get the panel out of the way entirely, rather
+  // than depending on its own hide/show toggle.
   function toggleReaderFullscreen() {
     readerFullscreen = !readerFullscreen;
     const main = document.getElementById("main");
@@ -1287,6 +1291,7 @@
       btn.title = label;
       btn.setAttribute("aria-label", label);
     }
+    renderDesktopSidePanel();
   }
 
   function renderReaderFeed(shown, trendingLinks) {
@@ -2991,7 +2996,7 @@
     // Columns mode needs every inch of width for its columns for the same
     // reason, just more so. Hidden only while actually on Read in either
     // mode; reappears the moment either condition changes.
-    if (activeTab === "read" && (getReadDisplay() === "scroll" || getReadDisplay() === "columns")) { el.hidden = true; return; }
+    if (activeTab === "read" && (getReadDisplay() === "scroll" || getReadDisplay() === "columns" || readerFullscreen)) { el.hidden = true; return; }
     el.hidden = false;
     await syncPanelPrefsFromAccount();
 
