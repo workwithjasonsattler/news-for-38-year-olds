@@ -1637,11 +1637,11 @@ body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-discuss {
    as one connected reader, not three separate floating boxes.
    --------------------------------------------------------------- */
 body[data-layout="desktop"] .source-main:has(#main.read-classic) {
-  max-width: 1180px;
+  max-width: 1340px;
 }
 body[data-layout="desktop"] #main.read-classic {
   display: grid;
-  grid-template-columns: 190px 320px 1fr;
+  grid-template-columns: 190px 420px 1fr;
   gap: 0;
   align-items: stretch;
   border: 1px solid var(--line);
@@ -1765,7 +1765,7 @@ body[data-layout="desktop"] #main.read-classic.reader-fullscreen .reader-feed-cl
 
 @media (max-width: 1100px) {
   body[data-layout="desktop"] #main.read-classic {
-    grid-template-columns: 160px 260px 1fr;
+    grid-template-columns: 160px 340px 1fr;
   }
 }
 
