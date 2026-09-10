@@ -1552,14 +1552,14 @@ body[data-layout="desktop"] .state-block {
    --------------------------------------------------------------- */
 body[data-layout="desktop"] #main.read-layout {
   display: grid;
-  grid-template-columns: 2fr 1fr;
-  gap: 22px;
+  grid-template-columns: var(--layout-reader-w, 2fr) 10px 1fr;
+  gap: 6px;
   align-items: start;
 }
 
 @media (min-width: 900px) {
   body[data-layout="desktop"] #main.read-layout {
-    grid-template-columns: 2fr 1fr;
+    grid-template-columns: var(--layout-reader-w, 2fr) 10px 1fr;
   }
 }
 
@@ -1576,7 +1576,8 @@ body[data-layout="desktop"] .source-main:has(#main.read-layout.reader-fullscreen
 body[data-layout="desktop"] #main.read-layout.reader-fullscreen {
   grid-template-columns: 1fr;
 }
-body[data-layout="desktop"] #main.read-layout.reader-fullscreen .reader-feed {
+body[data-layout="desktop"] #main.read-layout.reader-fullscreen .reader-feed,
+body[data-layout="desktop"] #main.read-layout.reader-fullscreen .pane-resizer {
   display: none;
 }
 
@@ -1641,7 +1642,7 @@ body[data-layout="desktop"] .source-main:has(#main.read-classic) {
 }
 body[data-layout="desktop"] #main.read-classic {
   display: grid;
-  grid-template-columns: 190px 420px 1fr;
+  grid-template-columns: 190px var(--classic-list-w, 420px) 10px 1fr;
   gap: 0;
   align-items: stretch;
   border: 1px solid var(--line);
@@ -1671,8 +1672,42 @@ body[data-layout="desktop"] #main.read-classic.reader-fullscreen {
   grid-template-columns: 1fr;
 }
 body[data-layout="desktop"] #main.read-classic.reader-fullscreen .classic-sidebar,
-body[data-layout="desktop"] #main.read-classic.reader-fullscreen .reader-feed-classic {
+body[data-layout="desktop"] #main.read-classic.reader-fullscreen .reader-feed-classic,
+body[data-layout="desktop"] #main.read-classic.reader-fullscreen .pane-resizer {
   display: none;
+}
+
+/* Pane resizer — shared drag handle between the headline list and the
+   reader pane, used by both Layout (reader|resizer|feed) and Classic
+   (list|resizer|reader). A thin visible line at rest/hover; the wider
+   invisible hit area (the full grid track) makes it easy to grab
+   without needing pixel-precision. Dragging is handled in JS
+   (wirePaneResizer) via a CSS custom property, so this is purely the
+   handle's own look + the global drag-in-progress cursor/selection
+   lock applied to <body>. */
+.pane-resizer {
+  cursor: col-resize;
+  position: relative;
+}
+.pane-resizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  background: var(--line);
+}
+.pane-resizer:hover::after {
+  background: var(--accent);
+}
+body.pane-resizing {
+  cursor: col-resize !important;
+  user-select: none;
+}
+body.pane-resizing * {
+  cursor: col-resize !important;
 }
 .classic-sidebar {
   border-right: 1px solid var(--line);
@@ -1721,7 +1756,6 @@ body[data-layout="desktop"] #main.read-classic.reader-fullscreen .reader-feed-cl
    defining trait of a classic reader's item list. */
 .reader-feed-classic {
   display: block;
-  border-right: 1px solid var(--line);
   overflow-y: auto;
   max-height: calc(100vh - 210px);
   padding-right: 0;
@@ -1765,7 +1799,7 @@ body[data-layout="desktop"] #main.read-classic.reader-fullscreen .reader-feed-cl
 
 @media (max-width: 1100px) {
   body[data-layout="desktop"] #main.read-classic {
-    grid-template-columns: 160px 340px 1fr;
+    grid-template-columns: 160px var(--classic-list-w, 340px) 10px 1fr;
   }
 }
 

@@ -898,6 +898,64 @@
   }
 
   // ---------------------------------------------------------------
+  // Pane resizing — lets a reader drag the divider between the
+  // headline list and the reader pane in both Desktop split modes
+  // (Layout's reader|feed, Classic's list|reader). Stored as plain
+  // pixel widths in localStorage, same pattern as every other UI
+  // preference in this file. Applied via a CSS custom property on
+  // #main that each mode's grid-template-columns already reads with
+  // a var(..., <css-default>) fallback — so an unset preference just
+  // falls through to the normal CSS-authored width, no JS branching
+  // needed at render time beyond setting/clearing the property.
+  // ---------------------------------------------------------------
+  const CLASSIC_LIST_WIDTH_KEY = "source_classic_list_width";
+  const LAYOUT_READER_WIDTH_KEY = "source_layout_reader_width";
+  function getStoredPaneWidth(key) {
+    const n = parseInt(localStorage.getItem(key), 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  function applyStoredPaneWidth(main, cssVar, key) {
+    const px = getStoredPaneWidth(key);
+    if (px) main.style.setProperty(cssVar, `${px}px`);
+    else main.style.removeProperty(cssVar);
+  }
+
+  // Generic drag handler for a `.pane-resizer` divider. `cssVar` is the
+  // custom property the CSS grid track reads; the width being resized
+  // is always the element immediately BEFORE the handle in the DOM
+  // (true for both Layout's reader|resizer|feed and Classic's
+  // list|resizer|reader), so reading its live rendered width at drag
+  // start works whether the column is currently at a CSS-default
+  // fr-based width or a previously-dragged px one. `bounds` keeps a
+  // pane from being dragged down to nothing or squeezing its neighbor
+  // out entirely.
+  function wirePaneResizer(handleId, cssVar, storageKey, bounds) {
+    const handle = document.getElementById(handleId);
+    const main = document.getElementById("main");
+    if (!handle || !main) return;
+    handle.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      const target = handle.previousElementSibling;
+      const startWidth = target ? target.getBoundingClientRect().width : bounds.min;
+      const startX = e.clientX;
+      document.body.classList.add("pane-resizing");
+      function onMove(ev) {
+        const next = Math.min(bounds.max, Math.max(bounds.min, startWidth + (ev.clientX - startX)));
+        main.style.setProperty(cssVar, `${next}px`);
+      }
+      function onUp() {
+        document.body.classList.remove("pane-resizing");
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        const applied = parseInt(main.style.getPropertyValue(cssVar), 10);
+        if (Number.isFinite(applied)) localStorage.setItem(storageKey, String(applied));
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  }
+
+  // ---------------------------------------------------------------
   // Desktop reader: left pane shows the currently selected story
   // full-size (image, headline, excerpt, "More" expands the actual
   // article inline via iframe); right pane is the feed you pick the
@@ -910,14 +968,17 @@
     main.classList.remove("read-scroll-desktop");
     main.classList.add("read-layout");
     main.classList.toggle("reader-fullscreen", readerFullscreen);
+    applyStoredPaneWidth(main, "--layout-reader-w", LAYOUT_READER_WIDTH_KEY);
     if (!selectedDispatch || !shown.some(d => d.id === selectedDispatch.id)) {
       selectedDispatch = shown[0];
     }
     main.innerHTML = `
       <div class="reader-pane" id="readerPane"></div>
+      <div class="pane-resizer" id="layoutResizer" title="Drag to resize"></div>
       <div class="reader-feed" id="readerFeed"></div>`;
     renderReaderPane(selectedDispatch, trendingLinks.has(selectedDispatch.link), trendingLinks.get(selectedDispatch.link));
     renderReaderFeed(shown, trendingLinks);
+    wirePaneResizer("layoutResizer", "--layout-reader-w", LAYOUT_READER_WIDTH_KEY, { min: 380, max: 680 });
   }
 
   // ---------------------------------------------------------------
@@ -935,16 +996,19 @@
     main.classList.remove("read-scroll-desktop", "read-columns", "read-layout");
     main.classList.add("read-classic");
     main.classList.toggle("reader-fullscreen", readerFullscreen);
+    applyStoredPaneWidth(main, "--classic-list-w", CLASSIC_LIST_WIDTH_KEY);
     if (!selectedDispatch || !shown.some(d => d.id === selectedDispatch.id)) {
       selectedDispatch = shown[0];
     }
     main.innerHTML = `
       <div class="classic-sidebar" id="classicSidebar"></div>
       <div class="reader-feed reader-feed-classic" id="readerFeed"></div>
+      <div class="pane-resizer" id="classicResizer" title="Drag to resize"></div>
       <div class="reader-pane" id="readerPane"></div>`;
     renderClassicSidebar();
     renderReaderPane(selectedDispatch, trendingLinks.has(selectedDispatch.link), trendingLinks.get(selectedDispatch.link));
     renderReaderFeed(shown, trendingLinks);
+    wirePaneResizer("classicResizer", "--classic-list-w", CLASSIC_LIST_WIDTH_KEY, { min: 260, max: 620 });
   }
 
   // Vertical counterpart to renderSprayToggle's horizontal pill bar —
