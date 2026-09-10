@@ -1530,6 +1530,30 @@ body[data-layout="desktop"] .state-block {
   grid-column: 1 / -1;
 }
 
+/* BUG FIX — the fixed "Today" side panel (position:fixed; right:28px;
+   width:260px, shows at >=1180px, see .desktop-side-panel below) was
+   never actually accounted for by .source-main's centering. At most
+   ordinary desktop widths .source-main's centered box physically
+   overlapped the panel's reserved zone on the right, which is almost
+   certainly what made the panel's "hide" gear icon feel "impossible
+   to reopen" — it wasn't a logic bug in the hide/show code, the icon
+   was just sitting under other content.
+   Fix: reserve real space on the right via margin-right (NOT a
+   symmetric max-width shrink, which would waste equal space on the
+   left for no reason) — but ONLY while the panel is actually going to
+   render something there. JS toggles .desktop-panel-active on <body>
+   in lockstep with the panel's own visibility (renderDesktopSidePanel/
+   setDesktopPanelActive), so when the panel is hidden — Scroll,
+   Columns, Mobile, or just not applicable — .source-main reclaims the
+   full width instead of leaving it as dead space.
+   margin-left:auto (not the shorthand `margin:0 auto`, which forces
+   BOTH sides auto) means only the LEFT side absorbs slack; the RIGHT
+   side is a fixed 300px (260 panel + 28 offset + buffer) whenever the
+   class is present. max-width still needs a viewport-aware ceiling so
+   a mode's "ideal" width (e.g. Classic's 1340px) doesn't itself force
+   an overflow on narrower-but-still->=1180px screens — but the
+   subtraction only needs to cover the ONE reserved side now (not 2x),
+   so the ceiling is far less aggressive than a symmetric approach. */
 @media (min-width: 900px) {
   body[data-layout="desktop"] .tab-bar,
   body[data-layout="desktop"] .source-main {
@@ -1540,28 +1564,11 @@ body[data-layout="desktop"] .state-block {
   }
 }
 
-/* BUG FIX — the fixed "Today" side panel (position:fixed; right:28px;
-   width:260px, shows at >=1180px, see .desktop-side-panel below) was
-   never actually accounted for by .source-main's centering. At most
-   ordinary desktop widths .source-main's centered box physically
-   overlapped the panel's reserved zone on the right (confirmed with
-   real numbers: 12-275px of overlap depending on width/mode), which
-   is almost certainly what made the panel's "hide" gear icon feel
-   "impossible to reopen" — it wasn't a logic bug in the hide/show
-   code, the icon was just sitting under other content.
-   Fix: cap .source-main's max-width so its centered box can NEVER
-   reach the reserved zone, at the exact viewport range where the
-   panel can actually be visible (>=1180px, matching its own media
-   query below). Under plain symmetric `margin:0 auto` centering, the
-   right edge sits at (viewport+width)/2, so avoiding a right-side
-   reserved zone of R needs width <= viewport - 2R; R here is ~300px
-   (260 panel + 28 offset + a little breathing room), hence -600px.
-   This applies AFTER the 900px rule above and wins for >=1180px via
-   source order (same selector specificity), while leaving the
-   900-1179px range (where the panel never shows) untouched. */
 @media (min-width: 1180px) {
-  body[data-layout="desktop"] .source-main {
-    max-width: min(960px, calc(100vw - 600px));
+  body.desktop-panel-active[data-layout="desktop"] .source-main {
+    max-width: min(960px, calc(100vw - 340px));
+    margin-left: auto;
+    margin-right: 300px;
   }
 }
 
@@ -1596,7 +1603,10 @@ body[data-layout="desktop"] #main.read-layout {
    just a bit roomier since the reader pane carries more chrome
    (meta line, action buttons) than a bare Scroll card. */
 body[data-layout="desktop"] .source-main:has(#main.read-layout.reader-fullscreen) {
-  max-width: min(820px, calc(100vw - 600px));
+  max-width: 820px;
+}
+body.desktop-panel-active[data-layout="desktop"] .source-main:has(#main.read-layout.reader-fullscreen) {
+  max-width: min(820px, calc(100vw - 340px));
 }
 body[data-layout="desktop"] #main.read-layout.reader-fullscreen {
   grid-template-columns: 1fr;
@@ -1663,7 +1673,10 @@ body[data-layout="desktop"] #main.read-scroll-desktop .card-scroll-discuss {
    as one connected reader, not three separate floating boxes.
    --------------------------------------------------------------- */
 body[data-layout="desktop"] .source-main:has(#main.read-classic) {
-  max-width: min(1340px, calc(100vw - 600px));
+  max-width: 1340px;
+}
+body.desktop-panel-active[data-layout="desktop"] .source-main:has(#main.read-classic) {
+  max-width: min(1340px, calc(100vw - 340px));
 }
 body[data-layout="desktop"] #main.read-classic {
   display: grid;
@@ -1691,7 +1704,10 @@ body[data-layout="desktop"] #main.read-classic {
    plain :has(#main.read-classic) rule above, so this wins regardless
    of source order. */
 body[data-layout="desktop"] .source-main:has(#main.read-classic.reader-fullscreen) {
-  max-width: min(900px, calc(100vw - 600px));
+  max-width: 900px;
+}
+body.desktop-panel-active[data-layout="desktop"] .source-main:has(#main.read-classic.reader-fullscreen) {
+  max-width: min(900px, calc(100vw - 340px));
 }
 body[data-layout="desktop"] #main.read-classic.reader-fullscreen {
   grid-template-columns: 1fr;

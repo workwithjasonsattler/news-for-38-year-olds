@@ -2975,18 +2975,31 @@
   // the panel entirely otherwise. Never fully vanishes even when a
   // reader hides it — collapses to just the header row so the gear
   // icon (the only way back) stays reachable.
+  //
+  // .desktop-panel-active on <body> mirrors whether this panel is
+  // actually going to occupy its fixed right-hand zone right now
+  // (shown in EITHER the full or collapsed "Panel hidden" state — both
+  // occupy the same physical box). .source-main's CSS only reserves
+  // space for the panel while this class is present, so hiding the
+  // panel (or being on Scroll/Columns/Mobile, where it never shows)
+  // lets the reader/list panes reclaim that width instead of leaving
+  // it as dead space.
+  function setDesktopPanelActive(active) {
+    document.body.classList.toggle("desktop-panel-active", active);
+  }
   async function renderDesktopSidePanel() {
     const el = document.getElementById("desktopSidePanel");
     if (!el) return;
-    if (getLayoutMode() !== "desktop") { el.hidden = true; return; }
+    if (getLayoutMode() !== "desktop") { el.hidden = true; setDesktopPanelActive(false); return; }
     // Scroll's whole point is a calm, centered, one-story feed — a stats
     // dashboard pinned to the right undermines that (visually pulls the
     // page off-center even though #main itself is still truly centered).
     // Columns mode needs every inch of width for its columns for the same
     // reason, just more so. Hidden only while actually on Read in either
     // mode; reappears the moment either condition changes.
-    if (activeTab === "read" && (getReadDisplay() === "scroll" || getReadDisplay() === "columns")) { el.hidden = true; return; }
+    if (activeTab === "read" && (getReadDisplay() === "scroll" || getReadDisplay() === "columns")) { el.hidden = true; setDesktopPanelActive(false); return; }
     el.hidden = false;
+    setDesktopPanelActive(true);
     await syncPanelPrefsFromAccount();
 
     if (getPanelHidden()) {
