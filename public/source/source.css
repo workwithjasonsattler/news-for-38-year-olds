@@ -1970,6 +1970,33 @@ body[data-layout="desktop"] #main.read-columns {
     margin-top: 14px;
   }
 }
+
+/* THE ACTUAL "reader gets bigger" FIX. .source-main's base rule
+   (further up this file) centers itself with margin:0 auto inside a
+   fixed max-width, completely independent of whatever the Today panel
+   is doing — so dragging the panel narrower/closed was only ever
+   changing how much dead margin surrounded #main, never #main's own
+   width, and the resizer itself ended up floating in that dead-space
+   gap far from the visible content instead of sitting flush against
+   it. Only kicks in at the panel's own >=1180px breakpoint, and only
+   when the panel is genuinely rendered (not hidden entirely, e.g. in
+   Scroll/Columns/fullscreen) — :has() detects that on the row itself,
+   same combinator already used elsewhere in this file (e.g. the
+   read-columns override below).
+   Deliberately LOWER specificity than the read-layout/read-classic
+   :has(#main....) max-width overrides elsewhere in this file (those
+   embed #main's own ID, which always outranks this selector's classes
+   regardless of source order) — so THIS max-width only actually wins
+   for the plain card-grid Read/Sources/Buzz/You views that don't have
+   one of those more specific overrides. Layout/Classic keep their own
+   already-tuned caps; they just also get the margin:0 fix so their
+   resizer isn't stranded in a gap either. */
+@media (min-width: 1180px) {
+  body[data-layout="desktop"] .source-body-row:has(> .desktop-side-panel:not([hidden])) .source-main {
+    margin: 0;
+    max-width: 1600px;
+  }
+}
 .desktop-bsky-rail-head {
   font-family: var(--display);
   font-weight: 700;

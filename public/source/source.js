@@ -2840,8 +2840,19 @@
   }
   function applyTodayPanelWidth(el) {
     const px = getStoredTodayPanelWidth();
-    if (px !== null) el.style.setProperty("--today-panel-w", `${px}px`);
-    else el.style.removeProperty("--today-panel-w");
+    if (px !== null) {
+      el.style.setProperty("--today-panel-w", `${px}px`);
+      // The panel's own CSS margin (14px/28px) reserves real dead space
+      // even at width:0 — without this, "collapsed" still leaves a
+      // visible ~40px gap instead of actually feeling gone. Zero it out
+      // specifically at 0; restore to the CSS-authored default the
+      // moment it's open again.
+      if (px <= 0) el.style.setProperty("margin", "0");
+      else el.style.removeProperty("margin");
+    } else {
+      el.style.removeProperty("--today-panel-w");
+      el.style.removeProperty("margin");
+    }
   }
 
   // Drag handler for the Today panel's own resizer — deliberately NOT
@@ -2871,6 +2882,7 @@
       function onMove(ev) {
         const next = Math.min(TODAY_PANEL_MAX_WIDTH, Math.max(0, startWidth - (ev.clientX - startX)));
         panel.style.setProperty("--today-panel-w", `${next}px`);
+        panel.style.setProperty("margin", next < TODAY_PANEL_SNAP_THRESHOLD ? "0" : "");
       }
       function onUp() {
         document.body.classList.remove("pane-resizing");
@@ -2879,8 +2891,8 @@
         let applied = parseInt(panel.style.getPropertyValue("--today-panel-w"), 10);
         if (!Number.isFinite(applied)) applied = TODAY_PANEL_DEFAULT_WIDTH;
         if (applied < TODAY_PANEL_SNAP_THRESHOLD) applied = 0; // snap fully closed near zero
-        panel.style.setProperty("--today-panel-w", `${applied}px`);
         setStoredTodayPanelWidth(applied);
+        applyTodayPanelWidth(panel); // reapplies width + margin from the now-saved value, consistently
         savePanelPrefsToAccount();
         renderDesktopSidePanel(); // reflect collapsed/open content state immediately
       }
