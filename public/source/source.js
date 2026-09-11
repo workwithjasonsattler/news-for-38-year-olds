@@ -2814,11 +2814,81 @@
     { key: "topbluesky", label: "Top post on Bluesky" },
   ];
 
-  const PANEL_HIDDEN_KEY = "source_panel_hidden";
   const PANEL_MODULES_KEY = "source_panel_hidden_modules";
 
-  function getPanelHidden() { return localStorage.getItem(PANEL_HIDDEN_KEY) === "1"; }
-  function setPanelHidden(v) { localStorage.setItem(PANEL_HIDDEN_KEY, v ? "1" : "0"); }
+  // Today panel width — replaces the old "Hide this panel" checkbox
+  // (source_panel_hidden boolean) with a drag-to-resize width, same
+  // pattern as source_layout_reader_width / source_classic_list_width.
+  // Unset = use the CSS-authored 260px default. A stored 0 = fully
+  // collapsed (the old "hidden" state), reversible by dragging the
+  // handle back out rather than re-checking a box.
+  const TODAY_PANEL_WIDTH_KEY = "source_today_panel_width";
+  const TODAY_PANEL_DEFAULT_WIDTH = 260;
+  const TODAY_PANEL_MAX_WIDTH = 420;
+  const TODAY_PANEL_SNAP_THRESHOLD = 50;
+
+  function getStoredTodayPanelWidth() {
+    const n = parseInt(localStorage.getItem(TODAY_PANEL_WIDTH_KEY), 10);
+    return Number.isFinite(n) ? n : null;
+  }
+  function setStoredTodayPanelWidth(px) {
+    localStorage.setItem(TODAY_PANEL_WIDTH_KEY, String(px));
+  }
+  function isTodayPanelCollapsed() {
+    const px = getStoredTodayPanelWidth();
+    return px !== null && px <= 0;
+  }
+  function applyTodayPanelWidth(el) {
+    const px = getStoredTodayPanelWidth();
+    if (px !== null) el.style.setProperty("--today-panel-w", `${px}px`);
+    else el.style.removeProperty("--today-panel-w");
+  }
+
+  // Drag handler for the Today panel's own resizer — deliberately NOT
+  // wirePaneResizer() above: that helper always resizes the element
+  // BEFORE the handle in the DOM (true for Layout/Classic, where the
+  // resized pane is on the left); here the resized element (the aside)
+  // comes AFTER the handle, and dragging LEFT should WIDEN the panel
+  // (mouse moving left = negative dx = width grows), the opposite
+  // relationship from the other two resizers. The handle itself is a
+  // static element in index.html (not rebuilt on every render the way
+  // Layout/Classic's resizer is, since it's part of #main's own
+  // innerHTML each time) — wired once, guarded by a flag, rather than
+  // re-attaching a fresh listener on every renderDesktopSidePanel() call.
+  let todayPanelResizerWired = false;
+  function wireTodayPanelResizer() {
+    if (todayPanelResizerWired) return;
+    const handle = document.getElementById("todayPanelResizer");
+    if (!handle) return;
+    todayPanelResizerWired = true;
+    handle.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      const panel = document.getElementById("desktopSidePanel");
+      if (!panel) return;
+      const startWidth = panel.getBoundingClientRect().width;
+      const startX = e.clientX;
+      document.body.classList.add("pane-resizing");
+      function onMove(ev) {
+        const next = Math.min(TODAY_PANEL_MAX_WIDTH, Math.max(0, startWidth - (ev.clientX - startX)));
+        panel.style.setProperty("--today-panel-w", `${next}px`);
+      }
+      function onUp() {
+        document.body.classList.remove("pane-resizing");
+        document.removeEventListener("mousemove", onMove);
+        document.removeEventListener("mouseup", onUp);
+        let applied = parseInt(panel.style.getPropertyValue("--today-panel-w"), 10);
+        if (!Number.isFinite(applied)) applied = TODAY_PANEL_DEFAULT_WIDTH;
+        if (applied < TODAY_PANEL_SNAP_THRESHOLD) applied = 0; // snap fully closed near zero
+        panel.style.setProperty("--today-panel-w", `${applied}px`);
+        setStoredTodayPanelWidth(applied);
+        savePanelPrefsToAccount();
+        renderDesktopSidePanel(); // reflect collapsed/open content state immediately
+      }
+      document.addEventListener("mousemove", onMove);
+      document.addEventListener("mouseup", onUp);
+    });
+  }
+
   function getHiddenModules() {
     try {
       const raw = JSON.parse(localStorage.getItem(PANEL_MODULES_KEY) || "[]");
@@ -2834,7 +2904,16 @@
     try {
       const prefs = await api("/api/my/panel-prefs");
       if (prefs && prefs.saved) {
-        setPanelHidden(prefs.panelHidden);
+        // The account still only stores a collapsed/open boolean (no
+        // new backend field for this) — seed the width from it ONLY if
+        // this device has no local width preference yet, same
+        // "follows you across devices on first visit" courtesy the old
+        // checkbox had. Once a reader actually drags the handle on
+        // THIS device, that local px value wins from then on, same as
+        // the un-synced Layout/Classic pane widths.
+        if (getStoredTodayPanelWidth() === null) {
+          setStoredTodayPanelWidth(prefs.panelHidden ? 0 : TODAY_PANEL_DEFAULT_WIDTH);
+        }
         setHiddenModules(new Set(prefs.hiddenModules || []));
       }
     } catch (e) { /* fail soft, keep whatever localStorage already has */ }
@@ -2844,7 +2923,7 @@
     try {
       await api("/api/my/panel-prefs", {
         method: "POST",
-        body: JSON.stringify({ panelHidden: getPanelHidden(), hiddenModules: [...getHiddenModules()] }),
+        body: JSON.stringify({ panelHidden: isTodayPanelCollapsed(), hiddenModules: [...getHiddenModules()] }),
       });
     } catch (e) { /* fail soft — local state already applied regardless */ }
   }
@@ -2910,16 +2989,10 @@
 
   function renderPanelSettings() {
     const hidden = getHiddenModules();
-    const panelHidden = getPanelHidden();
     return `
       <div class="panel-settings" id="panelSettings">
         <button class="icon-btn panel-settings-btn" id="panelSettingsBtn" aria-haspopup="true" aria-expanded="false" title="Customize panel">⚙</button>
         <div class="panel-settings-list" id="panelSettingsList" hidden>
-          <label class="panel-settings-item">
-            <input type="checkbox" id="panelHideAllToggle" ${panelHidden ? "checked" : ""}>
-            Hide this panel
-          </label>
-          <div class="panel-settings-sep"></div>
           ${PANEL_MODULE_DEFS.map(m => `
             <label class="panel-settings-item">
               <input type="checkbox" class="panel-module-toggle" data-key="${m.key}" ${hidden.has(m.key) ? "" : "checked"}>
@@ -2940,14 +3013,6 @@
       list.hidden = !opening;
       btn.setAttribute("aria-expanded", String(opening));
     });
-    const hideAll = document.getElementById("panelHideAllToggle");
-    if (hideAll) {
-      hideAll.addEventListener("change", () => {
-        setPanelHidden(hideAll.checked);
-        savePanelPrefsToAccount();
-        renderDesktopSidePanel();
-      });
-    }
     document.querySelectorAll(".panel-module-toggle").forEach(cb => {
       cb.addEventListener("change", () => {
         const set = getHiddenModules();
@@ -2977,32 +3042,55 @@
   // Desktop-only side panel: fills the dead space beyond the centered
   // main column on wide screens. Fetches once per page load (cached);
   // only fetches when the layout is actually Desktop, since CSS hides
-  // the panel entirely otherwise. Never fully vanishes even when a
-  // reader hides it — collapses to just the header row so the gear
-  // icon (the only way back) stays reachable.
+  // the panel entirely otherwise.
   //
   // Lives in a real flex row with #main (.source-body-row in
   // index.html) rather than position:fixed — el.hidden = true/false
-  // here is all that's needed to add/remove it from that row; #main
-  // automatically reclaims the space via its own flex:1, no manual
-  // width/margin coordination required.
+  // here is all that's needed to add/remove it (and its resizer
+  // handle) from that row entirely; #main automatically reclaims the
+  // space via its own flex:1, no manual width/margin coordination
+  // required. That's a SEPARATE mechanism from the drag-to-resize
+  // width below: el.hidden fully removes the panel for layout modes
+  // where it never belongs (Mobile, Scroll, Columns, fullscreen);
+  // the width (--today-panel-w) is what a reader controls directly by
+  // dragging, including collapsing it to 0 — replaces the old
+  // "Hide this panel" checkbox, reversible by dragging back out
+  // instead of re-checking a box.
   async function renderDesktopSidePanel() {
     const el = document.getElementById("desktopSidePanel");
+    const resizer = document.getElementById("todayPanelResizer");
     if (!el) return;
-    if (getLayoutMode() !== "desktop") { el.hidden = true; return; }
+    if (getLayoutMode() !== "desktop") {
+      el.hidden = true;
+      if (resizer) resizer.hidden = true;
+      return;
+    }
     // Scroll's whole point is a calm, centered, one-story feed — a stats
     // dashboard pinned to the right undermines that (visually pulls the
     // page off-center even though #main itself is still truly centered).
     // Columns mode needs every inch of width for its columns for the same
     // reason, just more so. Hidden only while actually on Read in either
     // mode; reappears the moment either condition changes.
-    if (activeTab === "read" && (getReadDisplay() === "scroll" || getReadDisplay() === "columns" || readerFullscreen)) { el.hidden = true; return; }
+    if (activeTab === "read" && (getReadDisplay() === "scroll" || getReadDisplay() === "columns" || readerFullscreen)) {
+      el.hidden = true;
+      if (resizer) resizer.hidden = true;
+      return;
+    }
     el.hidden = false;
+    if (resizer) resizer.hidden = false;
+    applyTodayPanelWidth(el);
+    wireTodayPanelResizer();
     await syncPanelPrefsFromAccount();
+    applyTodayPanelWidth(el); // re-apply in case sync just seeded a first-visit width
 
-    if (getPanelHidden()) {
-      el.innerHTML = `<div class="panel-head"><div class="panel-head-text"><span class="desktop-bsky-rail-head">Panel hidden</span><span class="panel-date">${panelDateLabel()}</span></div>${renderPanelSettings()}</div>`;
-      wirePanelSettingsEvents();
+    if (isTodayPanelCollapsed()) {
+      // Width is 0 (or effectively invisible) — overflow:hidden on the
+      // panel clips content regardless, so there's nothing worth
+      // rendering (or fetching data for) until a reader drags it back
+      // open. The resizer handle stays visible/draggable the whole
+      // time; it's a sibling element, unaffected by the panel's own
+      // width collapsing.
+      el.innerHTML = "";
       return;
     }
 

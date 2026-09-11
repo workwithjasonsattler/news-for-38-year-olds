@@ -1935,12 +1935,39 @@ body[data-layout="desktop"] #main.read-columns {
   body[data-layout="desktop"] .desktop-side-panel:not([hidden]) {
     display: block;
     flex-shrink: 0;
-    width: 260px;
+    /* Width is driven by the drag-to-resize handle (--today-panel-w,
+       set in JS from localStorage), falling back to the original
+       260px default when nothing's been dragged yet. Dragging toward
+       0 replaces the old "Hide this panel" checkbox — overflow-x
+       hidden clips the modules out of view as the panel narrows,
+       rather than them wrapping/overflowing. */
+    width: var(--today-panel-w, 260px);
     align-self: flex-start;
     margin: 14px 28px 0 14px;
     max-height: calc(100vh - 196px);
     overflow-y: auto;
+    overflow-x: hidden;
     padding-right: 4px;
+  }
+}
+
+/* Drag handle for the Today panel, sitting between #main and the
+   panel itself in .source-body-row. Reuses the same .pane-resizer
+   look (cursor + thin center line) as the Layout/Classic dividers,
+   but sized/gated separately since it lives in a flex row rather
+   than a CSS grid track, and only makes sense at the same min-width
+   the panel itself appears at. Stays in the DOM (not display:none)
+   even when the panel's own width collapses to 0, so there's always
+   a thin, discoverable hairline to drag back open — the panel content
+   disappears via its own overflow:hidden, this handle doesn't. */
+.today-panel-resizer { display: none; }
+@media (min-width: 1180px) {
+  body[data-layout="desktop"] .today-panel-resizer:not([hidden]) {
+    display: block;
+    flex-shrink: 0;
+    width: 10px;
+    align-self: stretch;
+    margin-top: 14px;
   }
 }
 .desktop-bsky-rail-head {
