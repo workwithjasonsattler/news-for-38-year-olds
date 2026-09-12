@@ -755,6 +755,11 @@ async function sendMagicLink(email, link, client) {
         from,
         to: email,
         subject: "Your sign-in link",
+        // A plain-text alternative alongside the HTML part is standard for
+        // legitimate transactional email, and its absence is a real,
+        // well-documented spam-filter signal on its own. Cheap, worth
+        // having regardless of anything else affecting deliverability.
+        text: `Click to sign in to ${productName}:\n\n${link}\n\nThis link expires in 15 minutes. If you didn't request it, ignore this email.`,
         html: `<p>Click to sign in to ${productName}:</p><p><a href="${link}">${link}</a></p><p>This link expires in 15 minutes. If you didn't request it, ignore this email.</p>`,
       }),
     });

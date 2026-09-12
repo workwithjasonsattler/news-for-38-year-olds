@@ -3313,7 +3313,7 @@
         if (!email) return;
         try {
           await api("/api/auth/request-link", { method: "POST", body: JSON.stringify({ email, client: "source" }) });
-          toast("Check your email for an access link.");
+          toast("Check your email for an access link (check spam if it doesn't show up in a minute or two).");
         } catch (e) {
           toast(e.message || "Could not send link.");
         }
