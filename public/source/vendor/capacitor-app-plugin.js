@@ -1,5 +1,5 @@
 /*!
- * Vendored, unmodified build of @capacitor/app v8.1.2's browser plugin bridge
+ * Vendored, unmodified build of @capacitor/app v8.1.1's browser plugin bridge
  * (https://github.com/ionic-team/capacitor-plugins), wrapped in a guard.
  *
  * Why vendored instead of loaded from a CDN: this file is loaded on EVERY
