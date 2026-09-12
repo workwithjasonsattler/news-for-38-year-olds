@@ -667,6 +667,29 @@ app.get("/source/sw.js", (req, res) => {
   res.set("Cache-Control", "no-cache, no-store, must-revalidate");
   res.sendFile(path.join(__dirname, "public", "source", "sw.js"));
 });
+// Apple's Universal Links config file. Must be served from the domain
+// ROOT (not /source/), as plain JSON, with no redirect, and reachable
+// without auth — iOS fetches this directly over HTTPS to decide whether
+// a tapped link opens Safari or the native app. express.static ignores
+// dotfile paths like /.well-known/ by default, so this needs an explicit
+// route rather than just dropping the file in public/. Scoped narrowly to
+// the sign-in verify link only (not all of /source/*) so this rollout
+// can't change how any other shared SOURCE!/mix link behaves — broader
+// deep-linking can be added here later once this is confirmed working.
+app.get("/.well-known/apple-app-site-association", (req, res) => {
+  res.set("Content-Type", "application/json");
+  res.json({
+    applinks: {
+      apps: [],
+      details: [
+        {
+          appID: "2825K5KDF5.com.newsfor38yearolds.source",
+          paths: ["/api/auth/verify*"],
+        },
+      ],
+    },
+  });
+});
 app.use(express.static(path.join(__dirname, "public")));
 
 function requireAdmin(req, res, next) {

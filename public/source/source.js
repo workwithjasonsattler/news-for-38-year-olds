@@ -43,6 +43,43 @@
   }
 
   // ---------------------------------------------------------------
+  // Capacitor Universal Link handoff — the in-app counterpart to
+  // Android/iOS "open this link in the app instead of the browser".
+  // iOS hands the app the ORIGINAL emailed verify URL (token=..., not
+  // yet exchanged), NOT the server's 302 redirect target, because a
+  // Universal Link is intercepted client-side before any network
+  // request happens. So unlike the plain `?auth_token=` capture below
+  // (used when a plain browser tab follows the real redirect chain),
+  // this path has to call /api/auth/verify itself to exchange the raw
+  // magic-link token for a real session token. Wired up from the
+  // Capacitor App plugin listener registered in DOMContentLoaded,
+  // below — see that block for why this only ever fires natively.
+  // ---------------------------------------------------------------
+  async function handleIncomingAuthUrl(urlString) {
+    let incoming;
+    try { incoming = new URL(urlString); } catch (e) { return; }
+    const sessionToken = incoming.searchParams.get("auth_token");
+    const magicToken = incoming.searchParams.get("token");
+    if (sessionToken) {
+      setToken(sessionToken);
+    } else if (magicToken) {
+      try {
+        const data = await api(`/api/auth/verify?token=${encodeURIComponent(magicToken)}&format=json`);
+        if (data && data.token) setToken(data.token);
+      } catch (e) {
+        toast("That sign-in link didn't work — try requesting a new one.");
+        return;
+      }
+    } else {
+      return; // not an auth-related link, nothing for us to do
+    }
+    await refreshSession();
+    renderActiveTab();
+    renderDesktopSidePanel();
+    toast(currentUser ? `Signed in as ${currentUser.email}` : "That sign-in link didn't work.");
+  }
+
+  // ---------------------------------------------------------------
   // Layout mode — Mobile (bottom tab bar, single column) vs Desktop
   // (top nav, reader pane + feed). Same theme/components either
   // way — this swaps ARRANGEMENT, not color scheme. Defaults to
@@ -3526,6 +3563,23 @@
       const cleanUrl = new URL(location.href);
       cleanUrl.searchParams.delete("auth_token");
       history.replaceState(null, "", cleanUrl.toString());
+    }
+
+    // Capacitor deep-link handoff (native app only — see this file's
+    // Capacitor App plugin bridge, loaded before this script, which is a
+    // no-op outside a native context). Two cases the App plugin covers:
+    // the app was already running and the reader tapped a Universal Link
+    // (appUrlOpen fires), or the tap is what LAUNCHED the app cold
+    // (getLaunchUrl covers that case since appUrlOpen can otherwise fire
+    // before any listener has attached).
+    if (window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform() &&
+        window.Capacitor.Plugins && window.Capacitor.Plugins.App) {
+      window.Capacitor.Plugins.App.addListener("appUrlOpen", (data) => {
+        if (data && data.url) handleIncomingAuthUrl(data.url);
+      });
+      window.Capacitor.Plugins.App.getLaunchUrl()
+        .then((res) => { if (res && res.url) handleIncomingAuthUrl(res.url); })
+        .catch(() => { /* not launched via a URL — nothing to do */ });
     }
 
     document.body.dataset.layout = getLayoutMode();

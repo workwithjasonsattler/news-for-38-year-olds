@@ -1,11 +1,12 @@
-const SHELL_CACHE = "source-app-shell-v31";
-const DATA_CACHE = "source-app-data-v31";
+const SHELL_CACHE = "source-app-shell-v32";
+const DATA_CACHE = "source-app-data-v32";
 
 const SHELL_ASSETS = [
   "/source/",
   "/source/index.html",
   "/source/source.css",
   "/source/source.js",
+  "/source/vendor/capacitor-app-plugin.js",
   "/source/manifest.json",
   "/source/icons/icon-192.png",
   "/source/icons/icon-512.png",
