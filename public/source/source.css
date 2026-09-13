@@ -317,6 +317,21 @@ button { font-family: inherit; cursor: pointer; }
   overflow: hidden;
 }
 
+/* You tab's signed-in email — deliberately NOT .card-title, which
+   clamps at 3 lines/overflow:hidden (built for headline cards, where
+   that's correct). An email has no natural line breaks to clamp
+   against, so on a narrower device a longer address could get visibly
+   chopped instead of wrapping. This wraps freely and never truncates. */
+.you-account-email {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 15px;
+  line-height: 1.35;
+  color: var(--ink);
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
 .card:hover .card-title { color: var(--accent-dim); }
 
 .card-excerpt {
@@ -1223,6 +1238,25 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--alert);
   cursor: pointer;
 }
+/* Shown to a Pack's own owner when a moderator has unlisted it
+   (admin_hidden) — the owner can still see/edit it, it's just not
+   visible in the public directory or cloneable by anyone else right
+   now. See renderManageScreen()'s "edit" branch in source.js. */
+.manage-screen-hidden-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  background: color-mix(in srgb, var(--alert) 8%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--alert) 25%, transparent);
+  border-radius: 10px;
+  font-family: var(--body);
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: var(--ink);
+}
+.manage-screen-hidden-notice strong { color: var(--alert); }
 .tile-sheet-sources {
   display: flex;
   flex-wrap: wrap;

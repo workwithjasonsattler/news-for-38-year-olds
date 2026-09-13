@@ -1839,6 +1839,11 @@
           <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
           <div class="manage-screen-stat">${mix.sources.length} source${mix.sources.length === 1 ? "" : "s"} · ${mix.clone_count || 0} follower${mix.clone_count === 1 ? "" : "s"}</div>
         </div>
+        ${mix.admin_hidden ? `
+        <div class="manage-screen-hidden-notice">
+          <span>🔒</span>
+          <span><strong>Hidden by a moderator.</strong> This Pack is unlisted from the public directory and can't be found or cloned by other readers right now. You can still see and edit it here.</span>
+        </div>` : ""}
         <div class="manage-screen-field">
           <div class="create-flow-label">Name</div>
           <input class="create-flow-input" id="mgRenameInput" value="${escapeHtml(mix.name)}" maxlength="80">
@@ -3439,7 +3444,7 @@
     main.innerHTML = `
       <div class="card">
         <div class="card-meta"><span>SIGNED IN</span><span class="stamp">VERIFIED</span></div>
-        <div class="card-title">${escapeHtml(currentUser.email)}</div>
+        <div class="you-account-email">${escapeHtml(currentUser.email)}</div>
       </div>
       <button class="btn" id="youSignOut" style="margin-top:10px;">SIGN OUT</button>
       <div class="section-label" style="margin-top:22px;">MY SAVES</div>
