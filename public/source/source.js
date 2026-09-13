@@ -80,6 +80,46 @@
   }
 
   // ---------------------------------------------------------------
+  // In-app browser (native Capacitor app only) — the in-app counterpart
+  // to Bluesky/Twitter's own in-app link handling (SFSafariViewController
+  // on iOS, Chrome Custom Tabs on Android): tapping ANY outbound
+  // target="_blank" link opens it in the OS's own secure browser overlay
+  // instead of exiting to the system browser app, then dismisses back
+  // into SOURCE! on close. Deliberately shows the raw third-party page
+  // with no added chrome — this does NOT route through SOURCE!'s own
+  // reader-mode extraction, matching the Bluesky/Twitter precedent and
+  // keeping this a separate, deliberate feature from reader mode.
+  //
+  // Implemented as a single delegated click listener rather than
+  // touching each of the ~30 target="_blank" anchor call sites
+  // individually — safer (nothing to miss or mismatch across a large,
+  // repeated markup pattern) and automatically covers any future
+  // target="_blank" link added anywhere in the app without needing to
+  // remember to wire it up. On plain web/PWA (window.Capacitor absent
+  // or not native), this listener attaches but its native-platform
+  // check always fails, so target="_blank" anchors behave completely
+  // untouched — normal new-tab behavior, zero change.
+  // ---------------------------------------------------------------
+  function isNativeApp() {
+    return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+  }
+
+  function setupInAppBrowserLinkHandling() {
+    document.addEventListener("click", (e) => {
+      if (!isNativeApp()) return; // plain web/PWA: leave target="_blank" behavior untouched
+      if (!(window.Capacitor.Plugins && window.Capacitor.Plugins.Browser)) return; // plugin not available for some reason — fall back to default
+      const link = e.target.closest && e.target.closest('a[target="_blank"]');
+      if (!link || !link.href) return;
+      e.preventDefault();
+      window.Capacitor.Plugins.Browser.open({ url: link.href }).catch(() => {
+        // Fallback if the native Browser plugin call itself fails for
+        // any reason — still let the reader get to the page somehow.
+        window.open(link.href, "_blank", "noopener");
+      });
+    }, true); // capture phase — runs before any other click handler on the link
+  }
+
+  // ---------------------------------------------------------------
   // Layout mode — Mobile (bottom tab bar, single column) vs Desktop
   // (top nav, reader pane + feed). Same theme/components either
   // way — this swaps ARRANGEMENT, not color scheme. Defaults to
@@ -3690,6 +3730,10 @@
         .then((res) => { if (res && res.url) handleIncomingAuthUrl(res.url); })
         .catch(() => { /* not launched via a URL — nothing to do */ });
     }
+
+    // In-app browser (native app only, see helper above) — safe to call
+    // unconditionally, it no-ops immediately on plain web/PWA.
+    setupInAppBrowserLinkHandling();
 
     document.body.dataset.layout = getLayoutMode();
     renderLayoutReview();
