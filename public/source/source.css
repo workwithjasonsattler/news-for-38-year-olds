@@ -989,6 +989,41 @@ button { font-family: inherit; cursor: pointer; }
   margin: 14px 2px 0;
 }
 
+/* Sources tab, desktop — two explicit columns: LEFT = Collections
+   (Packs you build/browse/reorder), RIGHT = Individual sources (add
+   one directly, browse the registry, suggestions). Mobile stays a
+   plain single stacked column (both children are just normal block
+   children in source order, no grid at all — matches every other
+   mobile screen in the app).
+   The `grid-column: 1 / -1` below is load-bearing: without it, this
+   whole wrapper becomes a single item inside #main's own generic
+   Sources/Buzz masonry grid (`body[data-layout="desktop"] #main`,
+   above in this file) and everything inside it renders correctly —
+   but the wrapper itself would only occupy ONE of #main's own
+   columns, wasting the rest of the width. Spanning full width here,
+   then declaring an independent grid *inside* that span, is what
+   replaces the previous bug (the Sources tab's linear content getting
+   silently auto-placed into #main's columns, interleaving headers and
+   boxes) with an intentional two-column design instead of just
+   forcing everything back to one column. */
+.sources-two-col { display: block; }
+body[data-layout="desktop"] #main .sources-two-col {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1.7fr 1fr;
+  gap: 28px;
+  align-items: start;
+}
+.sources-col-left, .sources-col-right { min-width: 0; }
+body[data-layout="desktop"] .sources-col-right {
+  position: sticky;
+  top: 14px;
+}
+body[data-layout="desktop"] .sources-two-col .sources-browse-list {
+  max-height: 340px;
+  overflow-y: auto;
+}
+
 /* Registry rows — the "drill in as deep as possible" list. Each row
    expands in place; the detail always ends at the same "+ Spray"
    picker used from a post, so there's exactly one edit mechanism in

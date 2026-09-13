@@ -2057,35 +2057,50 @@
       officialPacksCache = Array.isArray(officialPacks) ? officialPacks : [];
       publicPacksCache = Array.isArray(publicPacks) ? publicPacks : [];
 
-      // ----- AREA 0: the Sprays shelf — the front door. All official
+      // Sources tab is split into two conceptual groups, laid out side by
+      // side on desktop (.sources-two-col in source.css) and stacked in
+      // source order on mobile (no columns there — mobile is single-
+      // column by definition):
+      //   LEFT  = "Collections" — RSS Packs you build, browse, reorder
+      //   RIGHT = "Individual sources" — add one directly, browse the
+      //           registry, get suggestions
+      // Previously this was one long linear stack. On desktop that
+      // linear markup was silently getting auto-placed into #main's
+      // generic Sources/Buzz masonry grid (each top-level section
+      // landing in alternating columns instead of stacking), producing
+      // real visual overlap. Splitting it into two EXPLICIT, deliberately
+      // designed columns (rather than just forcing single-column) fixes
+      // that bug and puts the desktop width to actual use.
+
+      // ----- LEFT: the Sprays shelf — the front door. All official
       // Packs pinned first (each with its own follow/unfollow toggle,
       // generalized so there can be more than just the one flagship),
       // then the reader's own Sprays, then a "+ New Spray" tile. Tapping
       // any tile opens the SAME detail sheet shape, just with different
       // contents — one interaction pattern for everything. -----
-      let html = `
+      let leftHtml = `
         <div class="sources-area-head">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Your RSS Packs</div>
           <div class="sources-area-sub">Tap any tile to follow, edit, or build something new.</div>
         </div>`;
-      html += renderSpraysShelf(bar, myMixes, officialPacksCache);
+      leftHtml += renderSpraysShelf(bar, myMixes, officialPacksCache);
 
-      // ----- AREA 0.3: Public RSS Packs — made and shared by OTHER
+      // ----- LEFT: Public RSS Packs — made and shared by OTHER
       // readers. Fully browsable/searchable with no account required
       // (GET /api/mixes is already anonymous-safe), distinct from the
       // Official row above and from "Your RSS Packs" (private by
       // default). A small teaser here, "Browse all" opens the full
       // searchable screen. -----
       const teaser = publicPacksCache.slice(0, 3);
-      html += `
+      leftHtml += `
         <div class="sources-area-head" style="margin-top:28px;">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Public RSS Packs</div>
           <div class="sources-area-sub">Made and shared by other readers.</div>
         </div>`;
       if (teaser.length > 0) {
-        html += `<div class="spray-shelf">` + teaser.map(p => `
+        leftHtml += `<div class="spray-shelf">` + teaser.map(p => `
             <button class="spray-tile" data-tile="public" data-slug="${escapeHtml(p.slug)}">
               <span class="spray-tile-icon">🌐</span>
               <span class="spray-tile-name">${escapeHtml(p.name)}</span>
@@ -2097,80 +2112,92 @@
             </button>
           </div>`;
       } else {
-        html += `<button class="btn" id="browsePublicBtn" style="width:100%;">Browse RSS Packs from other readers</button>`;
+        leftHtml += `<button class="btn" id="browsePublicBtn" style="width:100%;">Browse RSS Packs from other readers</button>`;
       }
 
-      // ----- AREA 0.5: quick "Add a feed" — a fast, Spray-free path to
-      // add a single custom RSS URL. POST /api/my/custom-sources has
-      // existed since Super RSS Reader Session 1 and works standalone,
-      // but the only UI that ever called it was buried inside the guided
+      // ----- LEFT: reordering your Read toggle (which Sprays show up as
+      // pills, and in what order) is about managing Packs, same as the
+      // shelf above — belongs in the same column, not with individual
+      // sources. -----
+      if (currentUser) {
+        leftHtml += `<div class="section-label" style="margin-top:28px;">Reading order</div>` + renderYourSpraysSection(bar);
+      } else {
+        leftHtml += `<p class="sources-signin-hint">Sign in (on the You tab) to save and organize your own RSS Packs.</p>`;
+      }
+
+      // ----- RIGHT: quick "Add a feed" — a fast, Pack-free path to add a
+      // single custom RSS URL. POST /api/my/custom-sources has existed
+      // since Super RSS Reader Session 1 and works standalone, but the
+      // only UI that ever called it was buried inside the guided
       // Create-a-Spray flow (name it, pick a topic, add sources, save).
       // Someone who already knows exactly which feed they want shouldn't
-      // have to build a whole Spray around it first — this box adds it
+      // have to build a whole Pack around it first — this box adds it
       // directly to their reading list (custom sources already blend
       // into the unfiltered wire automatically) and offers the Spray
-      // picker as an optional next step, not a required one. -----
-      html += `
-        <div class="sources-area-head" style="margin-top:28px;">
+      // picker as an optional next step, not a required one. Lives in
+      // the RIGHT column, not the left — despite the name, this isn't a
+      // Packs action, it's an individual-source action (see the box's
+      // own copy: "no RSS Pack required"), grouped with Your Sources
+      // below for the same reason. -----
+      let rightHtml = `
+        <div class="sources-area-head">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Add a Feed</div>
           <div class="sources-area-sub">Paste a site, article, or feed URL — we'll find the RSS feed. It starts showing up in your reading list right away, no RSS Pack required.</div>
         </div>`;
       if (currentUser) {
-        html += `
+        rightHtml += `
           <div class="quick-add-feed-row">
             <input type="text" class="create-flow-input" id="quickAddFeedInput" placeholder="https://example.com" style="flex:1;">
             <button class="btn primary" id="quickAddFeedBtn">+ Add</button>
           </div>`;
       } else {
-        html += `<p class="sources-signin-hint">Sign in (on the You tab) to add your own RSS feeds.</p>`;
+        rightHtml += `<p class="sources-signin-hint">Sign in (on the You tab) to add your own RSS feeds.</p>`;
       }
 
-      // ----- AREA 1: registry browsing — now secondary, reached AFTER the
-      // shelf rather than being the front door. Reordering your Read
-      // toggle (which Sprays show up as pills, and in what order) is a
-      // separate concern from the shelf above, so it keeps its own
-      // section rather than being folded in. -----
-      if (currentUser) {
-        html += `<div class="section-label" style="margin-top:28px;">Reading order</div>` + renderYourSpraysSection(bar);
-      } else {
-        html += `<p class="sources-signin-hint">Sign in (on the You tab) to save and organize your own RSS Packs.</p>`;
-      }
-
-      html += `<div class="sources-area-head" style="margin-top:34px;">
+      // ----- RIGHT: registry browsing. On desktop this list gets a
+      // capped height with internal scroll (.sources-browse-list in
+      // source.css) since the sidebar shouldn't grow to match a
+      // 150+-outlet registry — mobile keeps showing the full list
+      // inline, unchanged. -----
+      rightHtml += `<div class="sources-area-head" style="margin-top:28px;">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Your Sources</div>
           <div class="sources-area-sub">Everything you can build an RSS Pack from. Tap one to see where it already lives.</div>
         </div>`;
-      html += `<div class="section-label" style="margin-top:8px;">All sources (${orgSources.length})</div>`;
-      html += `<input class="create-flow-input" id="sourcesBrowseSearch" placeholder="Search sources..." value="${escapeHtml(sourcesBrowseFilter)}" style="margin:8px 0 10px;">`;
+      rightHtml += `<div class="section-label" style="margin-top:8px;">All sources (${orgSources.length})</div>`;
+      rightHtml += `<input class="create-flow-input" id="sourcesBrowseSearch" placeholder="Search sources..." value="${escapeHtml(sourcesBrowseFilter)}" style="margin:8px 0 10px;">`;
 
       const filtered = sourcesBrowseFilter
         ? orgSources.filter(s => (s.outlet || s.name || "").toLowerCase().includes(sourcesBrowseFilter.toLowerCase()))
         : orgSources;
 
-      html += filtered.length === 0
+      rightHtml += filtered.length === 0
         ? `<div class="card"><div class="card-meta">No sources match.</div></div>`
-        : `<div class="card" style="padding:0;">` + filtered.map((s, i) => renderSourceRow(s, i > 0)).join("") + `</div>`;
+        : `<div class="card sources-browse-list" style="padding:0;">` + filtered.map((s, i) => renderSourceRow(s, i > 0)).join("") + `</div>`;
 
-      // ----- AREA 2: Expand Your Mind -----
-      html += `
-        <div class="sources-area-head" style="margin-top:34px;">
+      // ----- RIGHT: Expand Your Mind -----
+      rightHtml += `
+        <div class="sources-area-head" style="margin-top:28px;">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Expand Your Mind</div>
           <div class="sources-area-sub">A few you might like — tap one to add it to an RSS Pack, or start something brand new.</div>
         </div>`;
 
       if (suggestions.length > 0) {
-        html += `<div class="source-suggest-grid">${suggestions.map(s => `
+        rightHtml += `<div class="source-suggest-grid">${suggestions.map(s => `
             <button class="source-suggest-pill" data-outlet="${escapeHtml(s.outlet)}">
               ${escapeHtml(s.outlet)}${s.section ? `<span class="source-suggest-sub">${escapeHtml(s.section)}</span>` : ""}
             </button>`).join("")}
           </div>`;
       }
-      html += `<button class="btn" id="startNewSprayBtn" style="margin-top:14px;width:100%;">+ Start a brand-new RSS Pack</button>`;
+      rightHtml += `<button class="btn" id="startNewSprayBtn" style="margin-top:14px;width:100%;">+ Start a brand-new RSS Pack</button>`;
 
-      main.innerHTML = html;
+      main.innerHTML = `
+        <div class="sources-two-col">
+          <div class="sources-col-left">${leftHtml}</div>
+          <div class="sources-col-right">${rightHtml}</div>
+        </div>`;
 
       wireSpraysShelf();
       wireQuickAddFeed();
