@@ -22,6 +22,27 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- App Links (Android's equivalent of iOS Universal Links).
+                 android:autoVerify="true" tells Android to check
+                 /.well-known/assetlinks.json on the host below before
+                 treating tapped links as belonging to this app; until
+                 that file has a REAL signing-key fingerprint (see the
+                 placeholder in server.mjs's assetlinks.json route),
+                 verification will fail and links will keep opening in
+                 Chrome, same failure mode this is meant to fix. Scoped
+                 narrowly to the sign-in verify link only, matching the
+                 iOS Universal Links scope, so this can't change how any
+                 other shared SOURCE!/mix link behaves. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="news-for-38-year-olds.onrender.com"
+                    android:pathPrefix="/api/auth/verify" />
+            </intent-filter>
+
         </activity>
 
         <provider

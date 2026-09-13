@@ -692,6 +692,42 @@ app.get("/.well-known/apple-app-site-association", (req, res) => {
     },
   });
 });
+// Android's equivalent of the AASA file above (Digital Asset Links /
+// "App Links") — same underlying problem: without this, a tapped
+// magic-link email opens Chrome instead of the native app, and the
+// resulting session never reaches SOURCE!'s webview. Same narrow scope
+// as iOS (sign-in verify link only, via the AndroidManifest intent-filter
+// added alongside this route).
+//
+// *** PLACEHOLDER — NOT YET FUNCTIONAL ***
+// sha256_cert_fingerprints below MUST be replaced with the real SHA-256
+// fingerprint of whatever keystore actually signs the APK, once that
+// keystore exists (it doesn't yet — Android signing keystore generation
+// is still an open launch-checklist item, Jason's own task). Get it via:
+//   keytool -list -v -keystore your-release-key.keystore -alias your-alias
+// (look for "SHA256:" in the output) — or, once uploaded to Play Console,
+// Play Console's own "App signing" page shows Google's re-signed
+// fingerprint directly, which is what actually matters for a Play Store
+// build (Google re-signs release APKs by default). For local Android
+// Studio / emulator testing before that, the DEBUG keystore's own
+// SHA-256 (usually ~/.android/debug.keystore, same `keytool` command)
+// needs to be added here too, or App Links verification will fail on a
+// debug build even once a real release fingerprint is filled in.
+app.get("/.well-known/assetlinks.json", (req, res) => {
+  res.set("Content-Type", "application/json");
+  res.json([
+    {
+      relation: ["delegate_permission/common.handle_all_urls"],
+      target: {
+        namespace: "android_app",
+        package_name: "com.newsfor38yearolds.source",
+        sha256_cert_fingerprints: [
+          "REPLACE_ME_WITH_REAL_SHA256_FINGERPRINT_ONCE_KEYSTORE_EXISTS",
+        ],
+      },
+    },
+  ]);
+});
 app.use(express.static(path.join(__dirname, "public")));
 
 function requireAdmin(req, res, next) {
