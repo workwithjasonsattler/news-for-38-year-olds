@@ -14,6 +14,8 @@ import { randomBytes } from "node:crypto";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import sanitizeHtml from "sanitize-html";
+import dns from "node:dns/promises";
+import net from "node:net";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "letmein";
@@ -1395,6 +1397,194 @@ app.delete("/api/my/custom-sources/:id", async (req, res) => {
   if (!user) return res.status(401).json({ error: "not signed in" });
   await dbRun(`DELETE FROM user_custom_sources WHERE id = ? AND user_id = ?`, [req.params.id, user.id]);
   res.json({ ok: true });
+});
+
+// ---------- Feed Autodiscovery ----------
+// Given ANY url a reader pastes into "+ Add a Feed" (a homepage, an
+// article link, a bare domain, or an actual feed URL), sniff out the
+// feed(s) the site itself advertises via <link rel="alternate"> — the
+// same convention every real RSS reader has always used. This endpoint
+// is read-only and never saves anything; whatever feed URL the reader
+// ends up on (auto-resolved, picked from a list, or pasted directly)
+// still goes through the EXISTING POST /api/my/custom-sources validation
+// (cap, dedupe, live fetch+parse+item-count check) completely unchanged.
+// Per the locked scoping doc: SSRF hygiene is built in from the start,
+// not bolted on later, since this fetches an arbitrary reader-supplied
+// URL server-side.
+const FEED_DISCOVERY_TIMEOUT_MS = 8000;
+const FEED_DISCOVERY_HEAD_SCAN_CAP = 100 * 1024; // bail out after 100KB if no </head> yet — no need to download a whole page to find two <link> tags
+const FEED_DISCOVERY_GUESS_PATHS = ["/feed", "/rss", "/rss.xml", "/atom.xml", "/feed.xml", "/index.xml"];
+
+function isPrivateOrReservedIP(address) {
+  const version = net.isIP(address);
+  if (version === 4) {
+    const parts = address.split(".").map(Number);
+    if (parts[0] === 0) return true; // "this network"
+    if (parts[0] === 10) return true; // 10.0.0.0/8
+    if (parts[0] === 127) return true; // loopback
+    if (parts[0] === 169 && parts[1] === 254) return true; // link-local
+    if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true; // 172.16.0.0/12
+    if (parts[0] === 192 && parts[1] === 168) return true; // 192.168.0.0/16
+    return false;
+  }
+  if (version === 6) {
+    const lower = address.toLowerCase();
+    if (lower === "::1") return true; // loopback
+    if (lower === "::") return true; // unspecified
+    if (lower.startsWith("fe80:")) return true; // link-local
+    if (lower.startsWith("fc") || lower.startsWith("fd")) return true; // unique local, fc00::/7
+    if (lower.startsWith("::ffff:")) {
+      // IPv4-mapped IPv6 — recheck the embedded v4 address
+      const v4 = lower.split(":").pop();
+      if (v4 && v4.includes(".")) return isPrivateOrReservedIP(v4);
+    }
+    return false;
+  }
+  return true; // couldn't parse — block rather than risk it
+}
+
+// Resolves the hostname first and rejects anything pointed at a private/
+// loopback/link-local range BEFORE fetching, so this can't be used to probe
+// Render's own internal network or other services on the same host.
+async function fetchWithSSRFGuard(url, { timeoutMs = FEED_DISCOVERY_TIMEOUT_MS } = {}) {
+  const parsed = new URL(url);
+  if (!/^https?:$/.test(parsed.protocol)) throw new Error("Only http/https URLs are supported.");
+
+  let addresses;
+  try {
+    addresses = await dns.lookup(parsed.hostname, { all: true });
+  } catch {
+    throw new Error("Couldn't resolve that host.");
+  }
+  if (addresses.length === 0 || addresses.some((a) => isPrivateOrReservedIP(a.address))) {
+    throw new Error("That host isn't reachable.");
+  }
+
+  return fetch(url, {
+    headers: { "User-Agent": "n38-cms/1.0 (+https://news-for-38-year-olds.onrender.com)" },
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+}
+
+// Reads at most `capBytes` off a fetch Response body — enough to find
+// </head> without downloading an entire multi-MB page.
+async function readCappedText(resp, capBytes) {
+  const reader = resp.body.getReader();
+  const chunks = [];
+  let received = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      received += value.length;
+      if (received >= capBytes) {
+        reader.cancel().catch(() => {});
+        break;
+      }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch {}
+  }
+  return Buffer.concat(chunks.map((c) => Buffer.from(c))).toString("utf8");
+}
+
+function decodeEntities(str = "") {
+  return str.replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'").replace(/&#8217;|&rsquo;/g, "'")
+    .replace(/&#8220;|&#8221;|&ldquo;|&rdquo;/g, '"').trim();
+}
+
+// Parses <head> (or the capped chunk, if </head> never arrived) for
+// <link rel="alternate" type="application/rss+xml|atom+xml"> tags.
+function extractFeedLinksFromHtml(html, baseUrl) {
+  const headMatch = html.match(/<head[^>]*>([\s\S]*?)<\/head>/i);
+  const scope = headMatch ? headMatch[1] : html;
+  const linkTags = scope.match(/<link\b[^>]*>/gi) || [];
+
+  const candidates = [];
+  const seen = new Set();
+  for (const tag of linkTags) {
+    const relMatch = tag.match(/\brel\s*=\s*["']([^"']+)["']/i);
+    const typeMatch = tag.match(/\btype\s*=\s*["']([^"']+)["']/i);
+    const hrefMatch = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i);
+    const titleMatch = tag.match(/\btitle\s*=\s*["']([^"']+)["']/i);
+    if (!relMatch || !hrefMatch) continue;
+    if (!/(^|\s)alternate(\s|$)/i.test(relMatch[1])) continue;
+    const type = (typeMatch?.[1] || "").toLowerCase();
+    if (!/rss\+xml|atom\+xml/.test(type)) continue;
+
+    let href;
+    try { href = new URL(hrefMatch[1], baseUrl).toString(); } catch { continue; }
+    if (seen.has(href)) continue;
+    seen.add(href);
+    candidates.push({ title: titleMatch ? decodeEntities(titleMatch[1]) : null, url: href });
+  }
+  return candidates;
+}
+
+// Fallback for sites that don't advertise a <link rel="alternate"> at all —
+// try the handful of paths every common CMS/blog platform tends to use.
+async function tryGuessedFeedPaths(pageUrl) {
+  let origin;
+  try { origin = new URL(pageUrl).origin; } catch { return []; }
+
+  const found = [];
+  for (const guessPath of FEED_DISCOVERY_GUESS_PATHS) {
+    const candidateUrl = origin + guessPath;
+    try {
+      const resp = await fetchWithSSRFGuard(candidateUrl, { timeoutMs: 5000 });
+      if (!resp.ok) continue;
+      const text = await resp.text();
+      const parsed = xmlParser.parse(text);
+      const items = extractItems(parsed).filter((it) => it.title && it.link);
+      if (items.length > 0) found.push({ title: null, url: candidateUrl });
+    } catch {
+      continue; // a guessed path failing is expected most of the time, not an error
+    }
+  }
+  return found;
+}
+
+app.post("/api/feed-discovery", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+
+  let input = String(req.body?.url || "").trim();
+  if (!input) return res.status(400).json({ error: "A URL is required." });
+  if (!/^https?:\/\//i.test(input)) input = `https://${input}`; // bare domain -> assume https
+
+  let parsedInput;
+  try { parsedInput = new URL(input); } catch { return res.status(400).json({ error: "That doesn't look like a valid URL." }); }
+  if (!/^https?:$/.test(parsedInput.protocol)) return res.status(400).json({ error: "Only http/https URLs are supported." });
+
+  // Easy case first, per the locked scoping doc: if this already looks like
+  // a direct feed URL by extension, don't slow it down with a discovery
+  // round-trip — hand it straight back so the frontend can go straight to
+  // the existing POST /api/my/custom-sources add flow.
+  if (/\.(xml|rss|atom)(\?.*)?$/i.test(parsedInput.pathname)) {
+    return res.json({ candidates: [{ title: null, url: input }], sourceUrlWasAlreadyAFeed: true });
+  }
+
+  try {
+    const resp = await fetchWithSSRFGuard(input);
+    if (!resp.ok) return res.status(400).json({ error: `Couldn't reach that URL (HTTP ${resp.status}).` });
+
+    const contentType = (resp.headers.get("content-type") || "").toLowerCase();
+    if (/rss\+xml|atom\+xml/.test(contentType)) {
+      // Content-Type says this is already a feed — same fast path as the extension check above.
+      return res.json({ candidates: [{ title: null, url: input }], sourceUrlWasAlreadyAFeed: true });
+    }
+
+    const html = await readCappedText(resp, FEED_DISCOVERY_HEAD_SCAN_CAP);
+    let candidates = extractFeedLinksFromHtml(html, input);
+    if (candidates.length === 0) candidates = await tryGuessedFeedPaths(input);
+
+    res.json({ candidates, sourceUrlWasAlreadyAFeed: false });
+  } catch (err) {
+    console.error(`[feed-discovery] failed for ${input}: ${err.message}`);
+    res.status(400).json({ error: "Couldn't check that URL — try pasting the feed URL directly instead." });
+  }
 });
 
 // ---------- Super RSS Reader, Session 2: Mixes ----------

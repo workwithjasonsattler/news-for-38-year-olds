@@ -688,6 +688,36 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink);
 }
 
+/* Feed discovery picker — reuses .spray-picker-overlay/.spray-picker-card
+   as its shell (see openFeedDiscoveryPicker() in source.js), just with a
+   radio-select list instead of checkboxes. */
+.feed-discovery-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.feed-discovery-row-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feed-discovery-row-url {
+  font-family: var(--data);
+  font-size: 11px;
+  color: var(--ink-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.feed-discovery-row input[type="radio"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+}
+
 /* Quick "Add a Feed" row on the Sources tab — a fast, Spray-free way to
    add a single custom RSS URL, sitting right under the Sprays shelf. */
 .quick-add-feed-row {

@@ -2069,12 +2069,12 @@
         <div class="sources-area-head" style="margin-top:28px;">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Add a Feed</div>
-          <div class="sources-area-sub">Paste an RSS URL — it starts showing up in your reading list right away, no RSS Pack required.</div>
+          <div class="sources-area-sub">Paste a site, article, or feed URL — we'll find the RSS feed. It starts showing up in your reading list right away, no RSS Pack required.</div>
         </div>`;
       if (currentUser) {
         html += `
           <div class="quick-add-feed-row">
-            <input type="text" class="create-flow-input" id="quickAddFeedInput" placeholder="https://example.com/feed" style="flex:1;">
+            <input type="text" class="create-flow-input" id="quickAddFeedInput" placeholder="https://example.com" style="flex:1;">
             <button class="btn primary" id="quickAddFeedBtn">+ Add</button>
           </div>`;
       } else {
@@ -2155,26 +2155,130 @@
     });
   }
 
+  // Entry point for the Sources tab's "+ Add a Feed" box. Accepts a bare
+  // domain, a homepage URL, an article URL, or a direct feed URL — figures
+  // out which one it got. A URL that already looks like a direct feed (by
+  // extension) skips straight to the existing add flow, no discovery
+  // round-trip needed; everything else goes through POST /api/feed-discovery
+  // first. Whatever feed URL is eventually chosen still goes through the
+  // exact same POST /api/my/custom-sources validation either way.
   async function quickAddFeed(input, btn) {
     const value = input.value.trim();
-    if (!value) { toast("Paste an RSS URL first."); return; }
-    if (!/^https?:\/\//i.test(value)) { toast("That doesn't look like a URL — paste the full feed link."); return; }
+    if (!value) { toast("Paste a site or feed URL first."); return; }
+
+    if (/\.(xml|rss|atom)(\?.*)?$/i.test(value)) {
+      await addCustomSourceDirect(value, input, btn);
+      return;
+    }
+
     btn.disabled = true;
     input.disabled = true;
     try {
-      const created = await api("/api/my/custom-sources", { method: "POST", body: JSON.stringify({ feed_url: value }) });
-      input.value = "";
-      toast(`"${created.name || value}" added — it's already in your reading list.`);
-      // Optional next step, not required: offer to fold it straight into
-      // an existing Spray (or start a new one) via the same picker every
-      // other "+ Spray" entry point in the app already uses.
-      openSprayPicker({ source_type: "custom", custom_source_id: created.id, label: created.name || value });
+      const result = await api("/api/feed-discovery", { method: "POST", body: JSON.stringify({ url: value }) });
+      if (result.sourceUrlWasAlreadyAFeed) {
+        await addCustomSourceDirect((result.candidates[0] || {}).url || value, input, btn);
+        return;
+      }
+      if (!result.candidates || result.candidates.length === 0) {
+        toast("Couldn't find a feed there automatically — try pasting the direct RSS feed URL instead.");
+        return;
+      }
+      openFeedDiscoveryPicker(result.candidates, input);
     } catch (e) {
-      toast(e.message || "Couldn't add that feed.");
+      toast(e.message || "Couldn't check that URL — try pasting the direct feed URL instead.");
     } finally {
       btn.disabled = false;
       input.disabled = false;
     }
+  }
+
+  // The actual save step, shared by: a URL that already looked like a feed,
+  // a discovery result with exactly one candidate, and a candidate the
+  // reader picked from the discovery picker's list.
+  async function addCustomSourceDirect(feedUrl, input, btn) {
+    if (btn) btn.disabled = true;
+    if (input) input.disabled = true;
+    try {
+      const created = await api("/api/my/custom-sources", { method: "POST", body: JSON.stringify({ feed_url: feedUrl }) });
+      if (input) input.value = "";
+      toast(`"${created.name || feedUrl}" added — it's already in your reading list.`);
+      // Optional next step, not required: offer to fold it straight into
+      // an existing Spray (or start a new one) via the same picker every
+      // other "+ Spray" entry point in the app already uses.
+      openSprayPicker({ source_type: "custom", custom_source_id: created.id, label: created.name || feedUrl });
+    } catch (e) {
+      toast(e.message || "Couldn't add that feed.");
+    } finally {
+      if (btn) btn.disabled = false;
+      if (input) input.disabled = false;
+    }
+  }
+
+  // ----- Feed discovery picker — shown when a pasted site/article URL
+  // resolves to one or more candidate feeds. Always shows what was found
+  // before adding anything (even for a single candidate) rather than
+  // silently auto-adding, per the locked scoping doc. Reuses the same
+  // .spray-picker-overlay/.spray-picker-card modal shell as openSprayPicker
+  // above — same bottom-sheet shape, different contents inside. -----
+  let feedDiscoveryCandidates = null;
+  let feedDiscoverySelected = null;
+  let feedDiscoveryInputEl = null;
+
+  function openFeedDiscoveryPicker(candidates, inputEl) {
+    feedDiscoveryCandidates = candidates;
+    feedDiscoverySelected = candidates[0]?.url || null; // pre-select when there's just one, still shown rather than auto-added
+    feedDiscoveryInputEl = inputEl || null;
+    renderFeedDiscoveryPicker();
+  }
+
+  function closeFeedDiscoveryPicker() {
+    const el = document.getElementById("feedDiscoveryOverlay");
+    if (el) el.remove();
+    feedDiscoveryCandidates = null;
+    feedDiscoverySelected = null;
+    feedDiscoveryInputEl = null;
+  }
+
+  function renderFeedDiscoveryPicker() {
+    let el = document.getElementById("feedDiscoveryOverlay");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "feedDiscoveryOverlay";
+      el.className = "spray-picker-overlay";
+      document.body.appendChild(el);
+      el.addEventListener("click", (e) => { if (e.target === el) closeFeedDiscoveryPicker(); });
+    }
+    if (!feedDiscoveryCandidates) return;
+    const count = feedDiscoveryCandidates.length;
+    const list = feedDiscoveryCandidates.map(c => `
+      <label class="spray-picker-row feed-discovery-row">
+        <input type="radio" name="feedDiscoveryChoice" value="${escapeHtml(c.url)}" ${feedDiscoverySelected === c.url ? "checked" : ""}>
+        <span class="feed-discovery-row-text">
+          <span class="feed-discovery-row-title">${escapeHtml(c.title || c.url)}</span>
+          ${c.title ? `<span class="feed-discovery-row-url">${escapeHtml(c.url)}</span>` : ""}
+        </span>
+      </label>`).join("");
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span>${count === 1 ? "Found a feed" : `Found ${count} feeds`}</span>
+          <button class="spray-picker-close" id="feedDiscoveryClose" aria-label="Close">×</button>
+        </div>
+        <p class="spray-picker-sub">${count === 1 ? "This is what we found on that page." : "That page links more than one feed — pick the one you want to follow."}</p>
+        <div class="spray-picker-list">${list}</div>
+        <button class="btn primary" id="feedDiscoveryAddBtn" style="width:100%; margin-top:12px;">+ Add this feed</button>
+      </div>`;
+    document.getElementById("feedDiscoveryClose").addEventListener("click", closeFeedDiscoveryPicker);
+    el.querySelectorAll('input[name="feedDiscoveryChoice"]').forEach(radio => {
+      radio.addEventListener("change", () => { feedDiscoverySelected = radio.value; });
+    });
+    document.getElementById("feedDiscoveryAddBtn").addEventListener("click", async () => {
+      if (!feedDiscoverySelected) { toast("Pick a feed first."); return; }
+      const chosen = feedDiscoverySelected;
+      const inputEl = feedDiscoveryInputEl;
+      closeFeedDiscoveryPicker();
+      await addCustomSourceDirect(chosen, inputEl, null);
+    });
   }
 
   // A single row in the searchable registry list. Tapping it toggles an
