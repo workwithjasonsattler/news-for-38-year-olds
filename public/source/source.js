@@ -1762,7 +1762,7 @@
     if (!browseState) return;
     main.innerHTML = `
       <button class="btn" id="browseBack" style="margin-bottom:14px;">‹ Back to Sources</button>
-      <h2 class="manage-screen-title">Public RSS Packs</h2>
+      <h2 class="manage-screen-title">Top RSS Packs</h2>
       <div class="manage-screen-stat" style="margin-bottom:12px;">Made and shared by other readers — follow one into your Read toggle, or copy it to make it your own.</div>
       <input class="create-flow-input" id="browseSearchInput" placeholder="Search by name or place…" style="margin-bottom:14px;">
       <div id="browseResults"></div>`;
@@ -2096,7 +2096,7 @@
       leftHtml += `
         <div class="sources-area-head" style="margin-top:28px;">
           <div class="sources-area-rule"></div>
-          <div class="sources-area-title">Public RSS Packs</div>
+          <div class="sources-area-title">Top RSS Packs</div>
           <div class="sources-area-sub">Made and shared by other readers.</div>
         </div>`;
       if (teaser.length > 0) {
