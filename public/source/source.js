@@ -1761,11 +1761,13 @@
     const main = document.getElementById("main");
     if (!browseState) return;
     main.innerHTML = `
+      <div class="source-single-col-screen">
       <button class="btn" id="browseBack" style="margin-bottom:14px;">‹ Back to Sources</button>
       <h2 class="manage-screen-title">Top RSS Packs</h2>
       <div class="manage-screen-stat" style="margin-bottom:12px;">Made and shared by other readers — follow one into your Read toggle, or copy it to make it your own.</div>
       <input class="create-flow-input" id="browseSearchInput" placeholder="Search by name or place…" style="margin-bottom:14px;">
-      <div id="browseResults"></div>`;
+      <div id="browseResults"></div>
+      </div>`;
     document.getElementById("browseBack").addEventListener("click", closeBrowseScreen);
     const searchInput = document.getElementById("browseSearchInput");
     searchInput.value = browseState.query;
@@ -1820,8 +1822,8 @@
     if (!manageState) return;
 
     if (manageState.loading || !manageState.data) {
-      main.innerHTML = `<button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back to Sources</button>` +
-        stateBlock({ title: "LOADING", body: "Just a moment...", spin: true });
+      main.innerHTML = `<div class="source-single-col-screen"><button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back to Sources</button>` +
+        stateBlock({ title: "LOADING", body: "Just a moment...", spin: true }) + `</div>`;
       document.getElementById("mgBack").addEventListener("click", closeManageScreen);
       return;
     }
@@ -1903,7 +1905,7 @@
         <button class="tile-sheet-delete" id="mgDeleteBtn">Delete this RSS Pack</button>`;
     }
 
-    main.innerHTML = `<button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back to Sources</button>` + body;
+    main.innerHTML = `<div class="source-single-col-screen"><button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back to Sources</button>` + body + `</div>`;
     document.getElementById("mgBack").addEventListener("click", closeManageScreen);
 
     if (manageState.view === "headlines" || manageState.view === "view") {
@@ -2883,6 +2885,7 @@
           </div>`).join("");
 
     main.innerHTML = `
+      <div class="source-single-col-screen">
       <button class="btn" id="cfBack" style="margin-bottom:14px;">‹ Back</button>
 
       <div class="create-flow-step">
@@ -2920,6 +2923,7 @@
       </div>
 
       <button class="btn primary" id="cfSave" style="width:100%; margin-top:6px;">Save RSS Pack</button>
+      </div>
     `;
 
     document.getElementById("cfBack").addEventListener("click", closeCreateFlow);
@@ -3360,7 +3364,7 @@
       return;
     }
 
-    let html = "";
+    let html = `<div class="source-single-col-screen">`;
     if (actions.length > 0) {
       html += `<div class="section-label">WHAT YOU CAN DO</div>` + renderActionsSection(actions);
     }
@@ -3371,6 +3375,7 @@
       const scrollMode = getReadDisplay() === "scroll";
       html += `<div class="section-label">TRENDING ON BLUESKY</div>` + posts.slice(0, 40).map(p => renderBluePost(p, scrollMode ? "card-scroll-post" : "")).join("");
     }
+    html += `</div>`;
     main.innerHTML = html;
 
     const actionsToggle = document.getElementById("actionsExpandToggle");
@@ -3474,6 +3479,7 @@
     await refreshSession();
     if (!currentUser) {
       main.innerHTML = `
+        <div class="source-single-col-screen">
         <div class="card">
           <div class="card-meta"><span>ACCESS</span></div>
           <div class="card-title" style="margin-bottom:10px;">Sign in to save your RSS Packs across devices.</div>
@@ -3483,7 +3489,8 @@
           ${isStandaloneApp() ? `<p style="font-size:12.5px; color: var(--ink-muted); margin-top:10px;">Heads up: on an installed/Home-Screen app, the sign-in link opens in your regular browser, not this app — you'll need to sign in there for now. We're working on fixing this for the installed app.</p>` : ""}
         </div>
         <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:14px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>
-        <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; margin-top:6px; font-size:13px; color: var(--ink-muted);">Support</a>`;
+        <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; margin-top:6px; font-size:13px; color: var(--ink-muted);">Support</a>
+        </div>`;
       document.getElementById("youSendLink").addEventListener("click", async () => {
         const email = document.getElementById("youEmail").value.trim();
         if (!email) return;
@@ -3509,6 +3516,7 @@
     }
 
     main.innerHTML = `
+      <div class="source-single-col-screen">
       <div class="card">
         <div class="card-meta"><span>SIGNED IN</span><span class="stamp">VERIFIED</span></div>
         <div class="you-account-email">${escapeHtml(currentUser.email)}</div>
@@ -3522,6 +3530,7 @@
       <button class="btn" id="youDeleteAccount" style="margin-top:8px; border-color: var(--alert); color: var(--alert);">Delete my account</button>
       <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:22px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>
       <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; margin-top:6px; font-size:13px; color: var(--ink-muted);">Support</a>
+      </div>
     `;
     document.getElementById("youSignOut").addEventListener("click", async () => {
       try { await api("/api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
@@ -3698,16 +3707,17 @@
   // for its own shareable links.
   async function renderPublicSaves(slug) {
     const main = document.getElementById("main");
-    main.innerHTML = `<div class="card"><div class="card-meta">Loading saved items…</div></div>`;
+    main.innerHTML = `<div class="source-single-col-screen"><div class="card"><div class="card-meta">Loading saved items…</div></div></div>`;
     let data;
     try {
       data = await api(`/api/saves/${encodeURIComponent(slug)}`);
     } catch (e) {
-      main.innerHTML = `<div class="card"><div class="card-meta">This save list isn't public (or doesn't exist).</div></div>`;
+      main.innerHTML = `<div class="source-single-col-screen"><div class="card"><div class="card-meta">This save list isn't public (or doesn't exist).</div></div></div>`;
       return;
     }
     const items = data.items || [];
     main.innerHTML = `
+      <div class="source-single-col-screen">
       <div class="section-label">SHARED SAVES</div>
       <div class="section-sub">${items.length} item${items.length === 1 ? "" : "s"} someone chose to keep — read-only, not an RSS Pack.</div>
       ${items.length === 0
@@ -3720,7 +3730,8 @@
               ${it.excerpt ? `<div class="card-excerpt">${escapeHtml(it.excerpt)}</div>` : ""}
             </a>
           </div>`).join("")}
-      <a href="/source/" class="ob-whats-this" style="display:block; margin-top:16px;">← Back to SOURCE!</a>`;
+      <a href="/source/" class="ob-whats-this" style="display:block; margin-top:16px;">← Back to SOURCE!</a>
+      </div>`;
   }
 
   document.addEventListener("DOMContentLoaded", async () => {

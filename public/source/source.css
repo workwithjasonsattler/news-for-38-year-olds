@@ -989,6 +989,27 @@ button { font-family: inherit; cursor: pointer; }
   margin: 14px 2px 0;
 }
 
+/* Shared escape hatch for every OTHER single-column, linear screen that
+   lives inside #main: the Create-a-Pack flow, Manage/Browse-a-Pack
+   screens, the Buzz tab, the You tab, and the public shared-saves view.
+   All of these are a plain top-to-bottom stack of sections (a header,
+   a form field, a list...) — none of them are card-grid content. Same
+   underlying bug as .sources-two-col above: without grid-column: 1/-1,
+   #main's own generic Sources/Buzz masonry grid auto-places each of
+   these sections into alternating columns, interleaving headers and
+   fields instead of stacking them. This wrapper spans full width (so
+   the bug can't happen) and caps its own max-width (so a plain form
+   doesn't stretch edge-to-edge on a very wide desktop window, which
+   would look worse than the bug it replaces). Mobile: plain block,
+   full width, no special treatment — matches every other mobile
+   screen. */
+.source-single-col-screen { display: block; }
+body[data-layout="desktop"] #main .source-single-col-screen {
+  grid-column: 1 / -1;
+  max-width: 640px;
+  margin: 0 auto;
+}
+
 /* Sources tab, desktop — two explicit columns: LEFT = Collections
    (Packs you build/browse/reorder), RIGHT = Individual sources (add
    one directly, browse the registry, suggestions). Mobile stays a
