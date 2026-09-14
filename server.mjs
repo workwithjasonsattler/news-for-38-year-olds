@@ -378,8 +378,24 @@ async function initSchema() {
     // every public surface (directory, RSS, view, clone) without deleting
     // it outright — a softer takedown than DELETE /api/admin/mixes/:slug.
     `ALTER TABLE feed_mixes ADD COLUMN admin_hidden INTEGER NOT NULL DEFAULT 0`,
+    // featured/featured_order power editorial curation of "Top RSS Packs"
+    // (the public directory of OTHER readers' Packs) — distinct from
+    // is_official, which is for Packs pinned to the front of a reader's
+    // OWN shelf. A featured Pack sorts first in both the directory
+    // (GET /api/mixes) and the Sources tab teaser, in featured_order,
+    // before the normal clone-count ranking takes over for the rest.
+    `ALTER TABLE feed_mixes ADD COLUMN featured INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE feed_mixes ADD COLUMN featured_order INTEGER`,
     `ALTER TABLE topics ADD COLUMN category TEXT`,
     `ALTER TABLE users ADD COLUMN last_active_at TEXT`,
+    // is_corporate/parent_company: an admin-curated transparency marker
+    // ("no algorithm you can't see" extends to ownership, not just
+    // ordering) — shown as a small marker next to an outlet's name
+    // wherever it appears, with parent_company available for a tooltip.
+    // Purely informational, never affects ordering or eligibility for
+    // any Pack/Sources surface.
+    `ALTER TABLE feeds ADD COLUMN is_corporate INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE feeds ADD COLUMN parent_company TEXT`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
   }
@@ -2867,10 +2883,10 @@ app.get("/api/mixes", async (req, res) => {
   }
 
   const rows = await dbAll(
-    `SELECT fm.slug, fm.name, fm.location_label, fm.created_at, fm.clone_count
+    `SELECT fm.slug, fm.name, fm.location_label, fm.created_at, fm.clone_count, fm.featured
      FROM feed_mixes fm
      WHERE ${conditions.join(" AND ")}
-     ORDER BY fm.clone_count DESC, fm.created_at DESC
+     ORDER BY fm.featured DESC, fm.featured_order ASC, fm.clone_count DESC, fm.created_at DESC
      LIMIT 60`,
     params
   );
@@ -2878,6 +2894,7 @@ app.get("/api/mixes", async (req, res) => {
   // one extra query per result page rather than a join that would
   // duplicate rows per topic. 60-row cap keeps this cheap.
   for (const row of rows) {
+    row.featured = !!row.featured;
     row.topics = await dbAll(
       `SELECT t.name, t.slug, t.category FROM feed_mix_topics fmt JOIN topics t ON t.id = fmt.topic_id WHERE fmt.mix_id = (SELECT id FROM feed_mixes WHERE slug = ?)`,
       [row.slug]
@@ -3045,15 +3062,17 @@ app.get("/api/admin/mixes/public", requireAdmin, async (req, res) => {
   const params = [];
   if (q) { conditions.push(`fm.name LIKE ?`); params.push(`%${q}%`); }
   const rows = await dbAll(
-    `SELECT fm.id, fm.slug, fm.name, fm.location_label, fm.clone_count, fm.admin_hidden, fm.created_at, u.email AS creator_email
+    `SELECT fm.id, fm.slug, fm.name, fm.location_label, fm.clone_count, fm.admin_hidden, fm.featured, fm.featured_order, fm.created_at, u.email AS creator_email
      FROM feed_mixes fm LEFT JOIN users u ON u.id = fm.creator_user_id
      WHERE ${conditions.join(" AND ")}
-     ORDER BY fm.created_at DESC LIMIT 200`,
+     ORDER BY fm.featured DESC, fm.featured_order ASC, fm.created_at DESC
+     LIMIT 200`,
     params
   );
   for (const row of rows) {
     row.source_count = (await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [row.id])).n;
     row.admin_hidden = !!row.admin_hidden;
+    row.featured = !!row.featured;
   }
   res.json(rows);
 });
@@ -3064,6 +3083,43 @@ app.post("/api/admin/mixes/:slug/toggle-hidden", requireAdmin, async (req, res) 
   const next = mix.admin_hidden ? 0 : 1;
   await dbRun(`UPDATE feed_mixes SET admin_hidden = ? WHERE id = ?`, [next, mix.id]);
   res.json({ ok: true, admin_hidden: !!next });
+});
+
+// Editorial curation of "Top RSS Packs" (the public directory of OTHER
+// readers' Packs) — distinct from is_official, which pins a Pack to the
+// front of a reader's OWN shelf. Turning featured ON assigns the next
+// available featured_order (pushed to the end of the current featured
+// list, admin reorders from there); turning it OFF just clears the flag,
+// the stale featured_order left behind is harmless since it's never read
+// for a non-featured row.
+app.post("/api/admin/mixes/:slug/toggle-featured", requireAdmin, async (req, res) => {
+  const mix = await dbGet(`SELECT id, featured FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix) return res.status(404).json({ error: "Pack not found" });
+  const next = mix.featured ? 0 : 1;
+  if (next) {
+    const maxOrder = await dbGet(`SELECT MAX(featured_order) AS m FROM feed_mixes WHERE featured = 1`);
+    await dbRun(`UPDATE feed_mixes SET featured = 1, featured_order = ? WHERE id = ?`, [(maxOrder.m ?? -1) + 1, mix.id]);
+  } else {
+    await dbRun(`UPDATE feed_mixes SET featured = 0 WHERE id = ?`, [mix.id]);
+  }
+  res.json({ ok: true, featured: !!next });
+});
+
+// Swap featured_order with the adjacent featured Pack — same "move
+// up/down" shape as any simple admin-curated ordered list, no drag-and-
+// drop needed for what's expected to be a short, hand-picked shelf.
+app.post("/api/admin/mixes/:slug/featured-move", requireAdmin, async (req, res) => {
+  const { direction } = req.body || {};
+  if (direction !== "up" && direction !== "down") return res.status(400).json({ error: "direction must be 'up' or 'down'" });
+  const mix = await dbGet(`SELECT id, featured, featured_order FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix || !mix.featured) return res.status(404).json({ error: "Not a featured Pack" });
+  const neighbor = direction === "up"
+    ? await dbGet(`SELECT id, featured_order FROM feed_mixes WHERE featured = 1 AND featured_order < ? ORDER BY featured_order DESC LIMIT 1`, [mix.featured_order])
+    : await dbGet(`SELECT id, featured_order FROM feed_mixes WHERE featured = 1 AND featured_order > ? ORDER BY featured_order ASC LIMIT 1`, [mix.featured_order]);
+  if (!neighbor) return res.json({ ok: true }); // already at the end, nothing to swap
+  await dbRun(`UPDATE feed_mixes SET featured_order = ? WHERE id = ?`, [neighbor.featured_order, mix.id]);
+  await dbRun(`UPDATE feed_mixes SET featured_order = ? WHERE id = ?`, [mix.featured_order, neighbor.id]);
+  res.json({ ok: true });
 });
 
 app.post("/api/login", (req, res) => {
@@ -3314,8 +3370,9 @@ app.get("/api/dispatches/paywall", async (req, res) => {
 
 app.get("/api/sources", async (req, res) => {
   const rows = await dbAll(
-    `SELECT outlet, default_author, subscribe_url, tip_url, feed_url, bluesky_handle, feed_type FROM feeds WHERE submission_status = 'approved' ORDER BY outlet ASC`
+    `SELECT outlet, default_author, subscribe_url, tip_url, feed_url, bluesky_handle, feed_type, is_corporate, parent_company FROM feeds WHERE submission_status = 'approved' ORDER BY outlet ASC`
   );
+  for (const row of rows) row.is_corporate = !!row.is_corporate;
   res.json(rows);
 });
 
@@ -4546,7 +4603,7 @@ app.get("/api/feeds", requireAdmin, async (req, res) => {
 });
 
 app.post("/api/feeds", requireAdmin, async (req, res) => {
-  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type, youtube_channel_id } = req.body;
+  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, is_corporate, parent_company } = req.body;
   const handle = normalizeHandle(bluesky_handle);
   const ytChannel = normalizeYoutubeChannel(youtube_channel_id);
   const type = normalizeFeedType(feed_type);
@@ -4555,9 +4612,9 @@ app.post("/api/feeds", requireAdmin, async (req, res) => {
   if (type === "outlet" && !feed_url && !handle && !ytChannel) return res.status(400).json({ error: "outlet is required, and either feed_url, bluesky_handle, or youtube_channel_id" });
   try {
     const info = await dbRun(
-      `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status)
-       VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, 'approved')`,
-      [outlet, default_author || "", type === "journalist" ? null : (feed_url || null), tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle, type, ytChannel || null]
+      `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status, is_corporate, parent_company)
+       VALUES (?, ?, ?, ?, ?, ?, '{}', ?, ?, ?, ?, 'approved', ?, ?)`,
+      [outlet, default_author || "", type === "journalist" ? null : (feed_url || null), tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle, type, ytChannel || null, is_corporate ? 1 : 0, parent_company || null]
     );
     res.json({ id: info.lastInsertRowid });
   } catch (err) {
@@ -4603,7 +4660,7 @@ app.post("/api/feeds/bulk", requireAdmin, async (req, res) => {
 });
 
 app.put("/api/feeds/:id", requireAdmin, async (req, res) => {
-  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type, youtube_channel_id } = req.body;
+  const { outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, is_corporate, parent_company } = req.body;
   const handle = normalizeHandle(bluesky_handle);
   const ytChannel = normalizeYoutubeChannel(youtube_channel_id);
   const type = normalizeFeedType(feed_type);
@@ -4614,9 +4671,9 @@ app.put("/api/feeds/:id", requireAdmin, async (req, res) => {
     // An admin editing/saving a feed doubles as the approval action for a
     // pending reader-submitted channel — no separate step needed.
     await dbRun(
-      `UPDATE feeds SET outlet=?, default_author=?, feed_url=?, tip_url=?, subscribe_url=?, fallback_beat=?, items_per_feed=?, bluesky_handle=?, feed_type=?, youtube_channel_id=?, submission_status='approved'
+      `UPDATE feeds SET outlet=?, default_author=?, feed_url=?, tip_url=?, subscribe_url=?, fallback_beat=?, items_per_feed=?, bluesky_handle=?, feed_type=?, youtube_channel_id=?, submission_status='approved', is_corporate=?, parent_company=?
        WHERE id=?`,
-      [outlet, default_author || "", type === "journalist" ? null : (feed_url || null), tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle, type, ytChannel || null, req.params.id]
+      [outlet, default_author || "", type === "journalist" ? null : (feed_url || null), tip_url || "", subscribe_url || "", fallback_beat || "Indie Media", items_per_feed || 3, handle, type, ytChannel || null, is_corporate ? 1 : 0, parent_company || null, req.params.id]
     );
     res.json({ ok: true });
   } catch (err) {

@@ -125,7 +125,7 @@
     </div>
 
     <table id="feedTable" style="margin-bottom:16px;">
-      <thead><tr><th>Outlet</th><th>Type</th><th>Feed URL</th><th>Default section</th><th>Bluesky</th><th>YouTube</th><th></th></tr></thead>
+      <thead><tr><th>Outlet</th><th>Type</th><th>Feed URL</th><th>Default section</th><th>Bluesky</th><th>YouTube</th><th>Corp.</th><th></th></tr></thead>
       <tbody id="feedRows"></tbody>
     </table>
 
@@ -150,6 +150,8 @@
     </div>
     <label>Bluesky handle (e.g. marisakabas.bsky.social — required for Individual type, optional for Organizations to power the "Most Popular on Bluesky" box)</label><input id="ff_bluesky" placeholder="handle.bsky.social">
     <label>YouTube channel (optional — handle, channel ID, or full URL; powers the Videos box)</label><input id="ff_youtube" placeholder="@channelhandle">
+    <label><input type="checkbox" id="ff_corporate" style="width:auto;display:inline-block;"> Corporate/conglomerate-owned (shows a small marker next to the outlet name — transparency only, never affects ranking or visibility)</label>
+    <label>Parent company (optional — shown in a tooltip on the marker, e.g. "NBCUniversal")</label><input id="ff_parent_company" placeholder="e.g. NBCUniversal">
     <button class="btn-primary" id="feedSubmitBtn" onclick="submitFeed()">Add feed</button>
     <button class="btn-secondary" onclick="clearFeedForm()">Clear / Cancel edit</button>
     <p id="feedFormMsg" style="font-family:var(--mono);font-size:12px;"></p>
@@ -224,10 +226,10 @@ Some Video Creator | | Indie Media | | | | | | @somecreator"></textarea>
     <p id="packFormMsg" style="font-family:var(--mono);font-size:12px;"></p>
 
     <h3 style="font-family:var(--mono);font-size:12px;margin-top:28px;border-top:1px solid rgba(0,0,0,.1);padding-top:20px;">PUBLIC PACKS — MODERATION</h3>
-    <p style="font-size:13px;color:#666;">Every reader-made public Pack, most recent first. Hide unlists it everywhere (directory, RSS, view, clone) without deleting; Delete removes it outright.</p>
+    <p style="font-size:13px;color:#666;">Every reader-made public Pack, most recent first. Hide unlists it everywhere (directory, RSS, view, clone) without deleting; Delete removes it outright. Feature pins it to the top of Top RSS Packs (both the Sources tab teaser and the full directory) — featured Packs are shown first, in the order below, before the usual follower-count ranking takes over.</p>
     <input id="pk_moderation_search" placeholder="Search by name…" oninput="loadPublicPacks()" style="margin-bottom:10px;">
     <table id="publicPackTable">
-      <thead><tr><th>Name</th><th>Creator</th><th>Sources</th><th>Followers</th><th>Status</th><th></th></tr></thead>
+      <thead><tr><th>Name</th><th>Creator</th><th>Sources</th><th>Followers</th><th>Status</th><th>Featured</th><th></th></tr></thead>
       <tbody id="publicPackRows"></tbody>
     </table>
   </div>
@@ -471,12 +473,13 @@ async function loadFeeds(){
       <td>${f.feed_type === 'journalist' ? '<span style="color:#999;">—</span>' : f.fallback_beat}</td>
       <td>${f.bluesky_handle ? `<span style="color:#1185FE;">@${f.bluesky_handle}</span>` : '<span style="color:#999;">—</span>'}</td>
       <td>${f.youtube_channel_id ? `<span style="color:#B33A3A;">${f.youtube_channel_id}</span>` : '<span style="color:#999;">—</span>'}</td>
+      <td>${f.is_corporate ? `<span title="${f.parent_company || 'Corporate/conglomerate-owned'}" style="color:#B3831A;font-weight:bold;">*</span>` : '<span style="color:#999;">—</span>'}</td>
       <td>
         <button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="editFeed(${f.id})">Edit</button>
         <button class="btn-danger" onclick="deleteFeed(${f.id})">Delete</button>
       </td>
     </tr>
-  `).join('') || '<tr><td colspan="7" style="color:#666;">No feeds yet — add one below.</td></tr>';
+  `).join('') || '<tr><td colspan="8" style="color:#666;">No feeds yet — add one below.</td></tr>';
 
   renderPendingChannels(pending);
   loadPendingCustomSources();
@@ -592,6 +595,8 @@ function editFeed(id){
   document.getElementById('ff_bluesky').value = f.bluesky_handle || '';
   document.getElementById('ff_youtube').value = f.youtube_channel_id || '';
   document.getElementById('ff_section').value = f.fallback_beat;
+  document.getElementById('ff_corporate').checked = !!f.is_corporate;
+  document.getElementById('ff_parent_company').value = f.parent_company || '';
   document.getElementById('feedFormTitle').textContent = `EDITING FEED #${id}`;
   document.getElementById('feedSubmitBtn').textContent = 'Update feed';
   window.scrollTo({top: document.getElementById('feedFormTitle').offsetTop - 20, behavior:'smooth'});
@@ -610,6 +615,8 @@ async function submitFeed(){
     youtube_channel_id: document.getElementById('ff_youtube').value,
     fallback_beat: document.getElementById('ff_section').value,
     feed_type: feedType,
+    is_corporate: document.getElementById('ff_corporate').checked,
+    parent_company: document.getElementById('ff_parent_company').value,
   };
   if (!body.outlet.trim()){
     msg.style.color = '#B33A3A'; msg.textContent = 'Outlet name is required.'; return;
@@ -633,9 +640,10 @@ async function submitFeed(){
 }
 
 function clearFeedForm(){
-  ['ff_outlet','ff_author','ff_url','ff_tip_url','ff_subscribe_url','ff_bluesky','ff_youtube'].forEach(id => document.getElementById(id).value = '');
+  ['ff_outlet','ff_author','ff_url','ff_tip_url','ff_subscribe_url','ff_bluesky','ff_youtube','ff_parent_company'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('ff_section').value = 'Indie Media';
   document.getElementById('ff_type').value = 'outlet';
+  document.getElementById('ff_corporate').checked = false;
   toggleFeedTypeFields();
   editingFeedId = null;
   document.getElementById('feedFormTitle').textContent = 'ADD A FEED';
@@ -906,15 +914,32 @@ async function loadPublicPacks(){
       <td>${p.clone_count}</td>
       <td>${p.admin_hidden ? '<span style="color:#B33A3A;">Hidden</span>' : '<span style="color:#2F6F62;">Visible</span>'}</td>
       <td>
+        ${p.featured
+          ? `<button class="btn-secondary" style="padding:2px 6px;font-size:10px;margin:0 2px 0 0;" onclick="movePackFeatured('${p.slug}','up')" title="Move up">↑</button>
+             <button class="btn-secondary" style="padding:2px 6px;font-size:10px;margin:0;" onclick="movePackFeatured('${p.slug}','down')" title="Move down">↓</button>`
+          : '<span style="color:#999;">—</span>'}
+      </td>
+      <td>
+        <button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0 4px 4px 0;" onclick="togglePackFeatured('${p.slug}')">${p.featured ? 'Unfeature' : 'Feature'}</button>
         <button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0 4px 0 0;" onclick="togglePackHidden('${p.slug}')">${p.admin_hidden ? 'Unhide' : 'Hide'}</button>
         <button class="btn-danger" onclick="deletePack('${p.slug}')">Delete</button>
       </td>
     </tr>
-  `).join('') || '<tr><td colspan="6" style="color:#666;">No public Packs yet.</td></tr>';
+  `).join('') || '<tr><td colspan="7" style="color:#666;">No public Packs yet.</td></tr>';
 }
 
 async function togglePackHidden(slug){
   await fetch(`/api/admin/mixes/${slug}/toggle-hidden`, {method: 'POST', headers: authHeaders()});
+  await loadPublicPacks();
+}
+
+async function togglePackFeatured(slug){
+  await fetch(`/api/admin/mixes/${slug}/toggle-featured`, {method: 'POST', headers: authHeaders()});
+  await loadPublicPacks();
+}
+
+async function movePackFeatured(slug, direction){
+  await fetch(`/api/admin/mixes/${slug}/featured-move`, {method: 'POST', headers: authHeaders(), body: JSON.stringify({direction})});
   await loadPublicPacks();
 }
 

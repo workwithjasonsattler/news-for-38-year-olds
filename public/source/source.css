@@ -989,6 +989,18 @@ button { font-family: inherit; cursor: pointer; }
   margin: 14px 2px 0;
 }
 
+/* Corporate/conglomerate ownership marker — admin-curated, purely
+   informational (never affects ranking/visibility). A small amber
+   asterisk with a native title-attribute tooltip showing the parent
+   company; no new UI chrome needed beyond the one-line legend printed
+   once in the Your Sources section header. */
+.source-corporate-mark {
+  color: var(--accent);
+  font-weight: 700;
+  margin-left: 2px;
+  cursor: help;
+}
+
 /* Shared escape hatch for every OTHER single-column, linear screen that
    lives inside #main: the Create-a-Pack flow, Manage/Browse-a-Pack
    screens, the Buzz tab, the You tab, and the public shared-saves view.

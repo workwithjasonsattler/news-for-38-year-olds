@@ -1794,7 +1794,7 @@
       ? `<div class="card"><div class="card-meta">No public RSS Packs match.</div></div>`
       : filtered.map(p => `
           <button class="card" style="width:100%;text-align:left;display:block;margin-bottom:8px;" data-slug="${escapeHtml(p.slug)}">
-            <div class="card-title" style="margin-bottom:2px;">${escapeHtml(p.name)}</div>
+            <div class="card-title" style="margin-bottom:2px;">${p.featured ? "⭐ " : ""}${escapeHtml(p.name)}</div>
             <div class="card-meta">${p.location_label ? escapeHtml(p.location_label) + " · " : ""}${p.clone_count} follower${p.clone_count === 1 ? "" : "s"}</div>
           </button>`).join("");
     container.querySelectorAll("[data-slug]").forEach(btn => {
@@ -2104,7 +2104,7 @@
       if (teaser.length > 0) {
         leftHtml += `<div class="spray-shelf">` + teaser.map(p => `
             <button class="spray-tile" data-tile="public" data-slug="${escapeHtml(p.slug)}">
-              <span class="spray-tile-icon">🌐</span>
+              <span class="spray-tile-icon">${p.featured ? "⭐" : "🌐"}</span>
               <span class="spray-tile-name">${escapeHtml(p.name)}</span>
               <span class="spray-tile-meta">${p.clone_count} follower${p.clone_count === 1 ? "" : "s"}</span>
             </button>`).join("") + `
@@ -2165,7 +2165,7 @@
       rightHtml += `<div class="sources-area-head" style="margin-top:28px;">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Your Sources</div>
-          <div class="sources-area-sub">Everything you can build an RSS Pack from. Tap one to see where it already lives.</div>
+          <div class="sources-area-sub">Everything you can build an RSS Pack from. Tap one to see where it already lives. <span class="source-corporate-mark">*</span> = corporate/conglomerate-owned — hover for the parent company.</div>
         </div>`;
       rightHtml += `<div class="section-label" style="margin-top:8px;">All sources (${orgSources.length})</div>`;
       rightHtml += `<input class="create-flow-input" id="sourcesBrowseSearch" placeholder="Search sources..." value="${escapeHtml(sourcesBrowseFilter)}" style="margin:8px 0 10px;">`;
@@ -2382,7 +2382,7 @@
     return `
       <div class="source-row${needsBorder ? " bordered" : ""}" data-outlet="${escapeHtml(outlet)}">
         <button class="source-row-head">
-          <span>${escapeHtml(outlet)}</span>
+          <span>${escapeHtml(outlet)}${s.is_corporate ? `<span class="source-corporate-mark" title="${escapeHtml(s.parent_company || "Corporate/conglomerate-owned")}">*</span>` : ""}</span>
           <span class="source-row-chevron">${isOpen ? "−" : "+"}</span>
         </button>
         ${detail}
