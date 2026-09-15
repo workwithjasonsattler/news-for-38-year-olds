@@ -396,6 +396,11 @@ async function initSchema() {
     // any Pack/Sources surface.
     `ALTER TABLE feeds ADD COLUMN is_corporate INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE feeds ADD COLUMN parent_company TEXT`,
+    // official_order: manual placement among a reader's OWN official-Pack
+    // shelf (distinct from featured_order, which orders OTHER readers'
+    // Packs in Top RSS Packs). Null = falls back to created_at order.
+    // Set via the Pack Builder's up/down arrows or "Suggest order".
+    `ALTER TABLE feed_mixes ADD COLUMN official_order INTEGER`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
   }
@@ -2016,7 +2021,8 @@ app.delete("/api/mixes/:slug", async (req, res) => {
 app.get("/api/mixes/official", async (req, res) => {
   const rows = await dbAll(
     `SELECT slug, name, location_label, auto_sync, clone_count
-     FROM feed_mixes WHERE is_official = 1 ORDER BY auto_sync DESC, created_at ASC`
+     FROM feed_mixes WHERE is_official = 1
+     ORDER BY auto_sync DESC, (official_order IS NULL) ASC, official_order ASC, created_at ASC`
   );
   res.json(rows.map((r) => ({ ...r, auto_sync: !!r.auto_sync })));
 });
@@ -3001,10 +3007,18 @@ app.get("/api/mixes", async (req, res) => {
 // uses — no new content-fetching mechanism, this is a curation/
 // moderation surface over existing infra.
 
+// Pack Builder: in-memory, slug-keyed health-check cache. A "Check" click
+// live-fetches every admin_outlet source's feed_url (reusing the same
+// fetch+parse path as custom-source validation) and stores a snapshot here
+// — not persisted to the DB, just enough to show live status + feed a
+// "Suggest order" pass without re-checking every source on every page load.
+const officialPackHealthCache = new Map(); // slug -> { checkedAt, results: [{outlet, ok, itemCount, error}] }
+
 app.get("/api/admin/mixes/official", requireAdmin, async (req, res) => {
   const rows = await dbAll(
-    `SELECT id, slug, name, location_label, auto_sync, clone_count, created_at
-     FROM feed_mixes WHERE is_official = 1 ORDER BY auto_sync DESC, created_at ASC`
+    `SELECT id, slug, name, location_label, auto_sync, clone_count, official_order, created_at
+     FROM feed_mixes WHERE is_official = 1
+     ORDER BY auto_sync DESC, (official_order IS NULL) ASC, official_order ASC, created_at ASC`
   );
   for (const row of rows) {
     row.source_count = row.auto_sync
@@ -3021,8 +3035,158 @@ app.get("/api/admin/mixes/official", requireAdmin, async (req, res) => {
       )).map((r) => r.outlet);
     }
     row.auto_sync = !!row.auto_sync;
+    row.health = officialPackHealthCache.get(row.slug) || null;
   }
   res.json(rows);
+});
+
+// Live health check for every admin_outlet source in a Pack — fetches each
+// one's feed_url and confirms it actually parses to at least one item
+// (same bar as every other feed-validation path in this codebase). Results
+// are cached in-memory by Pack slug, not persisted; re-running overwrites
+// the previous snapshot. A source with no feed_url (Bluesky/YouTube-only)
+// is reported as "not applicable" rather than a failure.
+app.post("/api/admin/mixes/:slug/check", requireAdmin, async (req, res) => {
+  const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix) return res.status(404).json({ error: "Pack not found" });
+  if (mix.auto_sync) return res.status(400).json({ error: "the auto-syncing flagship always mirrors the live Wire, nothing to check" });
+
+  const sourceRows = await dbAll(
+    `SELECT fms.outlet, f.feed_url FROM feed_mix_sources fms
+     LEFT JOIN feeds f ON f.outlet = fms.outlet
+     WHERE fms.mix_id = ? AND fms.source_type = 'admin_outlet' ORDER BY fms.sort_order ASC`,
+    [mix.id]
+  );
+
+  const results = [];
+  for (const s of sourceRows) {
+    if (!s.feed_url) {
+      results.push({ outlet: s.outlet, ok: null, itemCount: null, error: "no RSS feed on this outlet (Bluesky/YouTube-only)" });
+      continue;
+    }
+    try {
+      const items = await fetchCustomSourceItems(s.feed_url);
+      results.push({ outlet: s.outlet, ok: items.length > 0, itemCount: items.length, error: items.length > 0 ? null : "feed parsed but returned zero items" });
+    } catch (err) {
+      results.push({ outlet: s.outlet, ok: false, itemCount: 0, error: err.message });
+    }
+  }
+
+  const snapshot = { checkedAt: new Date().toISOString(), results };
+  officialPackHealthCache.set(mix.slug, snapshot);
+  res.json(snapshot);
+});
+
+// Quick-add: the fast path for "check and add" — a single outlet name +
+// feed URL. If the outlet already exists in the registry, just appends it
+// to this Pack. If it's brand new, live-validates the feed (fetch + parse,
+// same bar as every other feed path) BEFORE inserting anything, so a typo
+// can't land in the shared `feeds` registry. Distinct from the full
+// create/edit form (submitPack()), which stays available for anything more
+// than "one outlet, right now."
+app.post("/api/admin/mixes/:slug/quick-add", requireAdmin, async (req, res) => {
+  const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix) return res.status(404).json({ error: "Pack not found" });
+  if (mix.auto_sync) return res.status(400).json({ error: "the auto-syncing flagship has no editable source list" });
+
+  const outlet = String(req.body?.outlet || "").trim();
+  const feedUrl = String(req.body?.feed_url || "").trim();
+  if (!outlet) return res.status(400).json({ error: "outlet name is required" });
+
+  const currentCount = (await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [mix.id])).n;
+  if (currentCount >= MIX_SOURCE_CAP) return res.status(400).json({ error: `Packs are capped at ${MIX_SOURCE_CAP} sources` });
+
+  const already = await dbGet(`SELECT id FROM feed_mix_sources WHERE mix_id = ? AND outlet = ?`, [mix.id, outlet]);
+  if (already) return res.status(409).json({ error: `${outlet} is already in this Pack` });
+
+  let existingFeed = await dbGet(`SELECT id, feed_url FROM feeds WHERE outlet = ? AND submission_status = 'approved'`, [outlet]);
+  let checkResult = null;
+
+  if (!existingFeed) {
+    if (!feedUrl) return res.status(400).json({ error: `"${outlet}" isn't in the registry yet — include a feed URL to add it` });
+    try {
+      const items = await fetchCustomSourceItems(feedUrl);
+      if (items.length === 0) return res.status(400).json({ error: "that URL parsed but returned zero items — not a real feed" });
+      checkResult = { ok: true, itemCount: items.length };
+    } catch (err) {
+      return res.status(400).json({ error: `couldn't validate that feed: ${err.message}` });
+    }
+    const info = await dbRun(
+      `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status)
+       VALUES (?, '', ?, '', '', 'Indie Media', '{}', 3, '', 'outlet', NULL, 'approved')`,
+      [outlet, feedUrl]
+    );
+    existingFeed = { id: info.lastInsertRowid, feed_url: feedUrl };
+  }
+
+  const nextOrder = currentCount; // append at the end
+  await dbRun(
+    `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, 'admin_outlet', ?, NULL, ?)`,
+    [mix.id, outlet, nextOrder]
+  );
+
+  // fold the quick-add's own validation into the Pack's health snapshot so
+  // the row shows green immediately without a separate re-check click
+  const existingSnapshot = officialPackHealthCache.get(mix.slug);
+  if (existingSnapshot && checkResult) {
+    existingSnapshot.results.push({ outlet, ok: checkResult.ok, itemCount: checkResult.itemCount, error: null });
+  }
+
+  res.json({ ok: true, outlet, newlyCreated: !!checkResult, checked: checkResult });
+});
+
+// Manual placement among a reader's own official shelf (up/down, mirrors
+// the existing featured-move pattern for Top RSS Packs). Any official Pack
+// missing an official_order value gets normalized to its current display
+// position first, so a first-ever move doesn't jump unpredictably.
+app.post("/api/admin/mixes/:slug/official-move", requireAdmin, async (req, res) => {
+  const direction = req.body?.direction;
+  if (direction !== "up" && direction !== "down") return res.status(400).json({ error: "direction must be 'up' or 'down'" });
+
+  const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
+  if (!mix || !mix.is_official || mix.auto_sync) return res.status(404).json({ error: "Pack not found" });
+
+  const siblings = await dbAll(
+    `SELECT id, slug, official_order FROM feed_mixes WHERE is_official = 1 AND auto_sync = 0
+     ORDER BY (official_order IS NULL) ASC, official_order ASC, created_at ASC`
+  );
+  for (let i = 0; i < siblings.length; i++) {
+    if (siblings[i].official_order === null) await dbRun(`UPDATE feed_mixes SET official_order = ? WHERE id = ?`, [i, siblings[i].id]);
+    siblings[i].official_order = i;
+  }
+  const idx = siblings.findIndex((s) => s.id === mix.id);
+  const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+  if (idx === -1 || swapIdx < 0 || swapIdx >= siblings.length) return res.json({ ok: true }); // already at the edge, no-op
+
+  await dbRun(`UPDATE feed_mixes SET official_order = ? WHERE id = ?`, [siblings[swapIdx].official_order, siblings[idx].id]);
+  await dbRun(`UPDATE feed_mixes SET official_order = ? WHERE id = ?`, [siblings[idx].official_order, siblings[swapIdx].id]);
+  res.json({ ok: true });
+});
+
+// "Suggest order" — a cheap, transparent heuristic, not a hidden ranking:
+// sorts official (non-auto_sync) Packs by their last health check's healthy
+// fraction first (a Pack with broken feeds sinks), then by clone_count
+// (the same follower-count signal already used for topic/Top-RSS-Packs
+// ranking elsewhere). A Pack with no check on record yet is treated as
+// fully healthy so it isn't penalized for simply not being checked. This
+// only writes official_order when the admin explicitly asks for it here —
+// never runs automatically, and Jason can still hand-reorder afterward via
+// official-move.
+app.post("/api/admin/mixes/suggest-order", requireAdmin, async (req, res) => {
+  const rows = await dbAll(`SELECT id, slug, name, clone_count FROM feed_mixes WHERE is_official = 1 AND auto_sync = 0`);
+  const scored = rows.map((r) => {
+    const health = officialPackHealthCache.get(r.slug);
+    const healthyFraction = health && health.results.length
+      ? health.results.filter((x) => x.ok !== false).length / health.results.length
+      : 1;
+    const score = healthyFraction * 1000 + Math.log(r.clone_count + 1) * 10;
+    return { ...r, healthyFraction, score };
+  }).sort((a, b) => b.score - a.score);
+
+  for (let i = 0; i < scored.length; i++) {
+    await dbRun(`UPDATE feed_mixes SET official_order = ? WHERE id = ?`, [i, scored[i].id]);
+  }
+  res.json({ ok: true, order: scored.map((s) => ({ slug: s.slug, name: s.name, healthyFraction: s.healthyFraction, clone_count: s.clone_count })) });
 });
 
 // Official Packs are curated from the shared outlet/individual registry

@@ -206,8 +206,11 @@ Some Video Creator | | Indie Media | | | | | | @somecreator"></textarea>
     <p style="font-size:13px;color:#666;">Curate official Packs (featured, admin-built) and moderate reader-made public ones. The auto-syncing flagship ("Headlines: Best in the World") always mirrors the live Wire and has no editable source list — everything else here is a real, editor-picked list.</p>
 
     <h3 style="font-family:var(--mono);font-size:12px;margin-top:20px;">OFFICIAL PACKS</h3>
+    <p style="font-size:12px;color:#666;margin-top:-4px;">Check tests every source's feed URL live. Suggest order ranks by health first, then followers — it only runs when you click it, and you can still hand-reorder with the arrows after.</p>
+    <button class="btn-secondary" style="margin-bottom:10px;" onclick="suggestOfficialOrder()">🎲 Suggest order</button>
+    <span id="suggestOrderMsg" style="font-family:var(--mono);font-size:11px;color:#666;"></span>
     <table id="officialPackTable">
-      <thead><tr><th>Name</th><th>Sources</th><th>Topics</th><th>Followers</th><th></th></tr></thead>
+      <thead><tr><th>Order</th><th>Name</th><th>Sources</th><th>Health</th><th>Topics</th><th>Followers</th><th></th></tr></thead>
       <tbody id="officialPackRows"></tbody>
     </table>
 
@@ -805,15 +808,123 @@ function renderPackSourceChips(){
   `).join('');
 }
 
+let openPackDetails = new Set();
+
+function healthCellHtml(p){
+  if (p.auto_sync) return '<span style="color:#999;">—</span>';
+  if (!p.health) return `<button class="btn-secondary" style="padding:2px 8px;font-size:11px;" onclick="checkPackHealth('${p.slug}')">Check</button>`;
+  const total = p.health.results.length;
+  const checkable = p.health.results.filter(r => r.ok !== null);
+  const healthy = checkable.filter(r => r.ok).length;
+  const allGood = checkable.length > 0 && healthy === checkable.length;
+  const color = allGood ? 'green' : (healthy === 0 ? '#B33A3A' : '#B8860B');
+  const ago = Math.max(0, Math.round((Date.now() - new Date(p.health.checkedAt).getTime()) / 60000));
+  return `<span style="color:${color};font-weight:600;cursor:pointer;" onclick="togglePackDetails('${p.slug}')" title="checked ${ago}m ago — click for details">${healthy}/${checkable.length}${allGood ? ' ✓' : ''}</span>
+    <button class="btn-secondary" style="padding:2px 6px;font-size:10px;margin-left:4px;" onclick="checkPackHealth('${p.slug}')" title="Re-check">↻</button>`;
+}
+
+function packDetailRowHtml(p){
+  if (!openPackDetails.has(p.slug) || p.auto_sync) return '';
+  const healthList = (p.health ? p.health.results : []).map(r => {
+    const dot = r.ok === null ? '<span style="color:#999;">–</span>' : r.ok ? '<span style="color:green;">●</span>' : '<span style="color:#B33A3A;">●</span>';
+    const label = r.ok === false ? ` <span style="color:#B33A3A;font-size:11px;">(${r.error})</span>` : (r.ok === null ? ` <span style="color:#999;font-size:11px;">(${r.error})</span>` : '');
+    return `<div style="padding:2px 0;font-size:12px;">${dot} ${r.outlet}${label}</div>`;
+  }).join('') || '<div style="color:#999;font-size:12px;">Not checked yet — click Check above.</div>';
+  return `
+    <tr>
+      <td colspan="7" style="background:#fafafa;padding:12px 16px;">
+        <div style="font-family:var(--mono);font-size:11px;color:#666;margin-bottom:6px;">PER-SOURCE STATUS</div>
+        ${healthList}
+        <div style="font-family:var(--mono);font-size:11px;color:#666;margin:14px 0 6px;">QUICK-ADD A SOURCE TO THIS PACK</div>
+        <input id="qa_outlet_${p.slug}" placeholder="Outlet name (existing or new)" style="width:220px;display:inline-block;margin-right:6px;">
+        <input id="qa_url_${p.slug}" placeholder="Feed URL (only needed if new)" style="width:280px;display:inline-block;margin-right:6px;">
+        <button class="btn-primary" style="padding:5px 12px;font-size:12px;" onclick="quickAddToPack('${p.slug}')">Check &amp; Add</button>
+        <span id="qa_msg_${p.slug}" style="font-family:var(--mono);font-size:11px;margin-left:8px;"></span>
+      </td>
+    </tr>`;
+}
+
+function togglePackDetails(slug){
+  if (openPackDetails.has(slug)) openPackDetails.delete(slug); else openPackDetails.add(slug);
+  renderOfficialPacks();
+}
+
+async function checkPackHealth(slug){
+  const btn = event && event.target;
+  if (btn) btn.textContent = 'Checking…';
+  const res = await fetch(`/api/admin/mixes/${slug}/check`, {method: 'POST', headers: authHeaders()});
+  const data = await res.json();
+  if (res.ok) {
+    const p = (window._officialPacks || []).find(x => x.slug === slug);
+    if (p) p.health = data;
+    openPackDetails.add(slug);
+    renderOfficialPacks();
+  } else {
+    alert(data.error || 'Check failed.');
+  }
+}
+
+async function quickAddToPack(slug){
+  const outlet = document.getElementById(`qa_outlet_${slug}`).value.trim();
+  const feedUrl = document.getElementById(`qa_url_${slug}`).value.trim();
+  const msg = document.getElementById(`qa_msg_${slug}`);
+  if (!outlet) { msg.style.color = '#B33A3A'; msg.textContent = 'Outlet name required.'; return; }
+  msg.style.color = '#666'; msg.textContent = 'Checking…';
+  const res = await fetch(`/api/admin/mixes/${slug}/quick-add`, {method: 'POST', headers: authHeaders(), body: JSON.stringify({outlet, feed_url: feedUrl})});
+  const data = await res.json();
+  if (res.ok) {
+    msg.style.color = 'green';
+    msg.textContent = data.newlyCreated ? `Added — validated ${data.checked.itemCount} item(s).` : 'Added.';
+    document.getElementById(`qa_outlet_${slug}`).value = '';
+    document.getElementById(`qa_url_${slug}`).value = '';
+    await loadOfficialPacks();
+    openPackDetails.add(slug);
+    renderOfficialPacks();
+  } else {
+    msg.style.color = '#B33A3A'; msg.textContent = data.error || 'Could not add.';
+  }
+}
+
+async function movePackOfficial(slug, direction){
+  await fetch(`/api/admin/mixes/${slug}/official-move`, {method: 'POST', headers: authHeaders(), body: JSON.stringify({direction})});
+  await loadOfficialPacks();
+}
+
+async function suggestOfficialOrder(){
+  const msg = document.getElementById('suggestOrderMsg');
+  msg.textContent = 'Scoring…';
+  const res = await fetch('/api/admin/mixes/suggest-order', {method: 'POST', headers: authHeaders()});
+  const data = await res.json();
+  if (res.ok) {
+    msg.style.color = 'green';
+    msg.textContent = `Applied — ranked ${data.order.length} Pack(s) by health then followers.`;
+    await loadOfficialPacks();
+  } else {
+    msg.style.color = '#B33A3A'; msg.textContent = data.error || 'Could not compute order.';
+  }
+}
+
 async function loadOfficialPacks(){
   const res = await fetch('/api/admin/mixes/official', {headers: authHeaders()});
   if (!res.ok) return;
-  const rows = await res.json();
-  window._officialPacks = rows;
-  document.getElementById('officialPackRows').innerHTML = rows.map(p => `
+  window._officialPacks = await res.json();
+  renderOfficialPacks();
+}
+
+function renderOfficialPacks(){
+  const rows = window._officialPacks || [];
+  const nonAutoSync = rows.filter(p => !p.auto_sync);
+  document.getElementById('officialPackRows').innerHTML = rows.map(p => {
+    const idx = nonAutoSync.findIndex(x => x.slug === p.slug);
+    const orderCell = p.auto_sync ? '<span style="color:#999;">—</span>' : `
+      <button class="btn-secondary" style="padding:2px 6px;font-size:10px;" onclick="movePackOfficial('${p.slug}','up')" ${idx <= 0 ? 'disabled' : ''} title="Move up">↑</button>
+      <button class="btn-secondary" style="padding:2px 6px;font-size:10px;" onclick="movePackOfficial('${p.slug}','down')" ${idx === nonAutoSync.length - 1 ? 'disabled' : ''} title="Move down">↓</button>`;
+    return `
     <tr>
-      <td>${p.name}${p.auto_sync ? ' <span style="color:#999;font-size:11px;">(auto-syncs to live Wire)</span>' : ''}</td>
+      <td>${orderCell}</td>
+      <td style="cursor:${p.auto_sync ? 'default' : 'pointer'};" onclick="${p.auto_sync ? '' : `togglePackDetails('${p.slug}')`}">${p.name}${p.auto_sync ? ' <span style="color:#999;font-size:11px;">(auto-syncs to live Wire)</span>' : ''}</td>
       <td>${p.auto_sync ? '<span style="color:#999;">—</span>' : (p.sources || []).join(', ') || '<span style="color:#999;">—</span>'}</td>
+      <td>${healthCellHtml(p)}</td>
       <td>${(p.topics || []).map(t => t.name).join(', ') || '<span style="color:#999;">—</span>'}</td>
       <td>${p.clone_count}</td>
       <td>
@@ -821,7 +932,8 @@ async function loadOfficialPacks(){
         <button class="btn-danger" onclick="deletePack('${p.slug}')">Delete</button>`}
       </td>
     </tr>
-  `).join('') || '<tr><td colspan="5" style="color:#666;">No official Packs yet.</td></tr>';
+    ${packDetailRowHtml(p)}`;
+  }).join('') || '<tr><td colspan="7" style="color:#666;">No official Packs yet.</td></tr>';
 }
 
 function editPack(slug){
