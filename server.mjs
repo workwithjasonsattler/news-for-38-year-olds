@@ -715,20 +715,17 @@ app.get("/.well-known/apple-app-site-association", (req, res) => {
 // as iOS (sign-in verify link only, via the AndroidManifest intent-filter
 // added alongside this route).
 //
-// *** PLACEHOLDER — NOT YET FUNCTIONAL ***
-// sha256_cert_fingerprints below MUST be replaced with the real SHA-256
-// fingerprint of whatever keystore actually signs the APK, once that
-// keystore exists (it doesn't yet — Android signing keystore generation
-// is still an open launch-checklist item, Jason's own task). Get it via:
-//   keytool -list -v -keystore your-release-key.keystore -alias your-alias
-// (look for "SHA256:" in the output) — or, once uploaded to Play Console,
-// Play Console's own "App signing" page shows Google's re-signed
-// fingerprint directly, which is what actually matters for a Play Store
-// build (Google re-signs release APKs by default). For local Android
-// Studio / emulator testing before that, the DEBUG keystore's own
-// SHA-256 (usually ~/.android/debug.keystore, same `keytool` command)
-// needs to be added here too, or App Links verification will fail on a
-// debug build even once a real release fingerprint is filled in.
+// Real fingerprint wired in below, from the release keystore generated
+// and backed up (~/Documents/SOURCE.jks, alias key0, valid until 2051).
+// NOTE: once the app is uploaded to Play Console, Google re-signs release
+// APKs/AABs by default — if App Links verification ever fails on a real
+// Play-distributed build despite this being correct, check Play Console's
+// own "App signing" page for Google's re-signed fingerprint and use that
+// instead (it's what actually ships to users' devices). For local Android
+// Studio / emulator testing, the DEBUG keystore's own SHA-256 (usually
+// ~/.android/debug.keystore, same `keytool -list -v` command) also needs
+// to be added to the array below, or App Links verification will fail on
+// a debug build even with the release fingerprint present.
 app.get("/.well-known/assetlinks.json", (req, res) => {
   res.set("Content-Type", "application/json");
   res.json([
@@ -738,7 +735,7 @@ app.get("/.well-known/assetlinks.json", (req, res) => {
         namespace: "android_app",
         package_name: "com.newsfor38yearolds.source",
         sha256_cert_fingerprints: [
-          "REPLACE_ME_WITH_REAL_SHA256_FINGERPRINT_ONCE_KEYSTORE_EXISTS",
+          "FC:66:6D:B8:22:2F:D9:37:21:A2:F6:96:D8:5B:BD:33:12:F8:EA:32:23:23:38:FA:14:A6:91:6A:9F:93:21:37",
         ],
       },
     },
