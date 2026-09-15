@@ -608,6 +608,7 @@ async function seedOfficialHeadlinesSpray() {
 const STARTER_LEAF_TOPICS = [
   ["Politics", "news"], ["Climate Change", "news"], ["Workers' Rights", "news"],
   ["Voting Rights", "news"], ["Data Centers", "news"], ["Indie Media", "news"],
+  ["Online Disinformation", "news"], ["Healthcare", "news"],
   ["Sports", "fun"], ["Music", "fun"], ["Travel", "fun"], ["Fandom", "fun"],
   ["Literature", "fun"], ["History", "fun"], ["Science", "fun"],
   ["Productivity", "work"], ["Stocks & Investing", "work"], ["Social Investing", "work"],
@@ -623,6 +624,96 @@ async function seedLeafTopics() {
       [name, slug, category]
     );
   }
+}
+
+// Idempotent starter set for three core topical RSS Packs (Climate,
+// Online Disinformation, Healthcare) — matches by outlet name first
+// (INSERT OR IGNORE-equivalent skip), same pattern as STARTER_YOUTUBE_CHANNELS
+// above. Feed URLs are researched, real-outlet best-guesses (same caveat as
+// every other outlet in this codebase's seed lists) — the existing feed
+// import job will fail soft on any that are stale, and Jason can fix a URL
+// later in admin without touching this list.
+const STARTER_CORE_PACKS = [
+  {
+    name: "Climate Watch",
+    topicSlug: "climate-change",
+    outlets: [
+      { outlet: "Inside Climate News", feed_url: "https://insideclimatenews.org/feed/" },
+      { outlet: "Grist", feed_url: "https://grist.org/feed/" },
+      { outlet: "DeSmog", feed_url: "https://www.desmog.com/feed/" },
+      { outlet: "The Narwhal", feed_url: "https://thenarwhal.ca/feed/" },
+      { outlet: "Heated", feed_url: "https://heated.world/feed" },
+      { outlet: "Earth.Org", feed_url: "https://earth.org/feed/" },
+    ],
+  },
+  {
+    name: "Online Disinformation",
+    topicSlug: "online-disinformation",
+    outlets: [
+      { outlet: "Popular Information", feed_url: "https://popular.info/feed" },
+      { outlet: "Tech Policy Press", feed_url: "https://www.techpolicy.press/feed" },
+      { outlet: "Media Matters for America", feed_url: "https://www.mediamatters.org/rss" },
+      { outlet: "Poynter", feed_url: "https://www.poynter.org/feed/" },
+      { outlet: "Columbia Journalism Review", feed_url: "https://www.cjr.org/feed" },
+    ],
+  },
+  {
+    name: "Healthcare",
+    topicSlug: "healthcare",
+    outlets: [
+      { outlet: "KFF Health News", feed_url: "https://kffhealthnews.org/feed/" },
+      { outlet: "STAT News", feed_url: "https://www.statnews.com/feed/" },
+      { outlet: "The Incidental Economist", feed_url: "https://theincidentaleconomist.com/feed" },
+      { outlet: "ProPublica — Health Care", feed_url: "https://www.propublica.org/topics/health-care/feed" },
+      { outlet: "Modern Healthcare", feed_url: "https://www.modernhealthcare.com/rss" },
+    ],
+  },
+];
+
+async function seedCorePacks() {
+  const existingFeeds = await dbAll(`SELECT id, outlet FROM feeds`);
+  const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
+  let feedsInserted = 0, packsCreated = 0;
+
+  for (const pack of STARTER_CORE_PACKS) {
+    const resolvedOutlets = [];
+    for (const o of pack.outlets) {
+      let match = byOutletLower.get(o.outlet.toLowerCase());
+      if (!match) {
+        const info = await dbRun(
+          `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status)
+           VALUES (?, '', ?, '', '', 'Indie Media', '{}', 3, '', 'outlet', NULL, 'approved')`,
+          [o.outlet, o.feed_url]
+        );
+        match = { id: info.lastInsertRowid, outlet: o.outlet };
+        byOutletLower.set(o.outlet.toLowerCase(), match);
+        feedsInserted++;
+      }
+      resolvedOutlets.push(match.outlet);
+    }
+
+    const slug = slugify(pack.name);
+    const existingPack = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [slug]);
+    if (existingPack) continue; // idempotent — don't touch a Pack that already exists
+
+    const info = await dbRun(
+      `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, is_official, auto_sync)
+       VALUES (?, ?, 0, NULL, 1, 1, 0)`,
+      [slug, pack.name]
+    );
+    for (let i = 0; i < resolvedOutlets.length; i++) {
+      await dbRun(
+        `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, 'admin_outlet', ?, NULL, ?)`,
+        [info.lastInsertRowid, resolvedOutlets[i], i]
+      );
+    }
+    const topic = await dbGet(`SELECT id FROM topics WHERE slug = ?`, [pack.topicSlug]);
+    if (topic) {
+      await dbRun(`INSERT OR IGNORE INTO feed_mix_topics (mix_id, topic_id) VALUES (?, ?)`, [info.lastInsertRowid, topic.id]);
+    }
+    packsCreated++;
+  }
+  if (feedsInserted || packsCreated) console.log(`Core Pack seed: inserted ${feedsInserted} feed(s), created ${packsCreated} Pack(s).`);
 }
 
 // a duplicate row. Only inserts a new row when no matching outlet exists.
@@ -4800,6 +4891,7 @@ async function start() {
       await dropDegenerateArtRss();
       await seedOfficialHeadlinesSpray();
       await seedLeafTopics();
+      await seedCorePacks();
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Same "kick shortly after boot, not just on the interval" pattern as
       // the Bluesky bot below — a fresh deploy shouldn't have to wait up to
