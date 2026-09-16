@@ -676,22 +676,35 @@ const STARTER_CORE_PACKS = [
 ];
 
 async function seedCorePacks() {
-  const existingFeeds = await dbAll(`SELECT id, outlet FROM feeds`);
+  const existingFeeds = await dbAll(`SELECT id, outlet, feed_url FROM feeds`);
   const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
-  let feedsInserted = 0, packsCreated = 0;
+  // Also index by feed_url: a researched outlet in STARTER_CORE_PACKS can
+  // share a feed_url with an already-seeded outlet under a DIFFERENT name
+  // (e.g. an earlier session's outlet-seed list already added the same
+  // publication under slightly different wording). Matching on outlet name
+  // alone missed this and crashed the whole boot sequence on feeds.feed_url's
+  // UNIQUE constraint the first time it happened in production.
+  const byFeedUrl = new Map(existingFeeds.filter(f => f.feed_url).map(f => [f.feed_url.trim(), f]));
+  let feedsInserted = 0, packsCreated = 0, feedUrlReused = 0;
 
   for (const pack of STARTER_CORE_PACKS) {
     const resolvedOutlets = [];
     for (const o of pack.outlets) {
-      let match = byOutletLower.get(o.outlet.toLowerCase());
+      const byName = byOutletLower.get(o.outlet.toLowerCase());
+      let match = byName || byFeedUrl.get(o.feed_url.trim());
+      if (match && !byName) {
+        feedUrlReused++;
+        console.warn(`Core Pack seed: "${o.outlet}"'s feed_url already exists under outlet "${match.outlet}" — reusing that row instead of inserting a duplicate.`);
+      }
       if (!match) {
         const info = await dbRun(
           `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status)
            VALUES (?, '', ?, '', '', 'Indie Media', '{}', 3, '', 'outlet', NULL, 'approved')`,
           [o.outlet, o.feed_url]
         );
-        match = { id: info.lastInsertRowid, outlet: o.outlet };
+        match = { id: info.lastInsertRowid, outlet: o.outlet, feed_url: o.feed_url };
         byOutletLower.set(o.outlet.toLowerCase(), match);
+        byFeedUrl.set(o.feed_url.trim(), match);
         feedsInserted++;
       }
       resolvedOutlets.push(match.outlet);
@@ -718,7 +731,9 @@ async function seedCorePacks() {
     }
     packsCreated++;
   }
-  if (feedsInserted || packsCreated) console.log(`Core Pack seed: inserted ${feedsInserted} feed(s), created ${packsCreated} Pack(s).`);
+  if (feedsInserted || packsCreated || feedUrlReused) {
+    console.log(`Core Pack seed: inserted ${feedsInserted} feed(s), created ${packsCreated} Pack(s)${feedUrlReused ? `, reused ${feedUrlReused} existing feed_url(s)` : ""}.`);
+  }
 }
 
 // a duplicate row. Only inserts a new row when no matching outlet exists.
@@ -5116,4 +5131,15 @@ async function start() {
     }
   }
 }
-start();
+start().catch((err) => {
+  // A mid-request Turso hiccup (the unhandledRejection/uncaughtException
+  // handlers above) should never take the whole server down — but this is
+  // start() itself giving up after all retries, which is fatal: no port
+  // ever gets opened, so without an explicit exit here the process just
+  // sits there and Render's health check silently times out instead of
+  // showing a fast, clear deploy failure. (This is exactly what happened
+  // with the seedCorePacks() UNIQUE-constraint bug this fixed — three
+  // deploys each burned the full ~15-min timeout before this was added.)
+  console.error("Fatal: server failed to start after all retries — exiting so the platform can show a clean failure and restart.", err);
+  process.exit(1);
+});
