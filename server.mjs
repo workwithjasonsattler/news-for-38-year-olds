@@ -888,10 +888,53 @@ const STARTER_POP_CULTURE_PACKS = [
   },
 ];
 
-// Idempotent — same matching pattern as seedCorePacks() above (by outlet
-// name first, then feed_url, to avoid the UNIQUE-constraint boot crash that
-// bug once caused). Not marked is_official — see the caller's comment for
-// why these aren't auto-pinned to the main shelf.
+// EMERGENCY REVERT for the Pop Culture Packs seeded earlier this session.
+// They leaked into the shared, unfiltered wire — importAllFeeds() pulls
+// from every row in `feeds` with no Pack-membership filter, so once the
+// import job ran, these outlets' items landed in `dispatches` itself,
+// meaning they became visible in "Headlines: Best in the World" (auto_sync,
+// unfiltered top-60) and N38YO's own main political wire. This deletes,
+// idempotently: the 15 Pack rows + their source/topic links, the feeds
+// themselves, and any `dispatches` rows already pulled from those outlets.
+// The `fallback_beat = 'Entertainment'` guard on the feeds delete is
+// deliberate — that value is unique to seedPopCulturePacks()'s own INSERT,
+// so this can never touch a pre-existing feed that happens to share an
+// outlet name for an unrelated reason. Safe to run more than once — no-ops
+// once already clean.
+const POP_CULTURE_OUTLETS_TO_REVERT = STARTER_POP_CULTURE_PACKS.flatMap(p => p.outlets.map(o => o.outlet));
+const POP_CULTURE_PACK_SLUGS_TO_REVERT = STARTER_POP_CULTURE_PACKS.map(p => slugify(p.name));
+
+async function revertPopCulturePacks() {
+  if (POP_CULTURE_OUTLETS_TO_REVERT.length === 0) return;
+  const outletPlaceholders = POP_CULTURE_OUTLETS_TO_REVERT.map(() => "?").join(",");
+  const slugPlaceholders = POP_CULTURE_PACK_SLUGS_TO_REVERT.map(() => "?").join(",");
+
+  const mixRows = await dbAll(`SELECT id FROM feed_mixes WHERE slug IN (${slugPlaceholders})`, POP_CULTURE_PACK_SLUGS_TO_REVERT);
+  const mixIds = mixRows.map(r => r.id);
+  let removedPacks = 0;
+  if (mixIds.length) {
+    const mixIdPlaceholders = mixIds.map(() => "?").join(",");
+    await dbRun(`DELETE FROM feed_mix_topics WHERE mix_id IN (${mixIdPlaceholders})`, mixIds);
+    await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id IN (${mixIdPlaceholders})`, mixIds);
+    const r = await dbRun(`DELETE FROM feed_mixes WHERE id IN (${mixIdPlaceholders})`, mixIds);
+    removedPacks = r.changes || 0;
+  }
+
+  const dRes = await dbRun(`DELETE FROM dispatches WHERE outlet IN (${outletPlaceholders})`, POP_CULTURE_OUTLETS_TO_REVERT);
+  const fRes = await dbRun(
+    `DELETE FROM feeds WHERE fallback_beat = 'Entertainment' AND outlet IN (${outletPlaceholders})`,
+    POP_CULTURE_OUTLETS_TO_REVERT
+  );
+  await dbRun(`DELETE FROM topics WHERE slug = 'movies' AND id NOT IN (SELECT topic_id FROM feed_mix_topics)`);
+
+  if (removedPacks || fRes.changes || dRes.changes) {
+    console.log(`Pop Culture Pack REVERT: removed ${removedPacks} Pack(s), ${fRes.changes || 0} feed(s), ${dRes.changes || 0} dispatch item(s) that had leaked into the shared wire.`);
+  }
+}
+
+// DISABLED — see revertPopCulturePacks() above and the boot-sequence
+// comment. Left in place, unused, in case this is revisited with a real
+// fix for wire isolation (e.g. a feeds.wire_eligible flag).
 async function seedPopCulturePacks() {
   const existingFeeds = await dbAll(`SELECT id, outlet, feed_url FROM feeds`);
   const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
@@ -5335,7 +5378,15 @@ async function start() {
       await step("seedOfficialHeadlinesSpray", seedOfficialHeadlinesSpray);
       await step("seedLeafTopics", seedLeafTopics);
       await step("seedCorePacks", seedCorePacks);
-      await step("seedPopCulturePacks", seedPopCulturePacks);
+      // seedPopCulturePacks() DISABLED — see revertPopCulturePacks() below.
+      // Real bug: importAllFeeds() (the job that fills `dispatches`, which
+      // IS the shared wire behind "Headlines: Best in the World" and
+      // N38YO's main political feed) pulls from every row in `feeds` with
+      // no Pack-membership filter. These outlets leaked straight into the
+      // political news wire. Not re-enabling until there's a real
+      // wire-isolation mechanism (e.g. a feeds.wire_eligible flag that
+      // importAllFeeds() respects).
+      await step("revertPopCulturePacks", revertPopCulturePacks);
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Same "kick shortly after boot, not just on the interval" pattern as
       // the Bluesky bot below — a fresh deploy shouldn't have to wait up to
