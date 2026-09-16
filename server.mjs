@@ -5051,19 +5051,34 @@ async function start() {
   // this still eventually exits (so Render's own restart/alerting kicks in),
   // it just doesn't give up after a single bad request.
   const MAX_ATTEMPTS = 5;
+  // DIAGNOSTIC (temporary): the last three deploys (1187bac, cad6e26,
+  // 5623e17) have all hung silently for Render's full ~15-min timeout with
+  // zero log output after "Database: remote Turso" — meaning something in
+  // this chain never returns against the real production DB, but every
+  // step is silent-on-success (each only logs when it actually changes
+  // something), so there's no way to tell which one from the existing
+  // logs. Bracketing every step with a start/done line, unconditionally,
+  // pinpoints exactly where the hang is on the next deploy attempt. Revert
+  // this once the actual hang is found and fixed — it's noise otherwise.
+  const step = async (label, fn) => {
+    console.log(`[boot] ${label}: starting...`);
+    const t0 = Date.now();
+    await fn();
+    console.log(`[boot] ${label}: done (${Date.now() - t0}ms)`);
+  };
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     try {
-      await initSchema();
-      await migrateFeedUrlNullable();
-      await migrateFeedsJsonIfNeeded();
-      await migrateDateFormats();
-      await autoSeedIfEmpty();
-      await migrateTopicIdToJoinTable();
-      await seedYoutubeChannels();
-      await dropDegenerateArtRss();
-      await seedOfficialHeadlinesSpray();
-      await seedLeafTopics();
-      await seedCorePacks();
+      await step("initSchema", initSchema);
+      await step("migrateFeedUrlNullable", migrateFeedUrlNullable);
+      await step("migrateFeedsJsonIfNeeded", migrateFeedsJsonIfNeeded);
+      await step("migrateDateFormats", migrateDateFormats);
+      await step("autoSeedIfEmpty", autoSeedIfEmpty);
+      await step("migrateTopicIdToJoinTable", migrateTopicIdToJoinTable);
+      await step("seedYoutubeChannels", seedYoutubeChannels);
+      await step("dropDegenerateArtRss", dropDegenerateArtRss);
+      await step("seedOfficialHeadlinesSpray", seedOfficialHeadlinesSpray);
+      await step("seedLeafTopics", seedLeafTopics);
+      await step("seedCorePacks", seedCorePacks);
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Same "kick shortly after boot, not just on the interval" pattern as
       // the Bluesky bot below — a fresh deploy shouldn't have to wait up to
