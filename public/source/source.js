@@ -3480,6 +3480,12 @@
     if (!currentUser) {
       main.innerHTML = `
         <div class="source-single-col-screen">
+        <div class="section-label" style="margin-top:2px;">WHY SIGN IN</div>
+        <div class="section-sub" style="font-size:13.5px; line-height:1.5; margin:0 2px 20px;">
+          An account is free and just keeps your stuff with you: saved articles, the RSS Packs
+          and custom sources you build, and your reading setup — all synced across your devices,
+          nothing lost if you switch phones or clear your browser.
+        </div>
         <div class="card">
           <div class="card-meta"><span>ACCESS</span></div>
           <div class="card-title" style="margin-bottom:10px;">Sign in to save your RSS Packs across devices.</div>
