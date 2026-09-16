@@ -614,7 +614,7 @@ const STARTER_LEAF_TOPICS = [
   ["Politics", "news"], ["Climate Change", "news"], ["Workers' Rights", "news"],
   ["Voting Rights", "news"], ["Data Centers", "news"], ["Indie Media", "news"],
   ["Online Disinformation", "news"], ["Healthcare", "news"],
-  ["Sports", "fun"], ["Music", "fun"], ["Travel", "fun"], ["Fandom", "fun"],
+  ["Sports", "fun"], ["Music", "fun"], ["Movies", "fun"], ["Travel", "fun"], ["Fandom", "fun"],
   ["Literature", "fun"], ["History", "fun"], ["Science", "fun"],
   ["Productivity", "work"], ["Stocks & Investing", "work"], ["Social Investing", "work"],
   ["Journalist Profile-Building", "work"], ["Individual Brand-Building", "work"],
@@ -733,6 +733,217 @@ async function seedCorePacks() {
   }
   if (feedsInserted || packsCreated || feedUrlReused) {
     console.log(`Core Pack seed: inserted ${feedsInserted} feed(s), created ${packsCreated} Pack(s)${feedUrlReused ? `, reused ${feedUrlReused} existing feed_url(s)` : ""}.`);
+  }
+}
+
+// Pop Culture RSS Packs — researched in POP-CULTURE-PACKS-DRAFT.md, seeded
+// here for the first time. IMPORTANT CAVEAT, more so than STARTER_CORE_PACKS
+// above: a large share of these outlets were only "confirm feed path" in the
+// research pass (no exact URL verified against a live fetch — sandbox
+// network can't reach any of these news/entertainment domains to check).
+// Every feed_url below is a best-guess (mostly domain + /feed/, or the
+// specific path the research doc gave) — NOT hand-verified. The import job
+// fails soft on a bad URL (silently zero items, not a crash), so this is
+// safe to seed, but Jason should expect to fix some of these via admin or
+// re-add via "+ Add a Feed"'s live autodiscovery once deployed.
+// UNCONFIRMED (no real path given in research, guessed domain+/feed/):
+// Rue Morgue, THR, ComingSoon.net, Film Comment, TVLine, The A.V. Club,
+// HotNewHipHop, Complex Music, HipHopDX, PopCrush, Consequence,
+// BrooklynVegan, Saving Country Music, Aquarium Drunkard, Obscure Sound,
+// Bandcamp Daily, The Ringer (NFL/NBA), HoopsHype, RealGM, SLAM,
+// Baseball Prospectus, The Athletic (NYT), 247Sports, On3,
+// College Football News.
+const STARTER_POP_CULTURE_PACKS = [
+  {
+    name: "Horror", topicSlug: "movies",
+    outlets: [
+      { outlet: "Bloody Disgusting", feed_url: "https://bloody-disgusting.com/feed" },
+      { outlet: "Dread Central", feed_url: "https://dreadcentral.com/feed" },
+      { outlet: "Fangoria", feed_url: "https://fangoria.com/feed" },
+      { outlet: "Rue Morgue", feed_url: "https://rue-morgue.com/feed/" },
+      { outlet: "iHorror", feed_url: "https://ihorror.com/feed" },
+    ],
+  },
+  {
+    name: "Awards / Oscars-Prestige", topicSlug: "movies",
+    outlets: [
+      { outlet: "IndieWire", feed_url: "https://www.indiewire.com/feed/" },
+      { outlet: "Variety", feed_url: "https://variety.com/feed/", is_corporate: true, parent_company: "Penske Media Corporation" },
+      { outlet: "Deadline", feed_url: "https://deadline.com/feed/", is_corporate: true, parent_company: "Penske Media Corporation" },
+      { outlet: "The Hollywood Reporter", feed_url: "https://www.hollywoodreporter.com/c/movies/feed/" },
+    ],
+  },
+  {
+    name: "Blockbusters / Franchise", topicSlug: "movies",
+    outlets: [
+      { outlet: "ScreenRant", feed_url: "https://screenrant.com/feed/" },
+      { outlet: "Collider", feed_url: "https://collider.com/feed/" },
+      { outlet: "MovieWeb", feed_url: "https://movieweb.com/feed/" },
+      { outlet: "ComingSoon.net", feed_url: "https://www.comingsoon.net/feed" },
+    ],
+  },
+  {
+    name: "Indie / A24-type", topicSlug: "movies",
+    outlets: [
+      { outlet: "Film Comment", feed_url: "https://www.filmcomment.com/feed/" },
+      { outlet: "Filmmaker Magazine", feed_url: "https://filmmakermagazine.com/feed/" },
+      { outlet: "Film Threat", feed_url: "https://filmthreat.com/feed/" },
+      { outlet: "IndieWire", feed_url: "https://www.indiewire.com/feed/" }, // same row as Awards pack, reused
+    ],
+  },
+  {
+    name: "Streaming & TV", topicSlug: "movies",
+    outlets: [
+      { outlet: "TVLine", feed_url: "https://tvline.com/feed/" },
+      { outlet: "Decider", feed_url: "https://decider.com/feed/" },
+      { outlet: "TV Insider", feed_url: "https://www.tvinsider.com/feed/" },
+      { outlet: "The A.V. Club", feed_url: "https://www.avclub.com/feed/rss" },
+    ],
+  },
+  {
+    name: "Hip-Hop/R&B", topicSlug: "music",
+    outlets: [
+      { outlet: "HotNewHipHop", feed_url: "https://www.hotnewhiphop.com/feed" },
+      { outlet: "Complex Music", feed_url: "https://www.complex.com/music/feed" },
+      { outlet: "HipHopDX", feed_url: "https://hiphopdx.com/feed" },
+      { outlet: "Rap Radar", feed_url: "https://rapradar.com/feed" },
+      { outlet: "HipHopWired", feed_url: "https://hiphopwired.com/feed" },
+    ],
+  },
+  {
+    name: "Pop", topicSlug: "music",
+    outlets: [
+      { outlet: "Billboard", feed_url: "https://www.billboard.com/feed/", is_corporate: true, parent_company: "Penske Media Corporation" },
+      { outlet: "Idolator", feed_url: "https://idolator.com/feed" },
+      { outlet: "PopCrush", feed_url: "https://popcrush.com/category/music/feed/" },
+    ],
+  },
+  {
+    name: "Rock/Alternative", topicSlug: "music",
+    outlets: [
+      { outlet: "Stereogum", feed_url: "https://www.stereogum.com/feed/" },
+      { outlet: "Consequence", feed_url: "https://consequence.net/feed/" },
+      { outlet: "Loudwire", feed_url: "https://loudwire.com/feed" },
+      { outlet: "BrooklynVegan", feed_url: "https://www.brooklynvegan.com/category/music/feed/" },
+    ],
+  },
+  {
+    name: "Country", topicSlug: "music",
+    outlets: [
+      { outlet: "Taste of Country", feed_url: "https://tasteofcountry.com/feed" },
+      { outlet: "Whiskey Riff", feed_url: "https://whiskeyriff.com/feed" },
+      { outlet: "Saving Country Music", feed_url: "https://www.savingcountrymusic.com/feed/" },
+    ],
+  },
+  {
+    name: "Indie/Underground", topicSlug: "music",
+    outlets: [
+      { outlet: "Gorilla vs. Bear", feed_url: "https://gorillavsbear.net/feed" },
+      { outlet: "Aquarium Drunkard", feed_url: "https://aquariumdrunkard.com/feed/" },
+      { outlet: "Obscure Sound", feed_url: "https://www.obscuresound.com/feed" },
+      { outlet: "Bandcamp Daily", feed_url: "https://daily.bandcamp.com/feed" },
+    ],
+  },
+  {
+    name: "NFL", topicSlug: "sports",
+    outlets: [
+      { outlet: "Pro Football Focus", feed_url: "https://www.pff.com/feed" },
+      { outlet: "ESPN NFL", feed_url: "https://www.espn.com/espn/rss/nfl/news", is_corporate: true, parent_company: "The Walt Disney Company" },
+      { outlet: "The Ringer (NFL)", feed_url: "https://www.theringer.com/nfl/rss.xml", is_corporate: true, parent_company: "Spotify" },
+      { outlet: "Pro Football Talk", feed_url: "https://profootballtalk.nbcsports.com/feed/", is_corporate: true, parent_company: "NBCUniversal" },
+    ],
+  },
+  {
+    name: "NBA", topicSlug: "sports",
+    outlets: [
+      { outlet: "The Ringer (NBA)", feed_url: "https://www.theringer.com/nba/rss.xml", is_corporate: true, parent_company: "Spotify" },
+      { outlet: "HoopsHype", feed_url: "https://hoopshype.com/feed/" },
+      { outlet: "RealGM", feed_url: "https://basketball.realgm.com/feed" },
+      { outlet: "SLAM", feed_url: "https://www.slamonline.com/feed/" },
+    ],
+  },
+  {
+    name: "MLB", topicSlug: "sports",
+    outlets: [
+      { outlet: "MLB Trade Rumors", feed_url: "https://www.mlbtraderumors.com/feed" },
+      { outlet: "FanGraphs", feed_url: "https://blogs.fangraphs.com/feed/" },
+      { outlet: "Baseball Prospectus", feed_url: "https://www.baseballprospectus.com/feed/" },
+    ],
+  },
+  {
+    name: "Soccer (Premier League/global)", topicSlug: "sports",
+    outlets: [
+      { outlet: "The Guardian Football", feed_url: "https://www.theguardian.com/football/rss" },
+      { outlet: "The Athletic Football", feed_url: "https://www.nytimes.com/athletic/rss/football", is_corporate: true, parent_company: "The New York Times Company" },
+      { outlet: "90min", feed_url: "https://www.90min.com/posts.rss" },
+    ],
+  },
+  {
+    name: "College Sports", topicSlug: "sports",
+    outlets: [
+      { outlet: "247Sports", feed_url: "https://247sports.com/feed/", is_corporate: true, parent_company: "Paramount Skydance" },
+      { outlet: "On3", feed_url: "https://www.on3.com/feed/" },
+      { outlet: "College Football News", feed_url: "https://collegefootballnews.com/feed/" },
+    ],
+  },
+];
+
+// Idempotent — same matching pattern as seedCorePacks() above (by outlet
+// name first, then feed_url, to avoid the UNIQUE-constraint boot crash that
+// bug once caused). Not marked is_official — see the caller's comment for
+// why these aren't auto-pinned to the main shelf.
+async function seedPopCulturePacks() {
+  const existingFeeds = await dbAll(`SELECT id, outlet, feed_url FROM feeds`);
+  const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
+  const byFeedUrl = new Map(existingFeeds.filter(f => f.feed_url).map(f => [f.feed_url.trim(), f]));
+  let feedsInserted = 0, packsCreated = 0, feedUrlReused = 0;
+
+  for (const pack of STARTER_POP_CULTURE_PACKS) {
+    const resolvedOutlets = [];
+    for (const o of pack.outlets) {
+      const byName = byOutletLower.get(o.outlet.toLowerCase());
+      let match = byName || byFeedUrl.get(o.feed_url.trim());
+      if (match && !byName) {
+        feedUrlReused++;
+        console.warn(`Pop Culture Pack seed: "${o.outlet}"'s feed_url already exists under outlet "${match.outlet}" — reusing that row instead of inserting a duplicate.`);
+      }
+      if (!match) {
+        const info = await dbRun(
+          `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status, is_corporate, parent_company)
+           VALUES (?, '', ?, '', '', 'Entertainment', '{}', 3, '', 'outlet', NULL, 'approved', ?, ?)`,
+          [o.outlet, o.feed_url, o.is_corporate ? 1 : 0, o.parent_company || null]
+        );
+        match = { id: info.lastInsertRowid, outlet: o.outlet, feed_url: o.feed_url };
+        byOutletLower.set(o.outlet.toLowerCase(), match);
+        byFeedUrl.set(o.feed_url.trim(), match);
+        feedsInserted++;
+      }
+      resolvedOutlets.push(match.outlet);
+    }
+
+    const slug = slugify(pack.name);
+    const existingPack = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [slug]);
+    if (existingPack) continue; // idempotent
+
+    const info = await dbRun(
+      `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, is_official, auto_sync)
+       VALUES (?, ?, 0, NULL, 1, 0, 0)`,
+      [slug, pack.name]
+    );
+    for (let i = 0; i < resolvedOutlets.length; i++) {
+      await dbRun(
+        `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, 'admin_outlet', ?, NULL, ?)`,
+        [info.lastInsertRowid, resolvedOutlets[i], i]
+      );
+    }
+    const topic = await dbGet(`SELECT id FROM topics WHERE slug = ?`, [pack.topicSlug]);
+    if (topic) {
+      await dbRun(`INSERT OR IGNORE INTO feed_mix_topics (mix_id, topic_id) VALUES (?, ?)`, [info.lastInsertRowid, topic.id]);
+    }
+    packsCreated++;
+  }
+  if (feedsInserted || packsCreated || feedUrlReused) {
+    console.log(`Pop Culture Pack seed: inserted ${feedsInserted} feed(s), created ${packsCreated} Pack(s)${feedUrlReused ? `, reused ${feedUrlReused} existing feed_url(s)` : ""}.`);
   }
 }
 
@@ -5124,6 +5335,7 @@ async function start() {
       await step("seedOfficialHeadlinesSpray", seedOfficialHeadlinesSpray);
       await step("seedLeafTopics", seedLeafTopics);
       await step("seedCorePacks", seedCorePacks);
+      await step("seedPopCulturePacks", seedPopCulturePacks);
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Same "kick shortly after boot, not just on the interval" pattern as
       // the Bluesky bot below — a fresh deploy shouldn't have to wait up to
