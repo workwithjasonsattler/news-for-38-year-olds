@@ -203,7 +203,7 @@
 
   // ---------------------------------------------------------------
   // Columns — Desktop-only VIEW mode: several independent Scroll-style
-  // feeds side by side, each tied to its own Spray you pick when you
+  // feeds side by side, each tied to its own RSS Blend you pick when you
   // open it (not the Read toggle bar's selection — these are separate).
   // Starts at 2 empty columns, "+" opens more (capped), "×" closes one
   // back down (never below 1, so there's always something to look at).
@@ -212,7 +212,7 @@
   // ---------------------------------------------------------------
   const READ_COLUMNS_KEY = "source_read_columns";
   const MAX_READ_COLUMNS = 4;
-  let readColumns = null; // array of Spray slugs (or null = unassigned), lazy-loaded
+  let readColumns = null; // array of RSS Blend slugs (or null = unassigned), lazy-loaded
   let columnPickerOpenIndex = null;
 
   function loadReadColumns() {
@@ -328,7 +328,7 @@
     return `<a class="tip-badge" href="${escapeHtml(info.url)}" target="_blank" rel="noopener">💛 ${escapeHtml(info.label)}</a>`;
   }
 
-  // Resolves a dispatch back to a source a Spray can actually hold. Custom
+  // Resolves a dispatch back to a source an RSS Blend can actually hold. Custom
   // (reader-private) items get their custom_source_id decoded straight out
   // of the synthetic dispatch id built in GET /api/dispatches and
   // resolveMixSources() — no backend/dispatch-shape change needed, both
@@ -354,15 +354,15 @@
   // dispatch can't be mapped to a real source (sprayableSource returns
   // null).
   //
-  // Label deliberately says "Follow [outlet]", not "+ Spray" — this
+  // Label deliberately says "Follow [outlet]", not "+ RSS Blend" — this
   // control adds the SOURCE (the whole outlet/individual/feed) to a
-  // Spray, not just this one article. "+ Spray" alone read as if it
+  // RSS Blend, not just this one article. "+ RSS Blend" alone read as if it
   // saved the specific item, which it never did; the title attribute on
   // hover/long-press spells out the distinction fully.
   //
   // When the reader is currently viewing exactly ONE of their own,
-  // non-official Sprays (see quickRemoveContext below), every item shown
-  // is — by construction, since it was fetched FROM that Spray's own
+  // non-official RSS Blends (see quickRemoveContext below), every item shown
+  // is — by construction, since it was fetched FROM that RSS Blend's own
   // source list — already a member of it. In that context the button
   // flips to a one-tap "− Remove" instead of opening the picker, so
   // removing is exactly as fast as adding was: one click, no dialog.
@@ -374,11 +374,11 @@
     if (quickRemoveContext) {
       return `<button class="spray-add-btn spray-remove-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' data-remove-slug="${escapeHtml(quickRemoveContext.slug)}" title="Stop following ${escapeHtml(label)} in ${escapeHtml(quickRemoveContext.name)}">− ${escapeHtml(quickRemoveContext.name)}</button>`;
     }
-    return `<button class="spray-add-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' title="Follow ${escapeHtml(label)} in one of your RSS Packs — you'll get all of their future posts there too, not just this one">+ Follow ${escapeHtml(shortLabel)}</button>`;
+    return `<button class="spray-add-btn" data-spray-source='${escapeHtml(JSON.stringify(src))}' title="Follow ${escapeHtml(label)} in one of your RSS Blends — you'll get all of their future posts there too, not just this one">+ Follow ${escapeHtml(shortLabel)}</button>`;
   }
 
   // "Save" control — a lightweight personal bookmark, distinct from
-  // Sprays (a Spray is a collection of SOURCES; a save is a single ITEM).
+  // RSS Blends (an RSS Blend is a collection of SOURCES; a save is a single ITEM).
   // Snapshotted at click time (title/excerpt/image/outlet frozen into the
   // payload right here) since the reader may not still be looking at this
   // dispatch by the time they check My Saves later, and the underlying
@@ -422,7 +422,7 @@
     });
   }
 
-  // Removes a source from the Spray the reader is currently viewing, with
+  // Removes a source from the RSS Blend the reader is currently viewing, with
   // no picker round-trip — the direct counterpart to sprayAddButton's
   // quick-remove state above. Always re-renders Read on success (via
   // `onSuccess`) rather than pulling just the clicked card, since one
@@ -440,11 +440,11 @@
       });
       if (result.added) {
         // Unexpected — it should have been present since it came from
-        // this Spray's own list. Toggle it back off rather than leave a
+        // this RSS Blend's own list. Toggle it back off rather than leave a
         // silent mismatch between what's shown and what's actually saved.
         await api(`/api/my/mixes/${encodeURIComponent(slug)}/toggle-source`, { method: "POST", body: JSON.stringify(body) });
       }
-      toast(`Removed from ${quickRemoveContext ? quickRemoveContext.name : "that RSS Pack"}.`);
+      toast(`Removed from ${quickRemoveContext ? quickRemoveContext.name : "that RSS Blend"}.`);
       if (onSuccess) onSuccess();
     } catch (e) {
       if (btnEl) btnEl.disabled = false;
@@ -604,7 +604,7 @@
   }
 
   // ---------------------------------------------------------------
-  // READ — the RSS reader, built on Sprays. Maps to /api/dispatches.
+  // READ — the RSS reader, built on RSS Blends. Maps to /api/dispatches.
   // Cards show a stored image immediately when the feed had one at
   // import time; only fall back to a live og:image lookup for items
   // that don't. Cards whose article is also trending on Bluesky get
@@ -622,16 +622,16 @@
   let readerFullscreen = false;
 
   // Set (non-null) only when the reader is viewing exactly ONE of their
-  // own, non-official Sprays via the toggle bar — {slug, name}. Read by
-  // sprayAddButton() to flip "+ Spray" (open the picker) into a one-tap
+  // own, non-official RSS Blends via the toggle bar — {slug, name}. Read by
+  // sprayAddButton() to flip "+ RSS Blend" (open the picker) into a one-tap
   // "− Remove" for every card shown, since everything in view got there
-  // BY BEING a member of that Spray. Recomputed each fetchReadItems()
-  // call; cleared whenever "All", multiple Sprays, or a built-in slot
-  // (__youtube/__bluesky) is active, or the single active Spray isn't
-  // one the reader actually owns (e.g. someone else's public Spray).
+  // BY BEING a member of that RSS Blend. Recomputed each fetchReadItems()
+  // call; cleared whenever "All", multiple RSS Blends, or a built-in slot
+  // (__youtube/__bluesky) is active, or the single active RSS Blend isn't
+  // one the reader actually owns (e.g. someone else's public RSS Blend).
   let quickRemoveContext = null;
 
-  // Shared official flagship Spray slug — matches server.mjs's
+  // Shared official flagship RSS Blend slug — matches server.mjs's
   // OFFICIAL_HEADLINES_SPRAY_SLUG. Used as the "News" fallback for
   // anonymous readers (who can't hit /api/my/spray-bar) and before the
   // signed-in reader's own bar has loaded.
@@ -639,7 +639,7 @@
   const ACTIVE_SPRAY_KEY = "source_active_spray";
 
   let sprayBarData = null; // { news: {slug,name}, sprays: [{slug,name}] }
-  // Multi-select: a reader can view several Sprays combined at once.
+  // Multi-select: a reader can view several RSS Blends combined at once.
   // Stored as a JSON array in localStorage, held as a Set at runtime.
   // "all" is treated as exclusive with everything else — selecting it
   // clears any other picks, and picking anything else drops "all".
@@ -662,11 +662,11 @@
     localStorage.setItem(ACTIVE_SPRAY_KEY, JSON.stringify(Array.from(activeSprayKeys)));
   }
 
-  // SOURCE!-only display shortener: the shared flagship Spray's real
+  // SOURCE!-only display shortener: the shared flagship RSS Blend's real
   // name ("Headlines: Best in the World") stays unchanged everywhere
   // else (N38YO homepage, spray.html, the RSS feed title) — this is a
   // presentation-only override for tab/pill labels in this app, where
-  // the full name is too wordy. Any other Spray's name passes through
+  // the full name is too wordy. Any other RSS Blend's name passes through
   // untouched.
   function sprayDisplayName(slug, name) {
     if (slug === OFFICIAL_NEWS_SLUG) return "Headlines";
@@ -734,7 +734,7 @@
         </button>`;
     }).join("")
       + `<button class="spray-pill spray-pill-create" data-key="__addfeed">+ Add a Feed</button>`
-      + `<button class="spray-pill spray-pill-create" data-key="__create">+ Create an RSS Pack</button>`;
+      + `<button class="spray-pill spray-pill-create" data-key="__create">+ Create an RSS Blend</button>`;
     el.querySelectorAll(".spray-pill-x").forEach(x => {
       x.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -751,9 +751,9 @@
   }
 
   // Populated as a side effect of fetchItemsForSprayKey() whenever it
-  // fetches a real Spray (not the built-in __youtube/__bluesky slots) —
+  // fetches a real RSS Blend (not the built-in __youtube/__bluesky slots) —
   // slug -> {name, is_owner, is_official}. Read by fetchReadItems() to
-  // decide whether the single active Spray qualifies for quick-remove.
+  // decide whether the single active RSS Blend qualifies for quick-remove.
   const mixMetaCache = new Map();
 
   async function fetchItemsForSprayKey(key) {
@@ -788,7 +788,7 @@
       return Array.isArray(mix.items) ? mix.items : [];
     } catch (err) {
       if (key === OFFICIAL_NEWS_SLUG) {
-        // The flagship Spray is just a live mirror of the default Wire —
+        // The flagship RSS Blend is just a live mirror of the default Wire —
         // if its own dedicated mix endpoint fails for any reason, fall
         // back to the exact same underlying data via /api/dispatches
         // rather than silently dropping "Headlines" out of a multi-select
@@ -804,10 +804,10 @@
   // Resolves the items to show in Read based on the active toggle
   // selection(s). "all" is the full curated wire (today's default) and
   // is exclusive with everything else. Any other combination of keys —
-  // one or more Spray slugs and/or the built-in "__youtube" slot — is
+  // one or more RSS Blend slugs and/or the built-in "__youtube" slot — is
   // fetched in parallel and merged: deduped by link (so the same story
-  // showing up in two selected Sprays doesn't double), sorted newest
-  // first. A key that fails (Spray deleted/went private) is silently
+  // showing up in two selected RSS Blends doesn't double), sorted newest
+  // first. A key that fails (RSS Blend deleted/went private) is silently
   // dropped from the selection rather than breaking the whole view; if
   // every key fails, falls back to "all".
   async function fetchReadItems() {
@@ -824,7 +824,7 @@
         combined = combined.concat(r.value);
       } else {
         failures.push(keys[i]);
-        console.error(`Spray toggle: "${keys[i]}" failed to load and was dropped from the merge:`, r.reason);
+        console.error(`RSS Blend toggle: "${keys[i]}" failed to load and was dropped from the merge:`, r.reason);
       }
     });
     if (failures.length > 0) {
@@ -841,11 +841,11 @@
       persistActiveSprayKeys();
     }
 
-    // Exactly one real (non-built-in) Spray in view, and the reader owns
+    // Exactly one real (non-built-in) RSS Blend in view, and the reader owns
     // it and it's not the auto-syncing official one (which has no stored
     // sources to toggle) -> quick-remove mode. Anything else (multiple
-    // selected, a built-in slot, or a Spray that isn't theirs) reverts
-    // every card back to the normal "+ Spray" add flow.
+    // selected, a built-in slot, or an RSS Blend that isn't theirs) reverts
+    // every card back to the normal "+ RSS Blend" add flow.
     quickRemoveContext = null;
     if (survivingKeys.length === 1) {
       const meta = mixMetaCache.get(survivingKeys[0]);
@@ -1060,7 +1060,7 @@
 
   // ---------------------------------------------------------------
   // Classic — a true 3-pane "Google Reader" arrangement: a persistent
-  // vertical sidebar of your RSS Packs (left), a dense one-line item
+  // vertical sidebar of your RSS Blends (left), a dense one-line item
   // list (middle), and a reading pane (right) — reading-pane-on-the-
   // right is the classic convention, the mirror of the regular Desktop
   // reader above (which puts the pane on the LEFT). Reuses the exact
@@ -1097,13 +1097,13 @@
     const el = document.getElementById("classicSidebar");
     if (!el) return;
     const pills = await getSprayBarPills();
-    el.innerHTML = `<div class="classic-sidebar-head">RSS Packs</div>` +
+    el.innerHTML = `<div class="classic-sidebar-head">RSS Blends</div>` +
       pills.map(p => {
         const active = activeSprayKeys.has(p.key);
         return `<button class="classic-sidebar-item${active ? " active" : ""}" data-key="${escapeHtml(p.key)}" title="${escapeHtml(p.label)}">${escapeHtml(p.label)}</button>`;
       }).join("") +
       `<button class="classic-sidebar-item classic-sidebar-create" data-key="__addfeed">+ Add a Feed</button>` +
-      `<button class="classic-sidebar-item classic-sidebar-create" data-key="__create">+ Create an RSS Pack</button>`;
+      `<button class="classic-sidebar-item classic-sidebar-create" data-key="__create">+ Create an RSS Blend</button>`;
     el.querySelectorAll(".classic-sidebar-item").forEach(btn => {
       btn.addEventListener("click", () => {
         if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
@@ -1115,8 +1115,8 @@
 
   // ---------------------------------------------------------------
   // Columns — several independent Scroll-style feeds side by side, each
-  // its own Spray. Fully independent of the Read toggle bar's selection
-  // (activeSprayKeys) — a column's Spray choice is a separate, per-column
+  // its own RSS Blend. Fully independent of the Read toggle bar's selection
+  // (activeSprayKeys) — a column's RSS Blend choice is a separate, per-column
   // setting. Every card inside a column renders in Scroll's card style
   // regardless of the global VIEW setting (that's what "columns" means
   // here — several simultaneous Scroll feeds, not a 5th distinct card
@@ -1150,7 +1150,7 @@
     return `
       <div class="read-column" data-column-index="${i}">
         <div class="read-column-head">
-          <span class="read-column-name${slug ? "" : " read-column-name-empty"}">${slug ? escapeHtml((meta && meta.name) || slug) : "Pick an RSS Pack"}</span>
+          <span class="read-column-name${slug ? "" : " read-column-name-empty"}">${slug ? escapeHtml((meta && meta.name) || slug) : "Pick an RSS Blend"}</span>
           <div class="read-column-head-actions">
             ${slug ? `<button class="spray-bar-btn" data-column-change="${i}">${columnPickerOpenIndex === i ? "Cancel" : "Change"}</button>` : ""}
             ${readColumns.length > 1 ? `<button class="read-column-close" data-column-remove="${i}" title="Close this column">×</button>` : ""}
@@ -1158,11 +1158,11 @@
         </div>
         ${showPicker ? `
           <div class="read-column-picker">
-            <input class="create-flow-input" data-column-search="${i}" placeholder="Search public RSS Packs by name...">
+            <input class="create-flow-input" data-column-search="${i}" placeholder="Search public RSS Blends by name...">
             <div class="read-column-picker-results" id="readColumnPickerResults-${i}"></div>
           </div>` : ""}
         <div class="read-column-body" id="readColumnBody-${i}">
-          ${slug ? "" : `<p class="card-meta" style="padding:16px;">Search above for a public RSS Pack to open here.</p>`}
+          ${slug ? "" : `<p class="card-meta" style="padding:16px;">Search above for a public RSS Blend to open here.</p>`}
         </div>
       </div>`;
   }
@@ -1211,7 +1211,7 @@
         .filter(m => !q || (m.name || "").toLowerCase().includes(q))
         .slice(0, 8);
       results.innerHTML = matches.length === 0
-        ? `<div class="card-meta">No RSS Packs match.</div>`
+        ? `<div class="card-meta">No RSS Blends match.</div>`
         : matches.map(m => `<button class="btn" style="width:100%; margin-bottom:6px; text-align:left;" data-column-pick="${escapeHtml(m.slug)}">${escapeHtml(m.name)}</button>`).join("");
       results.querySelectorAll("[data-column-pick]").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -1230,14 +1230,14 @@
     body.innerHTML = `<div class="state-block-mini">Loading…</div>`;
     try {
       const items = await fetchItemsForSprayKey(slug);
-      // The reader may have changed this column's Spray while the fetch
+      // The reader may have changed this column's RSS Blend while the fetch
       // was in flight — don't let a stale response land in the wrong column.
       if (readColumns[i] !== slug) return;
       const nameEl = document.querySelector(`.read-column[data-column-index="${i}"] .read-column-name`);
       const meta = mixMetaCache.get(slug);
       if (nameEl && meta) nameEl.textContent = meta.name;
       if (!Array.isArray(items) || items.length === 0) {
-        body.innerHTML = `<p class="card-meta" style="padding:16px;">Nothing in this RSS Pack yet.</p>`;
+        body.innerHTML = `<p class="card-meta" style="padding:16px;">Nothing in this RSS Blend yet.</p>`;
         return;
       }
       const sorted = items.slice().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).slice(0, 60);
@@ -1255,7 +1255,7 @@
       wireSaveButtons(body);
     } catch (e) {
       if (readColumns[i] !== slug) return;
-      body.innerHTML = `<p class="card-meta" style="padding:16px;">Couldn't load this RSS Pack — try a different one.</p>`;
+      body.innerHTML = `<p class="card-meta" style="padding:16px;">Couldn't load this RSS Blend — try a different one.</p>`;
     }
   }
 
@@ -1608,20 +1608,20 @@
 
   // ---------------------------------------------------------------
   // SOURCES — adjust your reading pane / source tiers, manage your
-  // Read-tab Spray bar, and (via "+ New Spray") the guided Create flow.
+  // Read-tab RSS Blend bar, and (via "+ New RSS Blend") the guided Create flow.
   // Maps to /api/sources, /api/my/spray-bar, /api/mixes,
   // /api/my/custom-sources, /api/spray-suggestions.
   // ---------------------------------------------------------------
   let sourcesRegistryCache = null; // [{outlet, feed_url, ...}] — fetched once, reused by both the registry list and Create's add-a-source matching
   let officialPacksCache = null; // [{slug, name, auto_sync, clone_count}] — every admin-curated official Pack, not just the flagship
   let publicPacksCache = null; // [{slug, name, location_label, clone_count}] — the full public directory, fetched once and filtered client-side by the browse screen's search box
-  let browseState = null; // null | { query, loading } — the "Public RSS Packs" browse screen
+  let browseState = null; // null | { query, loading } — the "Public RSS Blends" browse screen
   let createFlowState = null; // null = not in Create mode
 
   // Branch/leaf tag picker state lives inside createFlowState. Branches
   // (News/Fun/Work/Local) are never taggable themselves — only leaf topics
   // filed under News/Fun/Work are, and Local uses the existing free-text
-  // location field on a Spray instead of a topic tag at all.
+  // location field on an RSS Blend instead of a topic tag at all.
   function newCreateFlowState() {
     return {
       name: "", picked: [], suggestions: [], loadingSuggestions: false, addToBar: true, isPublic: true,
@@ -1634,10 +1634,10 @@
   }
   let sourceSuggestCache = null; // [{outlet, section}] — the handful shown as "starter packs"
   // Sources tab is two named areas, not a busy dashboard:
-  //   YOUR SOURCES  — everything you can build a Spray from, searchable,
-  //     each one drills into a detail view (which of your Sprays it's
-  //     already in) that ends at the same "+ Spray" picker used from a
-  //     post — this is the one general way to EDIT a Spray's contents.
+  //   YOUR SOURCES  — everything you can build an RSS Blend from, searchable,
+  //     each one drills into a detail view (which of your RSS Blends it's
+  //     already in) that ends at the same "+ RSS Blend" picker used from a
+  //     post — this is the one general way to EDIT an RSS Blend's contents.
   //   EXPAND YOUR MIND — a handful of suggestions plus a door into the
   //     full guided Create flow, for building something brand new.
   // Replaces the earlier "two doors" (Starter packs / Create your own)
@@ -1647,7 +1647,7 @@
   let sourcesDetailOutlet = null; // which registry row is expanded
   let sourcesDetailMixes = null;  // cached for-source() result for it
 
-  // ----- Sprays shelf: Headlines (starter pack) + your own Sprays + New -----
+  // ----- RSS Blends shelf: Headlines (starter pack) + your own RSS Blends + New -----
   let myMixesCache = null; // [{slug,name,is_public,is_official,...}], reader's own
   async function loadMyMixes(force) {
     if (!currentUser) { myMixesCache = []; return myMixesCache; }
@@ -1693,7 +1693,7 @@
     const newTile = `
       <button class="spray-tile spray-tile-new" data-tile="new">
         <span class="spray-tile-plus">+</span>
-        <span class="spray-tile-name">New RSS Pack</span>
+        <span class="spray-tile-name">New RSS Blend</span>
       </button>`;
 
     return `<div class="spray-shelf">${officialTiles}${ownTiles}${newTile}</div>`;
@@ -1710,17 +1710,17 @@
     });
   }
 
-  // ----- Manage RSS Packs: a full screen within Sources (same "own
+  // ----- Manage RSS Blends: a full screen within Sources (same "own
   // screen, ‹ Back returns" pattern the guided Create flow already
   // uses), not a bottom sheet. Headlines gets a real follow/unfollow
-  // toggle (adds/removes the official Spray from the reader's own
+  // toggle (adds/removes the official RSS Blend from the reader's own
   // Read-toggle bar — a genuine, reversible action) plus "Copy and
-  // customize" (creates a brand-new, independently editable Spray
+  // customize" (creates a brand-new, independently editable RSS Blend
   // pre-filled with whatever Headlines currently carries, since the
-  // official Spray itself has no stored source list to edit — it
-  // auto-syncs to the live Wire). An owned Spray gets rename,
+  // official RSS Blend itself has no stored source list to edit — it
+  // auto-syncs to the live Wire). An owned RSS Blend gets rename,
   // public/private, its source list with add/remove, and its follower
-  // (clone) count — this is the one place a Spray's OWN contents get
+  // (clone) count — this is the one place an RSS Blend's OWN contents get
   // edited, reached by tapping its tile on the shelf. -----
   let manageState = null; // null = not in Manage mode
   // { view: 'headlines' } | { view: 'edit', slug }, plus .data (full
@@ -1731,7 +1731,7 @@
     renderSources();
   }
 
-  // ----- Browse Public RSS Packs: a searchable directory of every OTHER
+  // ----- Browse Public RSS Blends: a searchable directory of every OTHER
   // reader's public Pack (GET /api/mixes is already anonymous-safe — no
   // sign-in required to browse or view one, only to Follow/Clone it).
   // Search is client-side over the one fetched list rather than a new
@@ -1750,7 +1750,7 @@
         publicPacksCache = await api("/api/mixes");
       } catch (e) {
         publicPacksCache = [];
-        toast(e.message || "Couldn't load public RSS Packs.");
+        toast(e.message || "Couldn't load public RSS Blends.");
       }
       browseState.loading = false;
       renderBrowseScreen();
@@ -1763,7 +1763,7 @@
     main.innerHTML = `
       <div class="source-single-col-screen">
       <button class="btn" id="browseBack" style="margin-bottom:14px;">‹ Back to Sources</button>
-      <h2 class="manage-screen-title">Top RSS Packs</h2>
+      <h2 class="manage-screen-title">Top RSS Blends</h2>
       <div class="manage-screen-stat" style="margin-bottom:12px;">Made and shared by other readers — follow one into your Read toggle, or copy it to make it your own.</div>
       <input class="create-flow-input" id="browseSearchInput" placeholder="Search by name or place…" style="margin-bottom:14px;">
       <div id="browseResults"></div>
@@ -1791,7 +1791,7 @@
       ? pool.filter(p => (p.name || "").toLowerCase().includes(q) || (p.location_label || "").toLowerCase().includes(q))
       : pool;
     container.innerHTML = filtered.length === 0
-      ? `<div class="card"><div class="card-meta">No public RSS Packs match.</div></div>`
+      ? `<div class="card"><div class="card-meta">No public RSS Blends match.</div></div>`
       : filtered.map(p => `
           <button class="card" style="width:100%;text-align:left;display:block;margin-bottom:8px;" data-slug="${escapeHtml(p.slug)}">
             <div class="card-title" style="margin-bottom:2px;">${p.featured ? "⭐ " : ""}${escapeHtml(p.name)}</div>
@@ -1811,7 +1811,7 @@
       manageState.view = data.is_owner ? "edit" : (data.auto_sync ? "headlines" : "view");
     } catch (e) {
       manageState.data = null;
-      toast(e.message || "Couldn't load that RSS Pack.");
+      toast(e.message || "Couldn't load that RSS Blend.");
     }
     manageState.loading = false;
     renderManageScreen();
@@ -1892,7 +1892,7 @@
         </div>
         <div class="tile-sheet-toggle-row">
           <span>Public</span>
-          <button class="tile-sheet-switch${mix.is_public ? " on" : ""}" id="mgVisibilityToggle" role="switch" aria-checked="${mix.is_public}" aria-label="Make this RSS Pack public"></button>
+          <button class="tile-sheet-switch${mix.is_public ? " on" : ""}" id="mgVisibilityToggle" role="switch" aria-checked="${mix.is_public}" aria-label="Make this RSS Blend public"></button>
         </div>
         <div class="manage-screen-field">
           <div class="create-flow-label">Sources</div>
@@ -1902,7 +1902,7 @@
         </div>
         <button class="btn primary" id="mgSaveBtn" style="width:100%; margin-top:14px;">Save</button>
         <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
-        <button class="tile-sheet-delete" id="mgDeleteBtn">Delete this RSS Pack</button>`;
+        <button class="tile-sheet-delete" id="mgDeleteBtn">Delete this RSS Blend</button>`;
     }
 
     main.innerHTML = `<div class="source-single-col-screen"><button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back to Sources</button>` + body + `</div>`;
@@ -1950,7 +1950,7 @@
       toast(`Created "${created.name}" — now yours to edit.`);
       openManagePack(created.slug);
     } catch (e) {
-      toast(e.message || "Couldn't copy that RSS Pack.");
+      toast(e.message || "Couldn't copy that RSS Blend.");
       btn.disabled = false;
       btn.textContent = "Copy and customize";
     }
@@ -1968,7 +1968,7 @@
           await api(`/api/my/mixes/${encodeURIComponent(mix.slug)}/toggle-source`, { method: "POST", body: JSON.stringify(body) });
           await openManagePack(mix.slug); // refetch + re-render
         } catch (e) {
-          toast(e.message || "Couldn't remove that source — an RSS Pack needs at least one.");
+          toast(e.message || "Couldn't remove that source — an RSS Blend needs at least one.");
         }
       });
     });
@@ -2002,7 +2002,7 @@
 
     document.getElementById("mgSaveBtn").addEventListener("click", async () => {
       const name = (document.getElementById("mgRenameInput").value || "").trim();
-      if (!name) { toast("Name your RSS Pack first."); return; }
+      if (!name) { toast("Name your RSS Blend first."); return; }
       const isPublic = document.getElementById("mgVisibilityToggle").classList.contains("on");
       try {
         await api(`/api/mixes/${encodeURIComponent(mix.slug)}`, {
@@ -2013,7 +2013,7 @@
         toast("Saved.");
         closeManageScreen();
       } catch (e) {
-        toast(e.message || "Couldn't save that RSS Pack.");
+        toast(e.message || "Couldn't save that RSS Blend.");
       }
     });
 
@@ -2026,10 +2026,10 @@
         await api(`/api/mixes/${encodeURIComponent(mix.slug)}`, { method: "DELETE" });
         await loadMyMixes(true);
         await loadSprayBar(true);
-        toast("RSS Pack deleted.");
+        toast("RSS Blend deleted.");
         closeManageScreen();
       } catch (e) {
-        toast(e.message || "Couldn't delete that RSS Pack.");
+        toast(e.message || "Couldn't delete that RSS Blend.");
       }
     });
   }
@@ -2050,7 +2050,7 @@
         officialPacksCache || api("/api/mixes/official"),
         publicPacksCache || api("/api/mixes"),
       ]);
-      // Sources is for building Sprays out of Organizations — Individuals (Bluesky-only
+      // Sources is for building RSS Blends out of Organizations — Individuals (Bluesky-only
       // people) don't produce dispatch items on their own and belong to Buzz, not here.
       // Filter on feed_type, not feed_url presence — an Organization can have no RSS
       // (e.g. Degenerate Art, YouTube-only) and still belong here.
@@ -2063,7 +2063,7 @@
       // side on desktop (.sources-two-col in source.css) and stacked in
       // source order on mobile (no columns there — mobile is single-
       // column by definition):
-      //   LEFT  = "Collections" — RSS Packs you build, browse, reorder
+      //   LEFT  = "Collections" — RSS Blends you build, browse, reorder
       //   RIGHT = "Individual sources" — add one directly, browse the
       //           registry, get suggestions
       // Previously this was one long linear stack. On desktop that
@@ -2074,31 +2074,31 @@
       // designed columns (rather than just forcing single-column) fixes
       // that bug and puts the desktop width to actual use.
 
-      // ----- LEFT: the Sprays shelf — the front door. All official
+      // ----- LEFT: the RSS Blends shelf — the front door. All official
       // Packs pinned first (each with its own follow/unfollow toggle,
       // generalized so there can be more than just the one flagship),
-      // then the reader's own Sprays, then a "+ New Spray" tile. Tapping
+      // then the reader's own RSS Blends, then a "+ New RSS Blend" tile. Tapping
       // any tile opens the SAME detail sheet shape, just with different
       // contents — one interaction pattern for everything. -----
       let leftHtml = `
         <div class="sources-area-head">
           <div class="sources-area-rule"></div>
-          <div class="sources-area-title">Your RSS Packs</div>
+          <div class="sources-area-title">Your RSS Blends</div>
           <div class="sources-area-sub">Tap any tile to follow, edit, or build something new.</div>
         </div>`;
       leftHtml += renderSpraysShelf(bar, myMixes, officialPacksCache);
 
-      // ----- LEFT: Public RSS Packs — made and shared by OTHER
+      // ----- LEFT: Public RSS Blends — made and shared by OTHER
       // readers. Fully browsable/searchable with no account required
       // (GET /api/mixes is already anonymous-safe), distinct from the
-      // Official row above and from "Your RSS Packs" (private by
+      // Official row above and from "Your RSS Blends" (private by
       // default). A small teaser here, "Browse all" opens the full
       // searchable screen. -----
       const teaser = publicPacksCache.slice(0, 3);
       leftHtml += `
         <div class="sources-area-head" style="margin-top:28px;">
           <div class="sources-area-rule"></div>
-          <div class="sources-area-title">Top RSS Packs</div>
+          <div class="sources-area-title">Top RSS Blends</div>
           <div class="sources-area-sub">Made and shared by other readers.</div>
         </div>`;
       if (teaser.length > 0) {
@@ -2114,38 +2114,38 @@
             </button>
           </div>`;
       } else {
-        leftHtml += `<button class="btn" id="browsePublicBtn" style="width:100%;">Browse RSS Packs from other readers</button>`;
+        leftHtml += `<button class="btn" id="browsePublicBtn" style="width:100%;">Browse RSS Blends from other readers</button>`;
       }
 
-      // ----- LEFT: reordering your Read toggle (which Sprays show up as
+      // ----- LEFT: reordering your Read toggle (which RSS Blends show up as
       // pills, and in what order) is about managing Packs, same as the
       // shelf above — belongs in the same column, not with individual
       // sources. -----
       if (currentUser) {
         leftHtml += `<div class="section-label" style="margin-top:28px;">Reading order</div>` + renderYourSpraysSection(bar);
       } else {
-        leftHtml += `<p class="sources-signin-hint">Sign in (on the You tab) to save and organize your own RSS Packs.</p>`;
+        leftHtml += `<p class="sources-signin-hint">Sign in (on the You tab) to save and organize your own RSS Blends.</p>`;
       }
 
       // ----- RIGHT: quick "Add a feed" — a fast, Pack-free path to add a
       // single custom RSS URL. POST /api/my/custom-sources has existed
       // since Super RSS Reader Session 1 and works standalone, but the
       // only UI that ever called it was buried inside the guided
-      // Create-a-Spray flow (name it, pick a topic, add sources, save).
+      // Create-a-RSS Blend flow (name it, pick a topic, add sources, save).
       // Someone who already knows exactly which feed they want shouldn't
       // have to build a whole Pack around it first — this box adds it
       // directly to their reading list (custom sources already blend
-      // into the unfiltered wire automatically) and offers the Spray
+      // into the unfiltered wire automatically) and offers the RSS Blend
       // picker as an optional next step, not a required one. Lives in
       // the RIGHT column, not the left — despite the name, this isn't a
       // Packs action, it's an individual-source action (see the box's
-      // own copy: "no RSS Pack required"), grouped with Your Sources
+      // own copy: "no RSS Blend required"), grouped with Your Sources
       // below for the same reason. -----
       let rightHtml = `
         <div class="sources-area-head">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Add a Feed</div>
-          <div class="sources-area-sub">Paste a site, article, or feed URL — we'll find the RSS feed. It starts showing up in your reading list right away, no RSS Pack required.</div>
+          <div class="sources-area-sub">Paste a site, article, or feed URL — we'll find the RSS feed. It starts showing up in your reading list right away, no RSS Blend required.</div>
         </div>`;
       if (currentUser) {
         rightHtml += `
@@ -2165,7 +2165,7 @@
       rightHtml += `<div class="sources-area-head" style="margin-top:28px;">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Your Sources</div>
-          <div class="sources-area-sub">Everything you can build an RSS Pack from. Tap one to see where it already lives. <span class="source-corporate-mark">*</span> = corporate/conglomerate-owned — hover for the parent company.</div>
+          <div class="sources-area-sub">Everything you can build an RSS Blend from. Tap one to see where it already lives. <span class="source-corporate-mark">*</span> = corporate/conglomerate-owned — hover for the parent company.</div>
         </div>`;
       rightHtml += `<div class="section-label" style="margin-top:8px;">All sources (${orgSources.length})</div>`;
       rightHtml += `<input class="create-flow-input" id="sourcesBrowseSearch" placeholder="Search sources..." value="${escapeHtml(sourcesBrowseFilter)}" style="margin:8px 0 10px;">`;
@@ -2183,7 +2183,7 @@
         <div class="sources-area-head" style="margin-top:28px;">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Expand Your Mind</div>
-          <div class="sources-area-sub">A few you might like — tap one to add it to an RSS Pack, or start something brand new.</div>
+          <div class="sources-area-sub">A few you might like — tap one to add it to an RSS Blend, or start something brand new.</div>
         </div>`;
 
       if (suggestions.length > 0) {
@@ -2193,7 +2193,7 @@
             </button>`).join("")}
           </div>`;
       }
-      rightHtml += `<button class="btn" id="startNewSprayBtn" style="margin-top:14px;width:100%;">+ Start a brand-new RSS Pack</button>`;
+      rightHtml += `<button class="btn" id="startNewSprayBtn" style="margin-top:14px;width:100%;">+ Start a brand-new RSS Blend</button>`;
 
       main.innerHTML = `
         <div class="sources-two-col">
@@ -2277,8 +2277,8 @@
       if (input) input.value = "";
       toast(`"${created.name || feedUrl}" added — it's already in your reading list.`);
       // Optional next step, not required: offer to fold it straight into
-      // an existing Spray (or start a new one) via the same picker every
-      // other "+ Spray" entry point in the app already uses.
+      // an existing RSS Blend (or start a new one) via the same picker every
+      // other "+ RSS Blend" entry point in the app already uses.
       openSprayPicker({ source_type: "custom", custom_source_id: created.id, label: created.name || feedUrl });
     } catch (e) {
       toast(e.message || "Couldn't add that feed.");
@@ -2357,7 +2357,7 @@
 
   // A single row in the searchable registry list. Tapping it toggles an
   // inline detail (fetched lazily, only while open) showing which of the
-  // reader's own Sprays already carry it, ending in the same "+ Spray"
+  // reader's own RSS Blends already carry it, ending in the same "+ RSS Blend"
   // picker used from a post — the drill-down IS the edit action, not a
   // separate mechanism.
   function renderSourceRow(s, needsBorder) {
@@ -2366,16 +2366,16 @@
     let detail = "";
     if (isOpen) {
       if (!currentUser) {
-        detail = `<div class="source-row-detail"><p class="sources-signin-hint" style="margin:0;">Sign in on the You tab to add this to an RSS Pack.</p></div>`;
+        detail = `<div class="source-row-detail"><p class="sources-signin-hint" style="margin:0;">Sign in on the You tab to add this to an RSS Blend.</p></div>`;
       } else if (!sourcesDetailMixes) {
         detail = `<div class="source-row-detail"><div class="state-block-mini">Loading…</div></div>`;
       } else {
         const inMixes = sourcesDetailMixes.filter(m => m.has_source);
         detail = `<div class="source-row-detail">
           ${inMixes.length > 0
-            ? `<div class="source-row-in">In your RSS Packs: ${inMixes.map(m => escapeHtml(m.name)).join(", ")}</div>`
-            : `<div class="source-row-in muted">Not in any of your RSS Packs yet.</div>`}
-          <button class="btn" data-detail-add="${escapeHtml(outlet)}">+ Add to an RSS Pack</button>
+            ? `<div class="source-row-in">In your RSS Blends: ${inMixes.map(m => escapeHtml(m.name)).join(", ")}</div>`
+            : `<div class="source-row-in muted">Not in any of your RSS Blends yet.</div>`}
+          <button class="btn" data-detail-add="${escapeHtml(outlet)}">+ Add to an RSS Blend</button>
         </div>`;
       }
     }
@@ -2438,7 +2438,7 @@
     });
   }
 
-  // ----- "Your Sprays" bar editor -----
+  // ----- "Your RSS Blends" bar editor -----
 
   let newsPickerOpen = false;
 
@@ -2451,13 +2451,13 @@
         </div>
         ${newsPickerOpen ? `
           <div style="margin-top:10px;">
-            <input class="create-flow-input" id="newsPickerSearch" placeholder="Search public RSS Packs by name...">
+            <input class="create-flow-input" id="newsPickerSearch" placeholder="Search public RSS Blends by name...">
             <div id="newsPickerResults" style="margin-top:8px;"></div>
           </div>` : ""}
       </div>`;
 
     const barRows = bar.sprays.length === 0
-      ? `<div class="card"><div class="card-meta">Nothing added to your Read toggle yet — add one when you create an RSS Pack, or from any RSS Pack's page.</div></div>`
+      ? `<div class="card"><div class="card-meta">Nothing added to your Read toggle yet — add one when you create an RSS Blend, or from any RSS Blend's page.</div></div>`
       : `<div class="card" style="padding:0;">` + bar.sprays.map((s, i) => `
         <div class="spray-bar-row${i > 0 ? " " : ""}" style="${i > 0 ? "border-top:1px solid var(--line);" : ""}" data-slug="${escapeHtml(s.slug)}">
           <span class="spray-bar-name">${escapeHtml(s.name)}</span>
@@ -2516,7 +2516,7 @@
         .filter(m => !q || (m.name || "").toLowerCase().includes(q))
         .slice(0, 8);
       results.innerHTML = matches.length === 0
-        ? `<div class="card-meta">No RSS Packs match.</div>`
+        ? `<div class="card-meta">No RSS Blends match.</div>`
         : matches.map(m => `<button class="btn" style="width:100%; margin-bottom:6px; text-align:left;" data-slug="${escapeHtml(m.slug)}">${escapeHtml(m.name)}</button>`).join("");
       results.querySelectorAll("[data-slug]").forEach(btn => {
         btn.addEventListener("click", async () => {
@@ -2535,13 +2535,13 @@
     return (...args) => { clearTimeout(t); t = setTimeout(() => fn(...args), ms); };
   }
 
-  // ----- "Add to a Spray" quick picker — opens straight off a post (card
-  // or reader pane). Check/uncheck which of your own Sprays this source
+  // ----- "Add to an RSS Blend" quick picker — opens straight off a post (card
+  // or reader pane). Check/uncheck which of your own RSS Blends this source
   // belongs to, or spin up a brand new one with it pre-added. Toggles
   // happen immediately, no separate Save step — same "tap it, it's done"
   // feel as a save-to-a-playlist picker. This is also the general answer
-  // to "editing a Spray is hard" — it's the one place a reader can add a
-  // source to an EXISTING Spray at all; the guided Create flow only ever
+  // to "editing an RSS Blend is hard" — it's the one place a reader can add a
+  // source to an EXISTING RSS Blend at all; the guided Create flow only ever
   // builds new ones. -----
 
   let sprayPickerSource = null;
@@ -2555,7 +2555,7 @@
     sprayPickerMixes = null;
     // If the Sources tab's drill-down detail was open on the exact source
     // this picker just edited, refresh it — otherwise it'd show stale
-    // "in your Sprays" membership after a toggle.
+    // "in your RSS Blends" membership after a toggle.
     if (closedSource && closedSource.source_type === "admin_outlet" &&
         activeTab === "sources" && sourcesDetailOutlet === closedSource.outlet) {
       sourcesDetailMixes = null;
@@ -2564,8 +2564,8 @@
   }
 
   async function openSprayPicker(source) {
-    if (!currentUser) { toast("Sign in on the You tab to add this to an RSS Pack."); return; }
-    if (!source) { toast("Can't add this to an RSS Pack."); return; }
+    if (!currentUser) { toast("Sign in on the You tab to add this to an RSS Blend."); return; }
+    if (!source) { toast("Can't add this to an RSS Blend."); return; }
     sprayPickerSource = source;
     sprayPickerMixes = null;
     renderSprayPicker(true);
@@ -2576,7 +2576,7 @@
       sprayPickerMixes = await api(`/api/my/mixes/for-source?${params}`);
     } catch (e) {
       sprayPickerMixes = [];
-      toast(e.message || "Couldn't load your RSS Packs.");
+      toast(e.message || "Couldn't load your RSS Blends.");
     }
     renderSprayPicker(false);
   }
@@ -2594,9 +2594,9 @@
     const label = sprayPickerSource.label || "this source";
     let body;
     if (loading) {
-      body = `<div class="state-block-mini">Loading your RSS Packs…</div>`;
+      body = `<div class="state-block-mini">Loading your RSS Blends…</div>`;
     } else if (!sprayPickerMixes || sprayPickerMixes.length === 0) {
-      body = `<div class="spray-picker-empty">You don't have any RSS Packs yet — start one below.</div>`;
+      body = `<div class="spray-picker-empty">You don't have any RSS Blends yet — start one below.</div>`;
     } else {
       body = `<div class="spray-picker-list">` + sprayPickerMixes.map(m => `
         <label class="spray-picker-row">
@@ -2607,13 +2607,13 @@
     el.innerHTML = `
       <div class="spray-picker-card">
         <div class="spray-picker-head">
-          <span>Add <strong>${escapeHtml(label)}</strong> to an RSS Pack</span>
+          <span>Add <strong>${escapeHtml(label)}</strong> to an RSS Blend</span>
           <button class="spray-picker-close" id="sprayPickerClose" aria-label="Close">×</button>
         </div>
-        <p class="spray-picker-sub">You'll follow all of ${escapeHtml(label)}'s future posts in the RSS Pack you pick — not just this one article.</p>
+        <p class="spray-picker-sub">You'll follow all of ${escapeHtml(label)}'s future posts in the RSS Blend you pick — not just this one article.</p>
         ${body}
         <div class="spray-picker-newrow">
-          <input type="text" id="sprayPickerNewName" placeholder="New RSS Pack name…" maxlength="80">
+          <input type="text" id="sprayPickerNewName" placeholder="New RSS Blend name…" maxlength="80">
           <button class="btn" id="sprayPickerNewBtn">+ New</button>
         </div>
       </div>`;
@@ -2642,7 +2642,7 @@
       toast(result.added ? "Added." : "Removed.");
     } catch (e) {
       checkboxEl.checked = !checkboxEl.checked;
-      toast(e.message || "Couldn't update that RSS Pack.");
+      toast(e.message || "Couldn't update that RSS Blend.");
     } finally {
       checkboxEl.disabled = false;
     }
@@ -2651,7 +2651,7 @@
   async function createSprayFromPicker() {
     const input = document.getElementById("sprayPickerNewName");
     const name = (input.value || "").trim();
-    if (!name) { toast("Name your RSS Pack first."); return; }
+    if (!name) { toast("Name your RSS Blend first."); return; }
     const btn = document.getElementById("sprayPickerNewBtn");
     btn.disabled = true;
     try {
@@ -2664,7 +2664,7 @@
       toast(`Created "${name}."`);
       renderSprayPicker(false);
     } catch (e) {
-      toast(e.message || "Couldn't create that RSS Pack.");
+      toast(e.message || "Couldn't create that RSS Blend.");
     } finally {
       if (btn) btn.disabled = false;
     }
@@ -2673,7 +2673,7 @@
   // ----- Guided Create flow: name -> add one -> suggest 5 -> repeat -----
 
   function openCreateFlow() {
-    if (!currentUser) { toast("Sign in on the You tab to create an RSS Pack."); return; }
+    if (!currentUser) { toast("Sign in on the You tab to create an RSS Blend."); return; }
     createFlowState = newCreateFlowState();
     renderSources();
   }
@@ -2727,7 +2727,7 @@
     if (state.topicIds.includes(id)) {
       state.topicIds = state.topicIds.filter(t => t !== id);
     } else {
-      if (state.topicIds.length >= MIX_TOPIC_CAP) { toast(`RSS Packs can carry up to ${MIX_TOPIC_CAP} tags.`); return; }
+      if (state.topicIds.length >= MIX_TOPIC_CAP) { toast(`RSS Blends can carry up to ${MIX_TOPIC_CAP} tags.`); return; }
       state.topicIds.push(id);
       state.topicLabels[id] = name;
     }
@@ -2889,7 +2889,7 @@
       <button class="btn" id="cfBack" style="margin-bottom:14px;">‹ Back</button>
 
       <div class="create-flow-step">
-        <div class="create-flow-label">Name your RSS Pack</div>
+        <div class="create-flow-label">Name your RSS Blend</div>
         <input class="create-flow-input" id="cfName" placeholder="e.g. Movies, AI, Local Politics" value="${escapeHtml(state.name)}">
       </div>
 
@@ -2919,10 +2919,10 @@
       </div>
       <div class="create-flow-checkbox-row">
         <input type="checkbox" id="cfPublic" ${state.isPublic ? "checked" : ""}>
-        <label for="cfPublic">Public — visible in the RSS Pack directory</label>
+        <label for="cfPublic">Public — visible in the RSS Blend directory</label>
       </div>
 
-      <button class="btn primary" id="cfSave" style="width:100%; margin-top:6px;">Save RSS Pack</button>
+      <button class="btn primary" id="cfSave" style="width:100%; margin-top:6px;">Save RSS Blend</button>
       </div>
     `;
 
@@ -2986,7 +2986,7 @@
   async function saveCreateFlow() {
     const state = createFlowState;
     const name = state.name.trim();
-    if (!name) { toast("Give your RSS Pack a name first."); return; }
+    if (!name) { toast("Give your RSS Blend a name first."); return; }
     if (state.picked.length === 0) { toast("Add at least one source."); return; }
 
     try {
@@ -3004,7 +3004,7 @@
       closeCreateFlow();
       toast(`"${name}" created.`);
     } catch (e) {
-      toast(e.message || "Couldn't save that RSS Pack.");
+      toast(e.message || "Couldn't save that RSS Blend.");
     }
   }
 
@@ -3015,7 +3015,7 @@
   // independent modules a reader can show/hide individually, or hide
   // the whole panel. Hiding always works locally (localStorage) whether
   // signed in or not — signing in just carries that choice across
-  // devices, same pattern as the Read-tab Spray bar and Edit Layout.
+  // devices, same pattern as the Read-tab RSS Blend bar and Edit Layout.
   // ---------------------------------------------------------------
   const MIDTERM_DATE = new Date("2026-11-03T00:00:00");
   const IRAN_WAR_START = new Date("2026-02-28T00:00:00");
@@ -3472,7 +3472,7 @@
 
   // ---------------------------------------------------------------
   // YOU — account + shareable reading list. Maps to Account +
-  // Sprays/custom-sources management.
+  // RSS Blends/custom-sources management.
   // ---------------------------------------------------------------
   async function renderYou() {
     const main = document.getElementById("main");
@@ -3482,13 +3482,13 @@
         <div class="source-single-col-screen">
         <div class="section-label" style="margin-top:2px;">WHY SIGN IN</div>
         <div class="section-sub" style="font-size:13.5px; line-height:1.5; margin:0 2px 20px;">
-          An account is free and just keeps your stuff with you: saved articles, the RSS Packs
+          An account is free and just keeps your stuff with you: saved articles, the RSS Blends
           and custom sources you build, and your reading setup — all synced across your devices,
           nothing lost if you switch phones or clear your browser.
         </div>
         <div class="card">
           <div class="card-meta"><span>ACCESS</span></div>
-          <div class="card-title" style="margin-bottom:10px;">Sign in to save your RSS Packs across devices.</div>
+          <div class="card-title" style="margin-bottom:10px;">Sign in to save your RSS Blends across devices.</div>
           <input id="youEmail" type="email" placeholder="you@domain.com"
             style="width:100%; padding:9px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--body); font-size:14px; margin-bottom:8px; border-radius:8px;">
           <button class="btn primary" id="youSendLink">SEND ACCESS LINK</button>
@@ -3545,10 +3545,10 @@
       </div>
       <button class="btn" id="youSignOut" style="margin-top:10px;">SIGN OUT</button>
       <div class="section-label" style="margin-top:22px;">MY SAVES</div>
-      <div class="section-sub">${saves.length} saved item${saves.length === 1 ? "" : "s"} — a personal reading list, not an RSS Pack.</div>
+      <div class="section-sub">${saves.length} saved item${saves.length === 1 ? "" : "s"} — a personal reading list, not an RSS Blend.</div>
       ${renderMySavesSection(saves, visibility)}
       <div class="section-label" style="margin-top:22px; color: var(--alert);">DELETE MY ACCOUNT</div>
-      <div class="section-sub">Permanently erases your saves, RSS Packs, custom sources, and preferences. This can't be undone.</div>
+      <div class="section-sub">Permanently erases your saves, RSS Blends, custom sources, and preferences. This can't be undone.</div>
       <button class="btn" id="youDeleteAccount" style="margin-top:8px; border-color: var(--alert); color: var(--alert);">Delete my account</button>
       <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:22px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>
       <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; margin-top:6px; font-size:13px; color: var(--ink-muted);">Support</a>
@@ -3563,7 +3563,7 @@
     });
     document.getElementById("youDeleteAccount").addEventListener("click", async () => {
       const ok = confirm(
-        "Delete your account? This permanently erases your saves, your RSS Packs, your custom sources, and every preference — there's no undoing this. Type OK to confirm."
+        "Delete your account? This permanently erases your saves, your RSS Blends, your custom sources, and every preference — there's no undoing this. Type OK to confirm."
       );
       if (!ok) return;
       try {
@@ -3581,7 +3581,7 @@
   }
 
   // ----- "My Saves" (personal reading list, You tab) -----
-  // Distinct from Sprays: a Spray is a collection of SOURCES a reader
+  // Distinct from RSS Blends: an RSS Blend is a collection of SOURCES a reader
   // follows; a save is a single ITEM they wanted to keep. Snapshotted at
   // save time (see saveButton()) — the title/excerpt/image shown here is
   // frozen, not re-fetched live, so a save never breaks even after its
@@ -3666,12 +3666,12 @@
   // (which already IS the live Headlines: Best in the World wire —
   // no clone needed to just read it). "Pick my own" heads to
   // Sources to start tuning. Per the locked scoping doc's decision
-  // #9, a reader can also clone the flagship Spray for real later
+  // #9, a reader can also clone the flagship RSS Blend for real later
   // from the Sources/You flow once signed in.
   // ---------------------------------------------------------------
   const ONBOARDED_KEY = "source_onboarded";
 
-  const WHATS_THIS_COPY = "SOURCE! gives you the news you need, without the billionaires' algorithms. Choose from handpicked RSS Packs of vetted sources. Or create your own and share it with anyone as its own RSS feed.";
+  const WHATS_THIS_COPY = "SOURCE! gives you the news you need, without the billionaires' algorithms. Choose from handpicked RSS Blends of vetted sources. Or create your own and share it with anyone as its own RSS feed.";
 
   function showOnboarding() {
     const el = document.createElement("div");
@@ -3741,7 +3741,7 @@
     main.innerHTML = `
       <div class="source-single-col-screen">
       <div class="section-label">SHARED SAVES</div>
-      <div class="section-sub">${items.length} item${items.length === 1 ? "" : "s"} someone chose to keep — read-only, not an RSS Pack.</div>
+      <div class="section-sub">${items.length} item${items.length === 1 ? "" : "s"} someone chose to keep — read-only, not an RSS Blend.</div>
       ${items.length === 0
         ? `<div class="card"><div class="card-meta">Nothing here yet.</div></div>`
         : items.map(it => `
