@@ -831,7 +831,15 @@ app.get("/.well-known/assetlinks.json", (req, res) => {
         namespace: "android_app",
         package_name: "com.newsfor38yearolds.source",
         sha256_cert_fingerprints: [
+          // Release keystore (SOURCE.jks, alias key0) — real Play Store builds.
           "FC:66:6D:B8:22:2F:D9:37:21:A2:F6:96:D8:5B:BD:33:12:F8:EA:32:23:23:38:FA:14:A6:91:6A:9F:93:21:37",
+          // Debug keystore (~/.android/debug.keystore) — Android Studio's
+          // Run/Debug button signs with this by default, so it's needed
+          // for App Links to verify on local emulator/device testing.
+          // Debug keystores are per-machine, so if App Links testing ever
+          // moves to a different dev machine, that machine's own debug
+          // fingerprint needs to be added here too.
+          "19:1F:61:99:A4:AC:06:7B:9D:86:67:6F:93:5D:96:12:DF:E0:51:AC:3F:C1:1C:BC:FC:75:0A:A4:09:9F:37:4B",
         ],
       },
     },
