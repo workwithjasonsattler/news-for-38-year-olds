@@ -1853,7 +1853,7 @@
       // to actually customize) cover "take it whole or pick-and-choose".
       const following = (sprayBarData?.sprays || []).some(s => s.slug === mix.slug);
       const sourcesHtml = (mix.sources || []).map(s => `
-        <span class="tile-sheet-chip">${escapeHtml(s.outlet || s.name || "Custom source")}</span>`).join("");
+        <span class="tile-sheet-chip">${escapeHtml(s.outlet || s.name || "Custom source")}${s.is_corporate ? `<span class="source-corporate-mark" title="${escapeHtml(s.parent_company || "Corporate/conglomerate-owned")}">*</span>` : ""}</span>`).join("");
       body = `
         <div class="manage-screen-head">
           ${mix.is_official ? `<div class="tile-sheet-badge">Official</div>` : ""}
@@ -1873,7 +1873,7 @@
     } else {
       const sourcesHtml = (mix.sources || []).map(s => `
         <span class="tile-sheet-chip">
-          ${escapeHtml(s.outlet || s.name || "Custom source")}
+          ${escapeHtml(s.outlet || s.name || "Custom source")}${s.is_corporate ? `<span class="source-corporate-mark" title="${escapeHtml(s.parent_company || "Corporate/conglomerate-owned")}">*</span>` : ""}
           <span class="tile-sheet-chip-x" data-remove-outlet="${escapeHtml(s.outlet || "")}" data-remove-custom="${s.custom_source_id || ""}">×</span>
         </span>`).join("");
       body = `

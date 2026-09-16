@@ -1809,6 +1809,21 @@ async function generateUniqueMixSlug(name) {
 // not-yet-approved custom sources (still their own reading list); public
 // viewers only ever see approved ones, matching decision #5 in the scoping
 // doc — approval gates visibility in OTHERS' view, not the owner's own.
+// is_corporate/parent_company transparency marker — already an admin-
+// curated field on `feeds`, already surfaced in the Your Sources browse
+// list. This joins it in by outlet name so it can ALSO show on a Pack's
+// own source chips (Manage screen) — a known, deliberately-deferred gap
+// from the session that first built the marker.
+async function corporateMarkersFor(outlets) {
+  if (outlets.length === 0) return new Map();
+  const placeholders = outlets.map(() => "?").join(",");
+  const rows = await dbAll(
+    `SELECT outlet, is_corporate, parent_company FROM feeds WHERE outlet IN (${placeholders})`,
+    outlets
+  );
+  return new Map(rows.map((r) => [r.outlet, { is_corporate: !!r.is_corporate, parent_company: r.parent_company || null }]));
+}
+
 async function resolveMixSources(mix, { includePending = false } = {}) {
   // mix may be passed as either the full row (preferred) or a bare id for
   // backward compatibility with any caller that hasn't been updated.
@@ -1820,8 +1835,15 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
     // current unfiltered wire right now (not a stored, driftable list).
     const outletRows = await dbAll(`SELECT DISTINCT outlet FROM dispatches ORDER BY outlet ASC`);
     const items = await dbAll(`SELECT * FROM dispatches ORDER BY pinned DESC, date DESC, id DESC LIMIT 60`);
+    const markers = await corporateMarkersFor(outletRows.map((r) => r.outlet));
     return {
-      sources: outletRows.map((r) => ({ source_type: "admin_outlet", outlet: r.outlet, pending: false })),
+      sources: outletRows.map((r) => ({
+        source_type: "admin_outlet",
+        outlet: r.outlet,
+        pending: false,
+        is_corporate: markers.get(r.outlet)?.is_corporate || false,
+        parent_company: markers.get(r.outlet)?.parent_company || null,
+      })),
       items,
     };
   }
@@ -1871,12 +1893,20 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
     customItems = results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value);
   }
 
+  const markers = await corporateMarkersFor(outletNames);
+
   return {
-    sources: sourceRows.map((s) => ({
-      source_type: s.source_type,
-      outlet: s.source_type === "admin_outlet" ? s.outlet : s.custom_name,
-      pending: s.source_type === "custom" && s.custom_status !== "approved",
-    })),
+    sources: sourceRows.map((s) => {
+      const outlet = s.source_type === "admin_outlet" ? s.outlet : s.custom_name;
+      const marker = s.source_type === "admin_outlet" ? markers.get(s.outlet) : null;
+      return {
+        source_type: s.source_type,
+        outlet,
+        pending: s.source_type === "custom" && s.custom_status !== "approved",
+        is_corporate: marker?.is_corporate || false,
+        parent_company: marker?.parent_company || null,
+      };
+    }),
     items: [...customItems, ...dispatchItems],
   };
 }
