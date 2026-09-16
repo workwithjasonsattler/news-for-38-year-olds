@@ -912,7 +912,7 @@ async function sendMagicLink(email, link, client) {
     console.log(`[dev] Magic sign-in link for ${email}: ${link}`);
     return;
   }
-  const defaultFrom = process.env.RESEND_FROM || "News for 38 Year Olds <login@news38yearolds.com>";
+  const defaultFrom = process.env.RESEND_FROM || "News for 38 Year Olds <login@newsfor38yearolds.com>";
   const addressMatch = defaultFrom.match(/<([^>]+)>/);
   const sendingAddress = addressMatch ? addressMatch[1] : defaultFrom;
   const from = client === "source" ? `SOURCE! <${sendingAddress}>` : defaultFrom;

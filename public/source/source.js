@@ -3494,10 +3494,26 @@
       document.getElementById("youSendLink").addEventListener("click", async () => {
         const email = document.getElementById("youEmail").value.trim();
         if (!email) return;
+        const sendBtn = document.getElementById("youSendLink");
+        const emailInput = document.getElementById("youEmail");
         try {
+          sendBtn.disabled = true;
+          sendBtn.textContent = "SENDING...";
           await api("/api/auth/request-link", { method: "POST", body: JSON.stringify({ email, client: "source" }) });
-          toast("Check your email for an access link (check spam if it doesn't show up in a minute or two).");
+          toast("Access link sent!");
+          // A 2.6s toast disappearing left the screen looking exactly like
+          // nothing had happened (same empty form, same button) — readers
+          // couldn't tell whether the send actually worked. Swap in a
+          // persistent confirmation instead of relying on the toast alone.
+          emailInput.disabled = true;
+          sendBtn.textContent = "LINK SENT ✓";
+          const confirmMsg = document.createElement("p");
+          confirmMsg.style.cssText = "font-size:13px; color: var(--ink-muted); margin-top:10px;";
+          confirmMsg.textContent = `Check ${email} for a sign-in link (and your spam folder — it can take a minute or two).`;
+          sendBtn.insertAdjacentElement("afterend", confirmMsg);
         } catch (e) {
+          sendBtn.disabled = false;
+          sendBtn.textContent = "SEND ACCESS LINK";
           toast(e.message || "Could not send link.");
         }
       });
