@@ -752,7 +752,7 @@
       btn.addEventListener("click", () => {
         if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
         if (btn.dataset.key === "__addfeed") { jumpToAddFeed(); return; }
-        if (btn.dataset.key === "__browse") { openBrowsePublicScreen(); return; }
+        if (btn.dataset.key === "__browse") { openPublicPackPicker(); return; }
         toggleActiveSpray(btn.dataset.key);
       });
     });
@@ -1117,7 +1117,7 @@
       btn.addEventListener("click", () => {
         if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
         if (btn.dataset.key === "__addfeed") { jumpToAddFeed(); return; }
-        if (btn.dataset.key === "__browse") { openBrowsePublicScreen(); return; }
+        if (btn.dataset.key === "__browse") { openPublicPackPicker(); return; }
         toggleActiveSpray(btn.dataset.key);
       });
     });
@@ -2635,6 +2635,117 @@
     }
     const newBtn = document.getElementById("sprayPickerNewBtn");
     if (newBtn) newBtn.addEventListener("click", createSprayFromPicker);
+  }
+
+  // Lightweight overlay for quickly following a PUBLIC RSS Pack without
+  // leaving wherever you currently are (Read tab, Classic view, mid-
+  // article) — reuses the exact same .spray-picker-overlay/.spray-picker-
+  // card shell as openSprayPicker() above, same reasoning as the feed-
+  // discovery picker's own reuse of it (see source.css comment). This is
+  // deliberately a SEPARATE, smaller entry point from openBrowsePublicScreen()
+  // (the Sources tab's full-page searchable directory with drill-down into
+  // Manage) — that one's still the right tool for actually exploring; this
+  // one is for "I saw a name I want, follow it, get back to reading."
+  let publicPackPickerState = null; // { query } while open, null when closed
+
+  async function openPublicPackPicker() {
+    publicPackPickerState = { query: "" };
+    renderPublicPackPickerShell();
+    renderPublicPackPickerResults(!publicPacksCache);
+    const fetches = [];
+    if (!publicPacksCache) fetches.push(api("/api/mixes").then(d => { publicPacksCache = d; }).catch(e => { publicPacksCache = []; toast(e.message || "Couldn't load public RSS Packs."); }));
+    if (!sprayBarData) fetches.push(loadSprayBar());
+    if (fetches.length) await Promise.all(fetches);
+    renderPublicPackPickerResults(false);
+  }
+
+  function closePublicPackPicker() {
+    const el = document.getElementById("publicPackPickerOverlay");
+    if (el) el.remove();
+    publicPackPickerState = null;
+  }
+
+  // Sets up the overlay/card/search-input ONCE — the debounced search
+  // handler below only calls renderPublicPackPickerResults() (not this),
+  // same split openBrowsePublicScreen's own renderBrowseScreen/
+  // renderBrowseResults use, so the input never gets recreated mid-type
+  // and never loses focus/cursor position on each keystroke.
+  function renderPublicPackPickerShell() {
+    let el = document.getElementById("publicPackPickerOverlay");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "publicPackPickerOverlay";
+      el.className = "spray-picker-overlay";
+      document.body.appendChild(el);
+      el.addEventListener("click", (e) => { if (e.target === el) closePublicPackPicker(); });
+    }
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span>Browse RSS Packs</span>
+          <button class="spray-picker-close" id="publicPackPickerClose" aria-label="Close">×</button>
+        </div>
+        <p class="spray-picker-sub">Made and shared by other readers — follow one straight into your Read toggle.</p>
+        <input type="text" id="publicPackPickerSearch" placeholder="Search by name or place…" style="width:100%;margin-bottom:8px;">
+        <div id="publicPackPickerResults"></div>
+      </div>`;
+    document.getElementById("publicPackPickerClose").addEventListener("click", closePublicPackPicker);
+    const searchInput = document.getElementById("publicPackPickerSearch");
+    searchInput.addEventListener("input", debounce(() => {
+      publicPackPickerState.query = searchInput.value;
+      renderPublicPackPickerResults(false);
+    }, 150));
+  }
+
+  function renderPublicPackPickerResults(loading) {
+    const container = document.getElementById("publicPackPickerResults");
+    if (!container || !publicPackPickerState) return;
+    if (loading) {
+      container.innerHTML = `<div class="state-block-mini">Loading public RSS Packs…</div>`;
+      return;
+    }
+    const followedSlugs = new Set((sprayBarData && sprayBarData.sprays || []).map(s => s.slug));
+    const q = publicPackPickerState.query.trim().toLowerCase();
+    const pool = publicPacksCache || [];
+    const filtered = q
+      ? pool.filter(p => (p.name || "").toLowerCase().includes(q) || (p.location_label || "").toLowerCase().includes(q))
+      : pool;
+    container.innerHTML = filtered.length === 0
+      ? `<div class="spray-picker-empty">No public RSS Packs match.</div>`
+      : `<div class="spray-picker-list">` + filtered.map(p => {
+          const following = followedSlugs.has(p.slug);
+          return `
+            <div class="spray-picker-row" style="justify-content:space-between;">
+              <span>${p.featured ? "⭐ " : ""}${escapeHtml(p.name)}${p.location_label ? ` <span style="color:var(--ink-muted);font-weight:400;">· ${escapeHtml(p.location_label)}</span>` : ""}</span>
+              <button class="btn" data-slug="${escapeHtml(p.slug)}" style="flex:0 0 auto;">${following ? "Following ✓" : "+ Follow"}</button>
+            </div>`;
+        }).join("") + `</div>`;
+    container.querySelectorAll("[data-slug]").forEach(btn => {
+      btn.addEventListener("click", () => togglePublicPackFollow(btn.dataset.slug, btn));
+    });
+  }
+
+  async function togglePublicPackFollow(slug, btnEl) {
+    if (!currentUser) { toast("Sign in on the You tab to follow RSS Packs."); return; }
+    const followedSlugs = new Set((sprayBarData && sprayBarData.sprays || []).map(s => s.slug));
+    const alreadyFollowing = followedSlugs.has(slug);
+    btnEl.disabled = true;
+    try {
+      if (alreadyFollowing) {
+        await api(`/api/my/spray-bar/${encodeURIComponent(slug)}`, { method: "DELETE" });
+      } else {
+        await api("/api/my/spray-bar/add", { method: "POST", body: JSON.stringify({ slug }) });
+      }
+      sprayBarData = await api("/api/my/spray-bar"); // refresh so both this picker and the bars below reflect the change
+      renderPublicPackPickerResults(false);
+      renderSprayToggle(); // no-op if not currently the visible bar
+      renderClassicSidebar(); // no-op if #classicSidebar isn't on screen
+      toast(alreadyFollowing ? "Unfollowed." : "Followed — added to your Read toggle.");
+    } catch (e) {
+      toast(e.message || "Couldn't update that RSS Pack.");
+    } finally {
+      btnEl.disabled = false;
+    }
   }
 
   async function toggleSprayPickerMix(slug, checkboxEl) {
