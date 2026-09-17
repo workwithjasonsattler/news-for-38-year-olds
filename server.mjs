@@ -213,17 +213,17 @@ async function initSchema() {
       custom_source_id INTEGER,
       sort_order INTEGER NOT NULL DEFAULT 0
     )`,
-    // ---------- RSS Blends: curated Topics taxonomy ----------
+    // ---------- RSS Packs: curated Topics taxonomy ----------
     // A real, growing, named taxonomy (like Indie Media/Data Centers/People
     // Power) — NOT a free-text tag. Readers can propose new topics; proposals
     // land as 'pending' and aren't selectable/browsable until an admin
     // approves, same queue-and-approve pattern as YouTube channels and
     // custom RSS sources.
-    // `category` groups every topic into one of the four RSS Blend-building
+    // `category` groups every topic into one of the four RSS Pack-building
     // branches (news/fun/work/local), or 'other' as the escape hatch for
     // anything that doesn't cleanly fit. The branch itself is never a
     // followable tag — only the leaves under it are, so the category is
-    // purely for browsing/navigation, not something an RSS Blend can carry.
+    // purely for browsing/navigation, not something an RSS Pack can carry.
     `CREATE TABLE IF NOT EXISTS topics (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -233,7 +233,7 @@ async function initSchema() {
       suggested_by_user_id INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`,
-    // An RSS Blend can carry several topics at once (a tag cloud, not a single
+    // An RSS Pack can carry several topics at once (a tag cloud, not a single
     // classification) — this join table replaces feed_mixes.topic_id as
     // the live source of truth going forward. The old column is left in
     // place (migrated into this table on startup, see
@@ -255,12 +255,12 @@ async function initSchema() {
       hidden_components TEXT NOT NULL DEFAULT '[]',
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`,
-    // ---------- SOURCE! Read-tab RSS Blend bar ----------
-    // Which RSS Blends show up as toggle pills in the Read tab (All | News |
+    // ---------- SOURCE! Read-tab RSS Pack bar ----------
+    // Which RSS Packs show up as toggle pills in the Read tab (All | News |
     // <your sprays> | Create), and their order. A reader adds/removes via
-    // a checkbox at RSS Blend-creation time or later from the Sources tab —
+    // a checkbox at RSS Pack-creation time or later from the Sources tab —
     // this table is just the saved list + position, same shape as
-    // user_layout_prefs' order concept but scoped to RSS Blends instead of
+    // user_layout_prefs' order concept but scoped to RSS Packs instead of
     // homepage sections. "All" and "Create" are NOT stored here — they're
     // permanent, computed slots the frontend always renders (All first,
     // Create last).
@@ -271,8 +271,8 @@ async function initSchema() {
       PRIMARY KEY (user_id, mix_slug)
     )`,
     // A reader's personal override for what "News" resolves to. Defaults
-    // to the shared official flagship RSS Blend (OFFICIAL_HEADLINES_SPRAY_SLUG)
-    // when no row exists — a reader can point "News" at any public RSS Blend
+    // to the shared official flagship RSS Pack (OFFICIAL_HEADLINES_SPRAY_SLUG)
+    // when no row exists — a reader can point "News" at any public RSS Pack
     // instead (including one of their own), and can reset back to the
     // default by deleting their row.
     `CREATE TABLE IF NOT EXISTS user_news_pref (
@@ -324,11 +324,11 @@ async function initSchema() {
     // ---------- Save / Reading List (SOURCE!) ----------
     // A reader's personal "My Saves" tray. Deliberately a SNAPSHOT, not a
     // live reference: dispatches age out of the wire (and custom-source /
-    // RSS Blend / video items are synthetic and can vanish entirely once
+    // RSS Pack / video items are synthetic and can vanish entirely once
     // re-fetched), so the only reliable way for a saved item to survive is
     // to freeze its display fields at save time. One running list per
     // reader for v1 — no named/multiple lists, matches the "lightweight
-    // bookmark tray" framing Jason confirmed over RSS Blends'-style CRUD.
+    // bookmark tray" framing Jason confirmed over RSS Packs'-style CRUD.
     `CREATE TABLE IF NOT EXISTS user_saves (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER NOT NULL,
@@ -378,7 +378,7 @@ async function initSchema() {
     // every public surface (directory, RSS, view, clone) without deleting
     // it outright — a softer takedown than DELETE /api/admin/mixes/:slug.
     `ALTER TABLE feed_mixes ADD COLUMN admin_hidden INTEGER NOT NULL DEFAULT 0`,
-    // featured/featured_order power editorial curation of "Top RSS Blends"
+    // featured/featured_order power editorial curation of "Top RSS Packs"
     // (the public directory of OTHER readers' Packs) — distinct from
     // is_official, which is for Packs pinned to the front of a reader's
     // OWN shelf. A featured Pack sorts first in both the directory
@@ -398,7 +398,7 @@ async function initSchema() {
     `ALTER TABLE feeds ADD COLUMN parent_company TEXT`,
     // official_order: manual placement among a reader's OWN official-Pack
     // shelf (distinct from featured_order, which orders OTHER readers'
-    // Packs in Top RSS Blends). Null = falls back to created_at order.
+    // Packs in Top RSS Packs). Null = falls back to created_at order.
     // Set via the Pack Builder's up/down arrows or "Suggest order".
     `ALTER TABLE feed_mixes ADD COLUMN official_order INTEGER`,
   ]) {
@@ -550,8 +550,8 @@ const STARTER_YOUTUBE_CHANNELS = [
 
 // Idempotent: matches an existing outlet by name (case-insensitive) first
 // and just attaches a channel id if it's missing one, rather than creating
-// ---------- RSS Blends® Branding: official "Headlines: Best in the World" ----------
-// The flagship RSS Blend. Per the locked decision, this is NOT a hand-picked
+// ---------- RSS Packs® Branding: official "Headlines: Best in the World" ----------
+// The flagship RSS Pack. Per the locked decision, this is NOT a hand-picked
 // subset — it IS the existing default blend of curated outlets already
 // powering the unfiltered Wire, auto-synced rather than a separately
 // maintained source list that could drift out of sync. It's implemented as
@@ -605,7 +605,7 @@ async function seedOfficialHeadlinesSpray() {
 
 // Idempotent starter set for the News/Fun/Work leaf topics under the
 // four-branch taxonomy (News/Fun/Work/Local). Local has NO fixed leaves —
-// it uses the existing free-text location_label field on an RSS Blend instead
+// it uses the existing free-text location_label field on an RSS Pack instead
 // of a topic tag. Matches by slug first (INSERT OR IGNORE), so this is
 // safe to run on every boot and safe if Jason later renames/removes one
 // via admin — it will never resurrect a deleted topic under a different
@@ -631,7 +631,7 @@ async function seedLeafTopics() {
   }
 }
 
-// Idempotent starter set for three core topical RSS Blends (Climate,
+// Idempotent starter set for three core topical RSS Packs (Climate,
 // Online Disinformation, Healthcare) — matches by outlet name first
 // (INSERT OR IGNORE-equivalent skip), same pattern as STARTER_YOUTUBE_CHANNELS
 // above. Feed URLs are researched, real-outlet best-guesses (same caveat as
@@ -736,7 +736,7 @@ async function seedCorePacks() {
   }
 }
 
-// Pop Culture RSS Blends — researched in POP-CULTURE-PACKS-DRAFT.md, seeded
+// Pop Culture RSS Packs — researched in POP-CULTURE-PACKS-DRAFT.md, seeded
 // here for the first time. IMPORTANT CAVEAT, more so than STARTER_CORE_PACKS
 // above: a large share of these outlets were only "confirm feed path" in the
 // research pass (no exact URL verified against a live fetch — sandbox
@@ -1330,7 +1330,7 @@ app.get("/api/me", async (req, res) => {
 // Full, reader-initiated account deletion — distinct from
 // sweepInactiveUserEmails()'s automatic 90-day inactivity erasure. The
 // automatic sweep deliberately PRESERVES already-public content (a
-// shared RSS Blend or Saves list stays live, only the email disappears) so
+// shared RSS Pack or Saves list stays live, only the email disappears) so
 // nobody else's clone/link silently breaks just because the original
 // owner went quiet. This endpoint is the opposite: an explicit "delete
 // everything" request, so it genuinely removes the reader's owned
@@ -1343,7 +1343,7 @@ app.delete("/api/my/account", async (req, res) => {
   if (!user) return res.status(401).json({ error: "not signed in" });
 
   try {
-    // RSS Blends the reader owns: no FK cascade in SQLite here, so clear
+    // RSS Packs the reader owns: no FK cascade in SQLite here, so clear
     // child rows (sources, topic tags) before the mix row itself. A mix
     // someone else CLONED from this reader is untouched — clone already
     // copies sources into the cloning reader's own tables, independent
@@ -1359,7 +1359,7 @@ app.delete("/api/my/account", async (req, res) => {
     // Topics they proposed: delete outright only if still pending
     // (never went live, effectively theirs alone). An APPROVED topic is
     // part of the shared taxonomy and may already be tagged on other
-    // readers' RSS Blends, so it must survive — just clear the attribution.
+    // readers' RSS Packs, so it must survive — just clear the attribution.
     await dbRun(`DELETE FROM topics WHERE suggested_by_user_id = ? AND status = 'pending'`, [user.id]);
     await dbRun(`UPDATE topics SET suggested_by_user_id = NULL WHERE suggested_by_user_id = ?`, [user.id]);
 
@@ -1530,10 +1530,10 @@ app.post("/api/my/panel-prefs", async (req, res) => {
   res.json({ ok: true });
 });
 
-// ---------- SOURCE! Read-tab RSS Blend bar ----------
+// ---------- SOURCE! Read-tab RSS Pack bar ----------
 // GET returns the resolved toggle bar for the signed-in reader: which
-// RSS Blend "News" currently points to (their own override, or the shared
-// official flagship RSS Blend by default) and the ordered list of RSS Blends
+// RSS Pack "News" currently points to (their own override, or the shared
+// official flagship RSS Pack by default) and the ordered list of RSS Packs
 // they've added to their bar. Anonymous readers get a client-side-only
 // default (All/News/Create, no saved list) — these routes are never hit
 // when signed out, same pattern as layout-prefs.
@@ -1568,11 +1568,11 @@ app.post("/api/my/spray-bar", async (req, res) => {
 
   const slugs = Array.isArray(req.body?.sprays) ? req.body.sprays.map((s) => String(s).trim()).filter(Boolean).slice(0, 30) : [];
 
-  // Validate every slug is a real, currently-visible RSS Blend before saving —
+  // Validate every slug is a real, currently-visible RSS Pack before saving —
   // a stale/typo'd slug should never silently sit in a reader's bar.
   for (const slug of slugs) {
     const exists = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [slug]);
-    if (!exists) return res.status(400).json({ error: `Unknown RSS Blend: ${slug}` });
+    if (!exists) return res.status(400).json({ error: `Unknown RSS Pack: ${slug}` });
   }
 
   await dbRun(`DELETE FROM user_spray_bar WHERE user_id = ?`, [user.id]);
@@ -1582,8 +1582,8 @@ app.post("/api/my/spray-bar", async (req, res) => {
   res.json({ ok: true });
 });
 
-// Adds ONE RSS Blend to the end of the reader's bar without needing to resend
-// the whole list — this is what RSS Blend creation's "Add to my Read toggle"
+// Adds ONE RSS Pack to the end of the reader's bar without needing to resend
+// the whole list — this is what RSS Pack creation's "Add to my Read toggle"
 // checkbox calls right after a successful POST /api/mixes.
 app.post("/api/my/spray-bar/add", async (req, res) => {
   const user = await getCurrentUser(req);
@@ -1591,7 +1591,7 @@ app.post("/api/my/spray-bar/add", async (req, res) => {
   const slug = String(req.body?.slug || "").trim();
   if (!slug) return res.status(400).json({ error: "slug is required" });
   const exists = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [slug]);
-  if (!exists) return res.status(400).json({ error: "Unknown RSS Blend" });
+  if (!exists) return res.status(400).json({ error: "Unknown RSS Pack" });
 
   const already = await dbGet(`SELECT 1 FROM user_spray_bar WHERE user_id = ? AND mix_slug = ?`, [user.id, slug]);
   if (!already) {
@@ -1610,7 +1610,7 @@ app.delete("/api/my/spray-bar/:slug", async (req, res) => {
 
 // Sets (or resets) the reader's personal override for what "News" points
 // to. Posting { slug: null } or an empty body resets to the shared
-// official flagship RSS Blend.
+// official flagship RSS Pack.
 app.post("/api/my/news-pref", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
@@ -1621,7 +1621,7 @@ app.post("/api/my/news-pref", async (req, res) => {
     return res.json({ ok: true, slug: OFFICIAL_HEADLINES_SPRAY_SLUG });
   }
   const mix = await dbGet(`SELECT slug FROM feed_mixes WHERE slug = ? AND is_public = 1`, [slug]);
-  if (!mix) return res.status(400).json({ error: "Unknown or private RSS Blend" });
+  if (!mix) return res.status(400).json({ error: "Unknown or private RSS Pack" });
   await dbRun(
     `INSERT INTO user_news_pref (user_id, mix_slug) VALUES (?, ?)
      ON CONFLICT(user_id) DO UPDATE SET mix_slug = excluded.mix_slug`,
@@ -1630,17 +1630,17 @@ app.post("/api/my/news-pref", async (req, res) => {
   res.json({ ok: true, slug });
 });
 
-// ---------- RSS Blend creation: guided source suggestions ----------
+// ---------- RSS Pack creation: guided source suggestions ----------
 // Powers the simplified "add one, we suggest five more" Create flow.
 // Given the outlets already picked, suggests up to `limit` more:
 //   1. Real co-occurrence — other admin_outlet sources that show up
-//      alongside any of the given outlets in other PUBLIC RSS Blends. This is
+//      alongside any of the given outlets in other PUBLIC RSS Packs. This is
 //      "readers who follow this also follow..." using data that already
 //      exists (feed_mix_sources), no new tracking needed.
 //   2. Fallback to same-section sources (feeds.fallback_beat) when there
 //      isn't enough co-occurrence data yet to fill the quota — guarantees
-//      useful suggestions even for the very first RSS Blends ever created,
-//      before any cross-RSS Blend pattern exists.
+//      useful suggestions even for the very first RSS Packs ever created,
+//      before any cross-RSS Pack pattern exists.
 app.get("/api/spray-suggestions", async (req, res) => {
   const picked = String(req.query.sources || "")
     .split(",").map((s) => s.trim()).filter(Boolean);
@@ -2014,8 +2014,8 @@ app.post("/api/feed-discovery", async (req, res) => {
 // directory browsing (GET /api/mixes?location=) is Session 3 — this session
 // covers save / view / clone only, per the locked scoping doc.
 const MIX_SOURCE_CAP = 25; // per mix, Jason's call
-const MIX_TOPIC_CAP = 6; // per mix — an RSS Blend can carry several tags, but capped so tags stay meaningful, not spammed
-// The four RSS Blend-building branches, plus "other" as the escape hatch for
+const MIX_TOPIC_CAP = 6; // per mix — an RSS Pack can carry several tags, but capped so tags stay meaningful, not spammed
+// The four RSS Pack-building branches, plus "other" as the escape hatch for
 // anything that doesn't cleanly fit one. A branch is never itself a
 // followable tag — only topics filed under one are. Every topic (admin- or
 // reader-proposed) must declare one of these.
@@ -2293,9 +2293,9 @@ app.put("/api/mixes/:slug", async (req, res) => {
   res.json({ ok: true, slug: mix.slug });
 });
 
-// Delete an owned RSS Blend outright. Distinct from removing it from your own
+// Delete an owned RSS Pack outright. Distinct from removing it from your own
 // Read-toggle bar (which just unpins it) — this actually retires the mix.
-// The official flagship RSS Blend can never be deleted: it has no real owner
+// The official flagship RSS Pack can never be deleted: it has no real owner
 // (creator_user_id is a sentinel, see seedOfficialHeadlinesSpray()), so the
 // ownership check below already blocks it, but the is_official check is
 // kept explicit rather than relying on that as an accident of implementation.
@@ -2305,14 +2305,14 @@ app.delete("/api/mixes/:slug", async (req, res) => {
 
   const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
   if (!mix) return res.status(404).json({ error: "mix not found" });
-  if (mix.is_official) return res.status(403).json({ error: "the official RSS Blend can't be deleted" });
+  if (mix.is_official) return res.status(403).json({ error: "the official RSS Pack can't be deleted" });
   if (mix.creator_user_id !== user.id) return res.status(403).json({ error: "not your mix" });
 
   await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
   await dbRun(`DELETE FROM feed_mix_topics WHERE mix_id = ?`, [mix.id]);
   // Unpin it from anyone's Read-toggle bar (including other readers who'd
-  // pinned this reader's public RSS Blend, not just the owner) and reset
-  // anyone's News override that pointed at it — a deleted RSS Blend can't be
+  // pinned this reader's public RSS Pack, not just the owner) and reset
+  // anyone's News override that pointed at it — a deleted RSS Pack can't be
   // left dangling as a broken reference in either place.
   await dbRun(`DELETE FROM user_spray_bar WHERE mix_slug = ?`, [mix.slug]);
   await dbRun(`DELETE FROM user_news_pref WHERE mix_slug = ?`, [mix.slug]);
@@ -2365,10 +2365,10 @@ app.get("/api/mixes/:slug", async (req, res) => {
   });
 });
 
-// RSS output for any PUBLIC RSS Blend/Mix (general capability, not Headlines-
+// RSS output for any PUBLIC RSS Pack/Mix (general capability, not Headlines-
 // only — see SCOPING-headlines-rss-bluesky-bot.md Part 1, Q2, "recommend
 // building it general"). Reuses the exact same resolveMixSources() live
-// query every web/app RSS Blend view already uses — no new data source, just
+// query every web/app RSS Pack view already uses — no new data source, just
 // an XML serialization layer. Short-TTL cache, fails soft: if the
 // underlying query throws, serve the last good cached XML rather than a
 // broken feed, since a silently-stale-but-valid feed is far better
@@ -2393,11 +2393,11 @@ function toRfc822(dateLike) {
 }
 
 function buildMixRssXml(mix, items) {
-  const channelTitle = mix.is_official ? `${mix.name} — News for 38 Year Olds` : `${mix.name} — an RSS Blend on News for 38 Year Olds`;
+  const channelTitle = mix.is_official ? `${mix.name} — News for 38 Year Olds` : `${mix.name} — an RSS Pack on News for 38 Year Olds`;
   const channelLink = `${SITE_URL}/spray.html?spray=${encodeURIComponent(mix.slug)}`;
   const channelDesc = mix.is_official
-    ? "The official flagship RSS Blend — every outlet currently powering the unfiltered Wire, auto-synced in real time."
-    : `A reader-created RSS Blend${mix.location_label ? ` (${mix.location_label})` : ""} on News for 38 Year Olds.`;
+    ? "The official flagship RSS Pack — every outlet currently powering the unfiltered Wire, auto-synced in real time."
+    : `A reader-created RSS Pack${mix.location_label ? ` (${mix.location_label})` : ""} on News for 38 Year Olds.`;
 
   const itemsXml = items
     .slice(0, RSS_FEED_ITEM_CAP)
@@ -2453,7 +2453,7 @@ app.get("/api/mixes/:slug/rss", async (req, res) => {
 });
 
 // RSS output for a shared save list (SOURCE! My Saves) — same pattern as
-// the RSS Blend RSS output just above: reuses the data already stored (here,
+// the RSS Pack RSS output just above: reuses the data already stored (here,
 // user_saves' own snapshot fields, no live query needed at all since
 // there's nothing to resolve), same cache/fail-soft shape, same
 // "don't confirm existence of a private list" 404 behavior as the JSON
@@ -2522,7 +2522,7 @@ app.get("/api/saves/:shareSlug/rss", async (req, res) => {
 });
 
 // ---------- Bluesky headlines bot ----------
-// Posts the "top story" from the Headlines: Best in the World RSS Blend to a
+// Posts the "top story" from the Headlines: Best in the World RSS Pack to a
 // Bluesky bot account every BLUESKY_BOT_INTERVAL_MINUTES (Jason's call:
 // batch, one post per window, not one-post-per-headline — see
 // SCOPING-headlines-rss-bluesky-bot.md Part 2). First live-write
@@ -2727,7 +2727,7 @@ function buildExternalEmbed({ uri, title, description, thumbBlob }) {
 // website-prominence signal (what shows at the top of the Wire), not a
 // freshness signal, and this bot's whole point is real-time — so pinned
 // status is deliberately NOT part of this ordering, unlike the Wire/
-// official RSS Blend. Tracked via an explicit NOT IN (already-posted ids),
+// official RSS Pack. Tracked via an explicit NOT IN (already-posted ids),
 // not a MAX(id) watermark — a watermark would break the moment any
 // out-of-id-order pick ever happens again (harmless today since this is
 // now a pure date/id sort, but NOT IN costs nothing and is more robust
@@ -3007,11 +3007,11 @@ app.get("/api/my/mixes", async (req, res) => {
   res.json(rows.map(r => ({ ...r, is_official: !!r.is_official })));
 });
 
-// ---------- Quick add/remove: "which of my RSS Blends is this source in?" ----------
-// Powers the "Add to an RSS Blend" picker that opens straight off a post (card or
+// ---------- Quick add/remove: "which of my RSS Packs is this source in?" ----------
+// Powers the "Add to an RSS Pack" picker that opens straight off a post (card or
 // reader pane) — a reader shouldn't have to leave what they're reading and
 // find the full Create/Edit flow just to say "yes, this outlet belongs in my
-// Politics RSS Blend." Official (auto-syncing) RSS Blends are excluded — they have no
+// Politics RSS Pack." Official (auto-syncing) RSS Packs are excluded — they have no
 // stored feed_mix_sources rows to toggle, they mirror the live Wire.
 app.get("/api/my/mixes/for-source", async (req, res) => {
   const user = await getCurrentUser(req);
@@ -3042,7 +3042,7 @@ app.post("/api/my/mixes/:slug/toggle-source", async (req, res) => {
   const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
   if (!mix) return res.status(404).json({ error: "mix not found" });
   if (mix.creator_user_id !== user.id) return res.status(403).json({ error: "not your mix" });
-  if (mix.is_official) return res.status(400).json({ error: "this RSS Blend auto-syncs to the live Wire and can't be edited directly" });
+  if (mix.is_official) return res.status(400).json({ error: "this RSS Pack auto-syncs to the live Wire and can't be edited directly" });
 
   const sourceType = req.body?.source_type === "custom" ? "custom" : "admin_outlet";
   let outlet = null, customSourceId = null;
@@ -3055,7 +3055,7 @@ app.post("/api/my/mixes/:slug/toggle-source", async (req, res) => {
     customSourceId = Number(req.body?.custom_source_id);
     if (!customSourceId) return res.status(400).json({ error: "custom_source_id is required" });
     const owned = await dbGet(`SELECT id FROM user_custom_sources WHERE id = ? AND user_id = ?`, [customSourceId, user.id]);
-    if (!owned) return res.status(400).json({ error: "you can only add your own custom sources to an RSS Blend" });
+    if (!owned) return res.status(400).json({ error: "you can only add your own custom sources to an RSS Pack" });
   }
 
   const existing = outlet
@@ -3065,7 +3065,7 @@ app.post("/api/my/mixes/:slug/toggle-source", async (req, res) => {
   if (existing) {
     const countRow = await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
     if (countRow.n <= 1) {
-      return res.status(400).json({ error: "an RSS Blend needs at least one source — delete the whole RSS Blend instead if you want to remove its last one" });
+      return res.status(400).json({ error: "an RSS Pack needs at least one source — delete the whole RSS Pack instead if you want to remove its last one" });
     }
     await dbRun(`DELETE FROM feed_mix_sources WHERE id = ?`, [existing.id]);
     await dbRun(`UPDATE feed_mixes SET updated_at = datetime('now') WHERE id = ?`, [mix.id]);
@@ -3083,11 +3083,11 @@ app.post("/api/my/mixes/:slug/toggle-source", async (req, res) => {
 });
 
 // ---------- Save / Reading List (SOURCE!) ----------
-// A lightweight personal bookmark tray, distinct from RSS Blends: an RSS Blend is a
+// A lightweight personal bookmark tray, distinct from RSS Packs: an RSS Pack is a
 // collection of SOURCES; a save is a single ITEM. Snapshot-based (see the
 // table comment above) — once saved, an item survives even after its
 // source dispatch ages out of the wire or the underlying feed changes.
-const SAVE_CAP = 500; // generous personal-tray cap, not an RSS Blend-style curation limit
+const SAVE_CAP = 500; // generous personal-tray cap, not an RSS Pack-style curation limit
 
 app.get("/api/my/saves", async (req, res) => {
   const user = await getCurrentUser(req);
@@ -3136,7 +3136,7 @@ app.delete("/api/my/saves/:id", async (req, res) => {
 });
 
 // Public/private toggle for the reader's whole save list (v1 shares the
-// WHOLE list, not a per-item selection — matches the RSS Blend is_public
+// WHOLE list, not a per-item selection — matches the RSS Pack is_public
 // pattern). Generates a share_slug the first time a reader goes public;
 // the slug is kept (not regenerated) on later toggles, so a link someone
 // already has doesn't quietly break if the owner flips private -> public
@@ -3183,17 +3183,17 @@ app.get("/api/saves/:shareSlug", async (req, res) => {
   res.json({ items: rows });
 });
 
-// ---------- RSS Blends: Topics taxonomy ----------
+// ---------- RSS Packs: Topics taxonomy ----------
 // Topics are a real curated list (approved by an admin), not free-text tags.
 // Readers can propose new ones; a proposal is 'pending' until approved —
 // same visibility rule as everywhere else in this codebase: not selectable
 // when creating/editing a Mix, and not shown in the public browse list,
 // until approved.
 app.get("/api/topics", async (req, res) => {
-  // Follower-count ranking: sum of clone_count across every public RSS Blend
-  // carrying the topic, not "how many RSS Blends used this label" — a tag gets
+  // Follower-count ranking: sum of clone_count across every public RSS Pack
+  // carrying the topic, not "how many RSS Packs used this label" — a tag gets
   // big because people are actually following things tagged with it, not
-  // because a few RSS Blends happened to get labeled that way. Same "no
+  // because a few RSS Packs happened to get labeled that way. Same "no
   // algorithm you can't see" spirit as everything else: one visible,
   // eyeball-able number, no hidden weighting.
   // Optional ?category= filter — powers the branch/leaf picker (News/Fun/
@@ -3304,7 +3304,7 @@ app.get("/api/mixes", async (req, res) => {
   res.json(rows);
 });
 
-// ---------- Admin: RSS Blend curation + moderation ----------
+// ---------- Admin: RSS Pack curation + moderation ----------
 // Lets an admin build genuinely curated "official" Packs — distinct from
 // the one auto-syncing flagship (Headlines: Best in the World, which
 // alone mirrors the live Wire) — and moderate reader-created public
@@ -3443,7 +3443,7 @@ app.post("/api/admin/mixes/:slug/quick-add", requireAdmin, async (req, res) => {
 });
 
 // Manual placement among a reader's own official shelf (up/down, mirrors
-// the existing featured-move pattern for Top RSS Blends). Any official Pack
+// the existing featured-move pattern for Top RSS Packs). Any official Pack
 // missing an official_order value gets normalized to its current display
 // position first, so a first-ever move doesn't jump unpredictably.
 app.post("/api/admin/mixes/:slug/official-move", requireAdmin, async (req, res) => {
@@ -3644,7 +3644,7 @@ app.post("/api/admin/mixes/:slug/toggle-hidden", requireAdmin, async (req, res) 
   res.json({ ok: true, admin_hidden: !!next });
 });
 
-// Editorial curation of "Top RSS Blends" (the public directory of OTHER
+// Editorial curation of "Top RSS Packs" (the public directory of OTHER
 // readers' Packs) — distinct from is_official, which pins a Pack to the
 // front of a reader's OWN shelf. Turning featured ON assigns the next
 // available featured_order (pushed to the end of the current featured
@@ -5309,7 +5309,7 @@ if (AUTO_IMPORT_MINUTES > 0) {
 // any reason, by falling back to signup date). Erasing means overwriting
 // the email column with a synthetic, guaranteed-unique placeholder — NOT
 // deleting the user row, since that would orphan every piece of content
-// tied to it (saves, RSS Blends, custom sources, prefs). A PUBLIC RSS Blend or
+// tied to it (saves, RSS Packs, custom sources, prefs). A PUBLIC RSS Pack or
 // save list a reader shared stays live and viewable after this runs;
 // only the email disappears. The account can never be signed back into
 // once erased (a fresh request-link for the original address just

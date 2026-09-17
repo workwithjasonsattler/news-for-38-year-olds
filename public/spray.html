@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>RSS BLENDS — News for 38 Year Olds</title>
-<meta name="description" content="Build and share an RSS Blend — a named mix of sources around a topic or a place.">
+<title>RSS PACKS — News for 38 Year Olds</title>
+<meta name="description" content="Build and share an RSS Pack — a named mix of sources around a topic or a place.">
 <style>
   :root{
     --paper:#FFFFFF; --paper-card:#F7F5EF; --text:#111111; --text-muted:#666;
@@ -97,7 +97,7 @@
 
 <header class="s-header">
   <a class="s-back" href="/">&larr; Back to the Wire</a>
-  <h1 class="s-title">RSS Blends</h1>
+  <h1 class="s-title">RSS Packs</h1>
   <p class="s-subtitle">What do you want to follow? Build a named mix of sources around a topic or a place, and share it.</p>
   <p class="s-session" id="sessionLine">Checking sign-in…</p>
 </header>
@@ -108,12 +108,12 @@
     <div class="s-entry">
       <div class="s-entry-card">
         <h3>By topic</h3>
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px;">Browse curated topics readers have built RSS Blends around.</p>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px;">Browse curated topics readers have built RSS Packs around.</p>
         <div id="topicList" class="s-topic-list">Loading topics…</div>
       </div>
       <div class="s-entry-card">
         <h3>By place</h3>
-        <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px;">Search RSS Blends tagged with a location — city, state, region, whatever a reader typed.</p>
+        <p style="font-size:13px;color:var(--text-muted);margin:0 0 10px;">Search RSS Packs tagged with a location — city, state, region, whatever a reader typed.</p>
         <input type="text" id="locationSearch" placeholder="e.g. Ann Arbor, MI">
         <button onclick="searchByLocation()">Search</button>
       </div>
@@ -123,7 +123,7 @@
   <section class="s-block" id="resultsBlock" style="display:none;">
     <h2 id="resultsHeading">FOLLOWS</h2>
     <div id="resultsGrid" class="s-results"></div>
-    <div id="resultsEmpty" class="s-empty" style="display:none;">No public RSS Blends here yet — be the first to build one.</div>
+    <div id="resultsEmpty" class="s-empty" style="display:none;">No public RSS Packs here yet — be the first to build one.</div>
   </section>
 
   <section class="s-block s-mix-detail" id="mixDetail">
@@ -131,7 +131,7 @@
     <h3 id="mixDetailName"></h3>
     <p class="s-mix-detail-meta" id="mixDetailMeta"></p>
     <div class="s-mix-source-tags" id="mixDetailSources"></div>
-    <button class="s-clone-btn" id="mixCloneBtn" onclick="cloneCurrentMix()">Copy this RSS Blend into my account</button>
+    <button class="s-clone-btn" id="mixCloneBtn" onclick="cloneCurrentMix()">Copy this RSS Pack into my account</button>
     <a class="s-rss-link" id="mixRssLink" href="#" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
     <p class="s-create-msg" id="mixCloneMsg"></p>
     <div class="s-mix-items" id="mixDetailItems"></div>
@@ -142,7 +142,7 @@
     <p class="s-hint">Pick your sources — curated outlets and/or your own RSS feeds — name it, and share it.</p>
 
     <div id="createSignedOut" class="s-signed-out-note">
-      Sign in from the homepage's <a href="/">Customize Feed</a> link to create an RSS Blend, or
+      Sign in from the homepage's <a href="/">Customize Feed</a> link to create an RSS Pack, or
       <a onclick="promptSignIn()">enter your email here</a>.
       <div id="inlineSignIn" style="display:none;margin-top:10px;">
         <div class="s-inline-add">
@@ -165,7 +165,7 @@
       <div id="customSourceList" style="margin-bottom:16px;"></div>
 
       <form class="s-create" onsubmit="return submitMix(event)">
-        <label>Name your RSS Blend</label>
+        <label>Name your RSS Pack</label>
         <input type="text" id="mixName" placeholder="e.g. Ann Arbor Local News" required>
 
         <label>Topic (optional)</label>
@@ -216,9 +216,9 @@
           <span style="color:var(--text-muted);font-family:var(--mono);font-size:12px;">Add a source above to include it.</span>
         </div>
 
-        <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="mixPublic" checked style="width:auto;"> Make this RSS Blend public and shareable</label>
+        <label style="display:flex;align-items:center;gap:8px;"><input type="checkbox" id="mixPublic" checked style="width:auto;"> Make this RSS Pack public and shareable</label>
 
-        <button type="submit">Save this RSS Blend</button>
+        <button type="submit">Save this RSS Pack</button>
         <p class="s-create-msg" id="mixCreateMsg"></p>
       </form>
     </div>
@@ -397,7 +397,7 @@ function renderResults(mixes){
   grid.innerHTML = mixes.map(m => `
     <a class="s-mix-card" onclick="openMixDetail('${m.slug}')">
       <span class="s-mix-name">${m.name}</span>
-      <span class="s-mix-meta">${m.topics && m.topics.length ? m.topics.map(t => t.name).join(', ') : (m.location_label || 'RSS Blend')} · ${m.clone_count} cop${m.clone_count === 1 ? 'y' : 'ies'}</span>
+      <span class="s-mix-meta">${m.topics && m.topics.length ? m.topics.map(t => t.name).join(', ') : (m.location_label || 'RSS Pack')} · ${m.clone_count} cop${m.clone_count === 1 ? 'y' : 'ies'}</span>
     </a>
   `).join('');
 }
@@ -413,7 +413,7 @@ async function openMixDetail(slug){
   detail.classList.add('open');
   document.getElementById('mixDetailName').textContent = mix.is_official ? `🌊 ${mix.name}` : mix.name;
   document.getElementById('mixDetailMeta').textContent =
-    [mix.is_official ? 'Official RSS Blend' : null, mix.topics && mix.topics.length ? mix.topics.map(t => t.name).join(', ') : null, mix.location_label, `${mix.clone_count} cop${mix.clone_count === 1 ? 'y' : 'ies'}`].filter(Boolean).join(' · ');
+    [mix.is_official ? 'Official RSS Pack' : null, mix.topics && mix.topics.length ? mix.topics.map(t => t.name).join(', ') : null, mix.location_label, `${mix.clone_count} cop${mix.clone_count === 1 ? 'y' : 'ies'}`].filter(Boolean).join(' · ');
   document.getElementById('mixDetailSources').innerHTML = mix.sources.map(s =>
     `<span class="s-mix-source-tag">${s.outlet}${s.pending ? ' (pending)' : ''}</span>`
   ).join('');
@@ -460,7 +460,7 @@ async function cloneCurrentMix(){
 // loadCustomSources() rebuilds the whole custom-source checkbox list from
 // scratch on every call (add, delete, initial sign-in). Two bugs this
 // used to have: (1) a newly-added source's checkbox came back UNCHECKED,
-// so a reader who'd just clicked "Add source" and then "Save this RSS Blend"
+// so a reader who'd just clicked "Add source" and then "Save this RSS Pack"
 // hit "Pick at least one source" even though they'd just added one — they
 // had no way to know it wasn't automatically included; (2) rebuilding the
 // list also silently un-checked any OTHER custom sources the reader had
@@ -511,7 +511,7 @@ async function addCustomSource(){
     const data = await res.json();
     if (res.ok){
       msg.style.color = 'green';
-      msg.textContent = '✓ Source added and included in this RSS Blend.';
+      msg.textContent = '✓ Source added and included in this RSS Pack.';
       input.value = '';
       await loadCustomSources(data.id); // auto-check the one just added, keep any others already checked
     } else {
@@ -566,7 +566,7 @@ async function submitMix(e){
     const data = await res.json();
     if (res.ok){
       msg.style.color = 'green';
-      msg.innerHTML = `✓ Saved. <a href="/spray.html#" onclick="openMixDetail('${data.slug}');return false;">View your RSS Blend →</a>`;
+      msg.innerHTML = `✓ Saved. <a href="/spray.html#" onclick="openMixDetail('${data.slug}');return false;">View your RSS Pack →</a>`;
       document.getElementById('mixName').value = '';
       loadTopics();
     } else {
@@ -583,7 +583,7 @@ async function submitMix(e){
 checkSession();
 loadTopics();
 
-// If we arrived via a direct "RSS Blend this RSS Blend" link (e.g. from the
+// If we arrived via a direct "RSS Pack this RSS Pack" link (e.g. from the
 // homepage's Headlines: Best in the World callout), jump straight to that
 // mix's detail view instead of making the reader hunt for it.
 (function openMixFromQueryParam(){

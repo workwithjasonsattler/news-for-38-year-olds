@@ -229,7 +229,7 @@ Some Video Creator | | Indie Media | | | | | | @somecreator"></textarea>
     <p id="packFormMsg" style="font-family:var(--mono);font-size:12px;"></p>
 
     <h3 style="font-family:var(--mono);font-size:12px;margin-top:28px;border-top:1px solid rgba(0,0,0,.1);padding-top:20px;">PUBLIC PACKS — MODERATION</h3>
-    <p style="font-size:13px;color:#666;">Every reader-made public Pack, most recent first. Hide unlists it everywhere (directory, RSS, view, clone) without deleting; Delete removes it outright. Feature pins it to the top of Top RSS Blends (both the Sources tab teaser and the full directory) — featured Packs are shown first, in the order below, before the usual follower-count ranking takes over.</p>
+    <p style="font-size:13px;color:#666;">Every reader-made public Pack, most recent first. Hide unlists it everywhere (directory, RSS, view, clone) without deleting; Delete removes it outright. Feature pins it to the top of Top RSS Packs (both the Sources tab teaser and the full directory) — featured Packs are shown first, in the order below, before the usual follower-count ranking takes over.</p>
     <input id="pk_moderation_search" placeholder="Search by name…" oninput="loadPublicPacks()" style="margin-bottom:10px;">
     <table id="publicPackTable">
       <thead><tr><th>Name</th><th>Creator</th><th>Sources</th><th>Followers</th><th>Status</th><th>Featured</th><th></th></tr></thead>
@@ -765,7 +765,7 @@ async function deleteHeadline(id){
   await loadHeadlines();
 }
 
-// ---------- RSS Blends: official-Pack curation + public-Pack moderation ----------
+// ---------- RSS Packs: official-Pack curation + public-Pack moderation ----------
 let allTopics = [];
 let allPackSources = [];
 let editingPackSlug = null;
