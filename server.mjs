@@ -749,22 +749,29 @@ async function seedCorePacks() {
 }
 
 // Pop Culture RSS Packs — researched in POP-CULTURE-PACKS-DRAFT.md, seeded
-// here for the first time. IMPORTANT CAVEAT, more so than STARTER_CORE_PACKS
-// above: a large share of these outlets were only "confirm feed path" in the
-// research pass (no exact URL verified against a live fetch — sandbox
-// network can't reach any of these news/entertainment domains to check).
-// Every feed_url below is a best-guess (mostly domain + /feed/, or the
-// specific path the research doc gave) — NOT hand-verified. The import job
-// fails soft on a bad URL (silently zero items, not a crash), so this is
-// safe to seed, but Jason should expect to fix some of these via admin or
-// re-add via "+ Add a Feed"'s live autodiscovery once deployed.
-// UNCONFIRMED (no real path given in research, guessed domain+/feed/):
-// Rue Morgue, THR, ComingSoon.net, Film Comment, TVLine, The A.V. Club,
-// HotNewHipHop, Complex Music, HipHopDX, PopCrush, Consequence,
-// BrooklynVegan, Saving Country Music, Aquarium Drunkard, Obscure Sound,
-// Bandcamp Daily, The Ringer (NFL/NBA), HoopsHype, RealGM, SLAM,
-// Baseball Prospectus, The Athletic (NYT), 247Sports, On3,
-// College Football News.
+// here for the first time, then VERIFIED via live web search in a follow-up
+// session (the sandbox itself still can't reach these domains directly, but
+// web_search/web_fetch on FeedSpot/Wikipedia/GitHub listings let real URLs
+// be confirmed instead of guessed). Verification results:
+// - CORRECTED (original guess was wrong): The A.V. Club (avclub.com/rss,
+//   not /feed/rss), Complex Music (assets.complex.com/feeds/channels/
+//   music.xml, a completely different domain), PopCrush (category slug is
+//   music-news, not music), BrooklynVegan (plain /feed/, not the category
+//   path), Aquarium Drunkard (a Feedburner URL, not the bare domain),
+//   RealGM (/rss/wiretap.xml, not a generic /feed).
+// - DROPPED, confirmed dead/feedless: HotNewHipHop (no native feed found,
+//   only third-party-generated ones), HipHopDX (Wikipedia: the domain
+//   itself now redirects to Instagram as of 2026), Bandcamp Daily (native
+//   feed was removed site-wide per a public bridge-request thread), The
+//   Ringer NFL/NBA (FeedSpot itself has to "Generate" a feed for it — no
+//   native one found), 247Sports/On3/College Football News (same —
+//   "Generate RSS" only, no confirmed native URL for any of the three,
+//   which is why the College Sports pack is gone entirely below).
+// - CONFIRMED CORRECT as originally guessed: everything else, including
+//   Rue Morgue, THR, ComingSoon.net, Film Comment, TVLine, Consequence,
+//   Saving Country Music, Obscure Sound, Billboard, HoopsHype, SLAM,
+//   Baseball Prospectus, and The Athletic's /athletic/rss/<section>
+//   pattern (confirmed via a live MLB-section example).
 const STARTER_POP_CULTURE_PACKS = [
   {
     name: "Horror", topicSlug: "movies",
@@ -809,15 +816,14 @@ const STARTER_POP_CULTURE_PACKS = [
       { outlet: "TVLine", feed_url: "https://tvline.com/feed/" },
       { outlet: "Decider", feed_url: "https://decider.com/feed/" },
       { outlet: "TV Insider", feed_url: "https://www.tvinsider.com/feed/" },
-      { outlet: "The A.V. Club", feed_url: "https://www.avclub.com/feed/rss" },
+      { outlet: "The A.V. Club", feed_url: "https://www.avclub.com/rss" }, // corrected — see header comment
     ],
   },
   {
     name: "Hip-Hop/R&B", topicSlug: "music",
     outlets: [
-      { outlet: "HotNewHipHop", feed_url: "https://www.hotnewhiphop.com/feed" },
-      { outlet: "Complex Music", feed_url: "https://www.complex.com/music/feed" },
-      { outlet: "HipHopDX", feed_url: "https://hiphopdx.com/feed" },
+      // HotNewHipHop and HipHopDX dropped — see header comment
+      { outlet: "Complex Music", feed_url: "https://assets.complex.com/feeds/channels/music.xml" }, // corrected
       { outlet: "Rap Radar", feed_url: "https://rapradar.com/feed" },
       { outlet: "HipHopWired", feed_url: "https://hiphopwired.com/feed" },
     ],
@@ -827,7 +833,7 @@ const STARTER_POP_CULTURE_PACKS = [
     outlets: [
       { outlet: "Billboard", feed_url: "https://www.billboard.com/feed/", is_corporate: true, parent_company: "Penske Media Corporation" },
       { outlet: "Idolator", feed_url: "https://idolator.com/feed" },
-      { outlet: "PopCrush", feed_url: "https://popcrush.com/category/music/feed/" },
+      { outlet: "PopCrush", feed_url: "https://popcrush.com/category/music-news/feed/" }, // corrected
     ],
   },
   {
@@ -836,7 +842,7 @@ const STARTER_POP_CULTURE_PACKS = [
       { outlet: "Stereogum", feed_url: "https://www.stereogum.com/feed/" },
       { outlet: "Consequence", feed_url: "https://consequence.net/feed/" },
       { outlet: "Loudwire", feed_url: "https://loudwire.com/feed" },
-      { outlet: "BrooklynVegan", feed_url: "https://www.brooklynvegan.com/category/music/feed/" },
+      { outlet: "BrooklynVegan", feed_url: "https://www.brooklynvegan.com/feed/" }, // corrected
     ],
   },
   {
@@ -850,27 +856,27 @@ const STARTER_POP_CULTURE_PACKS = [
   {
     name: "Indie/Underground", topicSlug: "music",
     outlets: [
+      // Bandcamp Daily dropped — see header comment
       { outlet: "Gorilla vs. Bear", feed_url: "https://gorillavsbear.net/feed" },
-      { outlet: "Aquarium Drunkard", feed_url: "https://aquariumdrunkard.com/feed/" },
+      { outlet: "Aquarium Drunkard", feed_url: "https://feeds.feedburner.com/AnAquariumDrunkard" }, // corrected
       { outlet: "Obscure Sound", feed_url: "https://www.obscuresound.com/feed" },
-      { outlet: "Bandcamp Daily", feed_url: "https://daily.bandcamp.com/feed" },
     ],
   },
   {
     name: "NFL", topicSlug: "sports",
     outlets: [
+      // The Ringer (NFL) dropped — see header comment
       { outlet: "Pro Football Focus", feed_url: "https://www.pff.com/feed" },
       { outlet: "ESPN NFL", feed_url: "https://www.espn.com/espn/rss/nfl/news", is_corporate: true, parent_company: "The Walt Disney Company" },
-      { outlet: "The Ringer (NFL)", feed_url: "https://www.theringer.com/nfl/rss.xml", is_corporate: true, parent_company: "Spotify" },
       { outlet: "Pro Football Talk", feed_url: "https://profootballtalk.nbcsports.com/feed/", is_corporate: true, parent_company: "NBCUniversal" },
     ],
   },
   {
     name: "NBA", topicSlug: "sports",
     outlets: [
-      { outlet: "The Ringer (NBA)", feed_url: "https://www.theringer.com/nba/rss.xml", is_corporate: true, parent_company: "Spotify" },
+      // The Ringer (NBA) dropped — see header comment
       { outlet: "HoopsHype", feed_url: "https://hoopshype.com/feed/" },
-      { outlet: "RealGM", feed_url: "https://basketball.realgm.com/feed" },
+      { outlet: "RealGM", feed_url: "https://basketball.realgm.com/rss/wiretap.xml" }, // corrected
       { outlet: "SLAM", feed_url: "https://www.slamonline.com/feed/" },
     ],
   },
@@ -890,14 +896,11 @@ const STARTER_POP_CULTURE_PACKS = [
       { outlet: "90min", feed_url: "https://www.90min.com/posts.rss" },
     ],
   },
-  {
-    name: "College Sports", topicSlug: "sports",
-    outlets: [
-      { outlet: "247Sports", feed_url: "https://247sports.com/feed/", is_corporate: true, parent_company: "Paramount Skydance" },
-      { outlet: "On3", feed_url: "https://www.on3.com/feed/" },
-      { outlet: "College Football News", feed_url: "https://collegefootballnews.com/feed/" },
-    ],
-  },
+  // College Sports pack REMOVED — 247Sports, On3, and College Football
+  // News all turned out to have no confirmed native RSS feed (FeedSpot
+  // itself only offers a "Generate RSS" third-party proxy for each), so
+  // the pack would have shipped completely empty. Needs different outlet
+  // picks entirely if Jason wants a college sports pack.
 ];
 
 // NOT wired into boot anymore — the wire-leak that made this necessary
@@ -948,11 +951,27 @@ async function revertPopCulturePacks() {
 // above. Every inserted feed here gets wire_eligible=0 (last column in
 // the INSERT below), which is what actually keeps these out of the
 // shared political wire now — not a boot-sequence toggle.
+// Outlets and Packs that existed in the FIRST version of this seed
+// (deployed as commit 79dc06b) but were removed after this session's
+// verification pass. Because the loop below only INSERTS missing rows —
+// it never touches a row that already matches by name — a plain redeploy
+// of the corrected STARTER_POP_CULTURE_PACKS would silently leave these
+// stale rows (and their stale feed_url values) sitting in production.
+// This list drives an explicit cleanup pass at the end of
+// seedPopCulturePacks() so a redeploy actually converges to the corrected
+// state instead of just not re-breaking it going forward.
+const RETIRED_POP_CULTURE_OUTLETS = [
+  "HotNewHipHop", "HipHopDX", "Bandcamp Daily",
+  "The Ringer (NFL)", "The Ringer (NBA)",
+  "247Sports", "On3", "College Football News",
+];
+const RETIRED_POP_CULTURE_PACK_SLUGS = ["college-sports"];
+
 async function seedPopCulturePacks() {
-  const existingFeeds = await dbAll(`SELECT id, outlet, feed_url FROM feeds`);
+  const existingFeeds = await dbAll(`SELECT id, outlet, feed_url, fallback_beat, is_corporate, parent_company FROM feeds`);
   const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
   const byFeedUrl = new Map(existingFeeds.filter(f => f.feed_url).map(f => [f.feed_url.trim(), f]));
-  let feedsInserted = 0, packsCreated = 0, feedUrlReused = 0;
+  let feedsInserted = 0, feedsUpdated = 0, packsCreated = 0, feedUrlReused = 0;
 
   for (const pack of STARTER_POP_CULTURE_PACKS) {
     const resolvedOutlets = [];
@@ -969,17 +988,30 @@ async function seedPopCulturePacks() {
            VALUES (?, '', ?, '', '', 'Entertainment', '{}', 3, '', 'outlet', NULL, 'approved', ?, ?, 0)`,
           [o.outlet, o.feed_url, o.is_corporate ? 1 : 0, o.parent_company || null]
         );
-        match = { id: info.lastInsertRowid, outlet: o.outlet, feed_url: o.feed_url };
+        match = { id: info.lastInsertRowid, outlet: o.outlet, feed_url: o.feed_url, fallback_beat: "Entertainment" };
         byOutletLower.set(o.outlet.toLowerCase(), match);
         byFeedUrl.set(o.feed_url.trim(), match);
         feedsInserted++;
+      } else if (
+        byName && match.fallback_beat === "Entertainment" &&
+        (match.feed_url !== o.feed_url || !!match.is_corporate !== !!o.is_corporate || (match.parent_company || null) !== (o.parent_company || null))
+      ) {
+        // Reconcile a row this same seeder created earlier with a since-
+        // corrected feed_url/is_corporate/parent_company. Guarded by the
+        // fallback_beat marker so this never touches a pre-existing feed
+        // that happens to share an outlet name for an unrelated reason.
+        await dbRun(
+          `UPDATE feeds SET feed_url = ?, is_corporate = ?, parent_company = ? WHERE id = ?`,
+          [o.feed_url, o.is_corporate ? 1 : 0, o.parent_company || null, match.id]
+        );
+        feedsUpdated++;
       }
       resolvedOutlets.push(match.outlet);
     }
 
     const slug = slugify(pack.name);
     const existingPack = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [slug]);
-    if (existingPack) continue; // idempotent
+    if (existingPack) continue; // idempotent — pack's own source list isn't re-synced once created
 
     const info = await dbRun(
       `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, is_official, auto_sync)
@@ -998,8 +1030,42 @@ async function seedPopCulturePacks() {
     }
     packsCreated++;
   }
-  if (feedsInserted || packsCreated || feedUrlReused) {
-    console.log(`Pop Culture Pack seed: inserted ${feedsInserted} feed(s), created ${packsCreated} Pack(s)${feedUrlReused ? `, reused ${feedUrlReused} existing feed_url(s)` : ""}.`);
+
+  // Clean up outlets/packs retired from an earlier version of this seed
+  // (see RETIRED_POP_CULTURE_OUTLETS/_PACK_SLUGS comment above) — makes a
+  // redeploy over already-seeded data actually converge, not just stop
+  // re-adding what it no longer defines.
+  let retiredOutletsRemoved = 0, retiredPacksRemoved = 0;
+  if (RETIRED_POP_CULTURE_OUTLETS.length) {
+    const placeholders = RETIRED_POP_CULTURE_OUTLETS.map(() => "?").join(",");
+    await dbRun(`DELETE FROM feed_mix_sources WHERE outlet IN (${placeholders})`, RETIRED_POP_CULTURE_OUTLETS);
+    await dbRun(`DELETE FROM dispatches WHERE outlet IN (${placeholders})`, RETIRED_POP_CULTURE_OUTLETS);
+    const r = await dbRun(
+      `DELETE FROM feeds WHERE fallback_beat = 'Entertainment' AND outlet IN (${placeholders})`,
+      RETIRED_POP_CULTURE_OUTLETS
+    );
+    retiredOutletsRemoved = r.changes || 0;
+  }
+  if (RETIRED_POP_CULTURE_PACK_SLUGS.length) {
+    const slugPlaceholders = RETIRED_POP_CULTURE_PACK_SLUGS.map(() => "?").join(",");
+    const mixRows = await dbAll(`SELECT id FROM feed_mixes WHERE slug IN (${slugPlaceholders})`, RETIRED_POP_CULTURE_PACK_SLUGS);
+    if (mixRows.length) {
+      const mixIds = mixRows.map((r) => r.id);
+      const idPlaceholders = mixIds.map(() => "?").join(",");
+      await dbRun(`DELETE FROM feed_mix_topics WHERE mix_id IN (${idPlaceholders})`, mixIds);
+      await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id IN (${idPlaceholders})`, mixIds);
+      await dbRun(`DELETE FROM feed_mixes WHERE id IN (${idPlaceholders})`, mixIds);
+      retiredPacksRemoved = mixIds.length;
+    }
+  }
+
+  if (feedsInserted || feedsUpdated || packsCreated || feedUrlReused || retiredOutletsRemoved || retiredPacksRemoved) {
+    console.log(
+      `Pop Culture Pack seed: inserted ${feedsInserted} feed(s), updated ${feedsUpdated} feed(s), created ${packsCreated} Pack(s)` +
+      `${feedUrlReused ? `, reused ${feedUrlReused} existing feed_url(s)` : ""}` +
+      `${retiredOutletsRemoved ? `, removed ${retiredOutletsRemoved} retired outlet(s)` : ""}` +
+      `${retiredPacksRemoved ? `, removed ${retiredPacksRemoved} retired Pack(s)` : ""}.`
+    );
   }
 }
 
