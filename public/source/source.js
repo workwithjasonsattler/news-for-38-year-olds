@@ -589,7 +589,13 @@
 
   function renderActiveTab() {
     const main = document.getElementById("main");
-    if (main) main.classList.remove("read-layout", "read-scroll-desktop");
+    // Every read-mode class that gets ADDED to #main somewhere in the
+    // Read display modes above (read-layout, read-scroll-desktop,
+    // read-classic, read-columns) needs to be removed here — leaving one
+    // stuck (e.g. read-classic's grid-template-columns) breaks any other
+    // screen that writes plain linear content into #main afterward, same
+    // failure class as the .source-single-col-screen grid-overlap bug.
+    if (main) main.classList.remove("read-layout", "read-scroll-desktop", "read-classic", "read-columns");
     // Fullscreen reader is a per-visit toggle, not a saved preference —
     // switching away from Read (or to a different story list) always
     // starts back in the normal split view.
@@ -734,6 +740,7 @@
         </button>`;
     }).join("")
       + `<button class="spray-pill spray-pill-create" data-key="__addfeed">+ Add a Feed</button>`
+      + `<button class="spray-pill spray-pill-create" data-key="__browse">+ Browse RSS Packs</button>`
       + `<button class="spray-pill spray-pill-create" data-key="__create">+ Create an RSS Pack</button>`;
     el.querySelectorAll(".spray-pill-x").forEach(x => {
       x.addEventListener("click", (e) => {
@@ -745,6 +752,7 @@
       btn.addEventListener("click", () => {
         if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
         if (btn.dataset.key === "__addfeed") { jumpToAddFeed(); return; }
+        if (btn.dataset.key === "__browse") { openBrowsePublicScreen(); return; }
         toggleActiveSpray(btn.dataset.key);
       });
     });
@@ -1103,11 +1111,13 @@
         return `<button class="classic-sidebar-item${active ? " active" : ""}" data-key="${escapeHtml(p.key)}" title="${escapeHtml(p.label)}">${escapeHtml(p.label)}</button>`;
       }).join("") +
       `<button class="classic-sidebar-item classic-sidebar-create" data-key="__addfeed">+ Add a Feed</button>` +
+      `<button class="classic-sidebar-item classic-sidebar-create" data-key="__browse">+ Browse RSS Packs</button>` +
       `<button class="classic-sidebar-item classic-sidebar-create" data-key="__create">+ Create an RSS Pack</button>`;
     el.querySelectorAll(".classic-sidebar-item").forEach(btn => {
       btn.addEventListener("click", () => {
         if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
         if (btn.dataset.key === "__addfeed") { jumpToAddFeed(); return; }
+        if (btn.dataset.key === "__browse") { openBrowsePublicScreen(); return; }
         toggleActiveSpray(btn.dataset.key);
       });
     });
@@ -1728,7 +1738,7 @@
 
   function closeManageScreen() {
     manageState = null;
-    renderSources();
+    renderActiveTab();
   }
 
   // ----- Browse Public RSS Packs: a searchable directory of every OTHER
@@ -1739,7 +1749,7 @@
   // server-side already and this keeps typing instant. -----
   function closeBrowseScreen() {
     browseState = null;
-    renderSources();
+    renderActiveTab();
   }
 
   async function openBrowsePublicScreen() {
@@ -1762,7 +1772,7 @@
     if (!browseState) return;
     main.innerHTML = `
       <div class="source-single-col-screen">
-      <button class="btn" id="browseBack" style="margin-bottom:14px;">‹ Back to Sources</button>
+      <button class="btn" id="browseBack" style="margin-bottom:14px;">‹ Back</button>
       <h2 class="manage-screen-title">Top RSS Packs</h2>
       <div class="manage-screen-stat" style="margin-bottom:12px;">Made and shared by other readers — follow one into your Read toggle, or copy it to make it your own.</div>
       <input class="create-flow-input" id="browseSearchInput" placeholder="Search by name or place…" style="margin-bottom:14px;">
@@ -1822,7 +1832,7 @@
     if (!manageState) return;
 
     if (manageState.loading || !manageState.data) {
-      main.innerHTML = `<div class="source-single-col-screen"><button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back to Sources</button>` +
+      main.innerHTML = `<div class="source-single-col-screen"><button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back</button>` +
         stateBlock({ title: "LOADING", body: "Just a moment...", spin: true }) + `</div>`;
       document.getElementById("mgBack").addEventListener("click", closeManageScreen);
       return;
@@ -1905,7 +1915,7 @@
         <button class="tile-sheet-delete" id="mgDeleteBtn">Delete this RSS Pack</button>`;
     }
 
-    main.innerHTML = `<div class="source-single-col-screen"><button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back to Sources</button>` + body + `</div>`;
+    main.innerHTML = `<div class="source-single-col-screen"><button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back</button>` + body + `</div>`;
     document.getElementById("mgBack").addEventListener("click", closeManageScreen);
 
     if (manageState.view === "headlines" || manageState.view === "view") {
