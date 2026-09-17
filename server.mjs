@@ -401,6 +401,18 @@ async function initSchema() {
     // Packs in Top RSS Packs). Null = falls back to created_at order.
     // Set via the Pack Builder's up/down arrows or "Suggest order".
     `ALTER TABLE feed_mixes ADD COLUMN official_order INTEGER`,
+    // wire_eligible: gates whether a feed's imported items can appear in
+    // the SHARED, unfiltered wire (N38YO's main feed, GET /api/dispatches
+    // with no outlet filter, and "Headlines: Best in the World"'s
+    // auto-sync top-60) — see WIRE_ELIGIBLE_FALSE_BEATS below. Defaults to
+    // 1 (eligible) so every pre-existing feed keeps behaving exactly as it
+    // always has; a feed only gets set to 0 deliberately (e.g. Pop Culture
+    // outlets, which still need real dispatches rows so their OWN Packs
+    // and RSS export work, just never mixed into the political wire).
+    // Outlet-scoped queries (a specific Pack's own items, that Pack's RSS
+    // feed) are never filtered by this — a reader who explicitly picked a
+    // Pack should always see everything in it.
+    `ALTER TABLE feeds ADD COLUMN wire_eligible INTEGER NOT NULL DEFAULT 1`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
   }
@@ -888,19 +900,19 @@ const STARTER_POP_CULTURE_PACKS = [
   },
 ];
 
-// EMERGENCY REVERT for the Pop Culture Packs seeded earlier this session.
-// They leaked into the shared, unfiltered wire — importAllFeeds() pulls
-// from every row in `feeds` with no Pack-membership filter, so once the
-// import job ran, these outlets' items landed in `dispatches` itself,
-// meaning they became visible in "Headlines: Best in the World" (auto_sync,
-// unfiltered top-60) and N38YO's own main political wire. This deletes,
-// idempotently: the 15 Pack rows + their source/topic links, the feeds
-// themselves, and any `dispatches` rows already pulled from those outlets.
-// The `fallback_beat = 'Entertainment'` guard on the feeds delete is
-// deliberate — that value is unique to seedPopCulturePacks()'s own INSERT,
-// so this can never touch a pre-existing feed that happens to share an
-// outlet name for an unrelated reason. Safe to run more than once — no-ops
-// once already clean.
+// NOT wired into boot anymore — the wire-leak that made this necessary
+// is fixed via wire_eligible (see the migration and seedPopCulturePacks()
+// comments above); seedPopCulturePacks() is back in the boot sequence.
+// Left defined as a manual escape hatch (e.g. call it once from a
+// one-off script) if these ever need pulling entirely again for some
+// other reason. Deletes, idempotently: the 15 Pack rows + their source/
+// topic links, the feeds themselves, and any `dispatches` rows already
+// pulled from those outlets. The `fallback_beat = 'Entertainment'` guard
+// on the feeds delete is deliberate — that value is unique to
+// seedPopCulturePacks()'s own INSERT, so this can never touch a
+// pre-existing feed that happens to share an outlet name for an
+// unrelated reason. Safe to run more than once — no-ops once already
+// clean.
 const POP_CULTURE_OUTLETS_TO_REVERT = STARTER_POP_CULTURE_PACKS.flatMap(p => p.outlets.map(o => o.outlet));
 const POP_CULTURE_PACK_SLUGS_TO_REVERT = STARTER_POP_CULTURE_PACKS.map(p => slugify(p.name));
 
@@ -932,9 +944,10 @@ async function revertPopCulturePacks() {
   }
 }
 
-// DISABLED — see revertPopCulturePacks() above and the boot-sequence
-// comment. Left in place, unused, in case this is revisited with a real
-// fix for wire isolation (e.g. a feeds.wire_eligible flag).
+// Re-enabled — see the wire_eligible migration and boot-sequence comment
+// above. Every inserted feed here gets wire_eligible=0 (last column in
+// the INSERT below), which is what actually keeps these out of the
+// shared political wire now — not a boot-sequence toggle.
 async function seedPopCulturePacks() {
   const existingFeeds = await dbAll(`SELECT id, outlet, feed_url FROM feeds`);
   const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
@@ -952,8 +965,8 @@ async function seedPopCulturePacks() {
       }
       if (!match) {
         const info = await dbRun(
-          `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status, is_corporate, parent_company)
-           VALUES (?, '', ?, '', '', 'Entertainment', '{}', 3, '', 'outlet', NULL, 'approved', ?, ?)`,
+          `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status, is_corporate, parent_company, wire_eligible)
+           VALUES (?, '', ?, '', '', 'Entertainment', '{}', 3, '', 'outlet', NULL, 'approved', ?, ?, 0)`,
           [o.outlet, o.feed_url, o.is_corporate ? 1 : 0, o.parent_company || null]
         );
         match = { id: info.lastInsertRowid, outlet: o.outlet, feed_url: o.feed_url };
@@ -2085,10 +2098,19 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
   const isAutoSync = typeof mix === "object" && !!mix.auto_sync;
 
   if (isAutoSync) {
-    // Auto-synced: sources = every outlet actually contributing to the
-    // current unfiltered wire right now (not a stored, driftable list).
-    const outletRows = await dbAll(`SELECT DISTINCT outlet FROM dispatches ORDER BY outlet ASC`);
-    const items = await dbAll(`SELECT * FROM dispatches ORDER BY pinned DESC, date DESC, id DESC LIMIT 60`);
+    // Auto-synced: sources = every WIRE-ELIGIBLE outlet actually
+    // contributing to the current unfiltered wire right now (not a
+    // stored, driftable list) — same wire_eligible gate as GET
+    // /api/dispatches, since this Pack IS the shared unfiltered wire.
+    const outletRows = await dbAll(
+      `SELECT DISTINCT d.outlet FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
+       WHERE COALESCE(f.wire_eligible, 1) != 0 ORDER BY d.outlet ASC`
+    );
+    const items = await dbAll(
+      `SELECT d.* FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
+       WHERE COALESCE(f.wire_eligible, 1) != 0
+       ORDER BY d.pinned DESC, d.date DESC, d.id DESC LIMIT 60`
+    );
     const markers = await corporateMarkersFor(outletRows.map((r) => r.outlet));
     return {
       sources: outletRows.map((r) => ({
@@ -2733,10 +2755,15 @@ function buildExternalEmbed({ uri, title, description, thumbBlob }) {
 // now a pure date/id sort, but NOT IN costs nothing and is more robust
 // if the selection logic ever changes again).
 async function pickTopStoryForBot() {
+  // Same wire_eligible gate as GET /api/dispatches — the bot posts to the
+  // official political Bluesky account, so a Pop-Culture-style outlet's
+  // item must never be eligible here even though it's a perfectly normal
+  // dispatches row.
   const candidates = await dbAll(
-    `SELECT * FROM dispatches
-     WHERE id NOT IN (SELECT dispatch_id FROM bluesky_bot_posts)
-     ORDER BY date DESC, id DESC LIMIT 1`
+    `SELECT d.* FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
+     WHERE d.id NOT IN (SELECT dispatch_id FROM bluesky_bot_posts)
+       AND COALESCE(f.wire_eligible, 1) != 0
+     ORDER BY d.date DESC, d.id DESC LIMIT 1`
   );
   return candidates[0] || null;
 }
@@ -2955,7 +2982,10 @@ app.post("/api/mixes/:slug/clone", async (req, res) => {
   // official (admin-curated) Packs have a real stored list, same as any
   // reader-made Pack, so they fall through to the normal query below.
   const sourceRows = mix.auto_sync
-    ? (await dbAll(`SELECT DISTINCT outlet FROM dispatches`)).map((r) => ({ source_type: "admin_outlet", outlet: r.outlet }))
+    ? (await dbAll(
+        `SELECT DISTINCT d.outlet FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
+         WHERE COALESCE(f.wire_eligible, 1) != 0`
+      )).map((r) => ({ source_type: "admin_outlet", outlet: r.outlet }))
     : await dbAll(
         `SELECT fms.*, ucs.name AS custom_name, ucs.feed_url AS custom_feed_url, ucs.submission_status AS custom_status
          FROM feed_mix_sources fms
@@ -3690,9 +3720,22 @@ app.post("/api/login", (req, res) => {
 // ---------- public read endpoints ----------
 app.get("/api/dispatches", async (req, res) => {
   const { beat } = req.query;
+  // LEFT JOIN (not INNER) so a dispatches row whose feed was since renamed
+  // or deleted still shows (COALESCE defaults an orphaned row to eligible
+  // — fails open to the pre-wire_eligible behavior rather than silently
+  // vanishing an otherwise-normal item).
   let rows = beat
-    ? await dbAll(`SELECT * FROM dispatches WHERE beat = ? ORDER BY pinned DESC, date DESC, id DESC`, [beat])
-    : await dbAll(`SELECT * FROM dispatches ORDER BY pinned DESC, date DESC, id DESC`);
+    ? await dbAll(
+        `SELECT d.* FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
+         WHERE d.beat = ? AND COALESCE(f.wire_eligible, 1) != 0
+         ORDER BY d.pinned DESC, d.date DESC, d.id DESC`,
+        [beat]
+      )
+    : await dbAll(
+        `SELECT d.* FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
+         WHERE COALESCE(f.wire_eligible, 1) != 0
+         ORDER BY d.pinned DESC, d.date DESC, d.id DESC`
+      );
 
   // Personalize for signed-in readers via conscious filtering — the reader
   // sets an explicit tier per source (pinned/normal/less/hidden), not an
@@ -4277,9 +4320,10 @@ app.get("/api/nerve-center/site", async (req, res) => {
       `SELECT d.id, d.headline, d.outlet, d.name, d.beat, d.link, d.tip_url, d.subscribe_url, d.date,
               COUNT(DISTINCT c.id) AS clicks, COUNT(DISTINCT t.id) AS tip_clicks, COALESCE(SUM(t.amount),0) AS tip_amount
        FROM dispatches d
+       LEFT JOIN feeds f ON f.outlet = d.outlet
        LEFT JOIN clicks c ON c.dispatch_id = d.id
        LEFT JOIN tip_clicks t ON t.dispatch_id = d.id
-       ${validSection ? "WHERE d.beat = ?" : ""}
+       WHERE COALESCE(f.wire_eligible, 1) != 0 ${validSection ? "AND d.beat = ?" : ""}
        GROUP BY d.id
        ORDER BY clicks DESC, tip_clicks DESC
        LIMIT 40`,
@@ -5378,15 +5422,15 @@ async function start() {
       await step("seedOfficialHeadlinesSpray", seedOfficialHeadlinesSpray);
       await step("seedLeafTopics", seedLeafTopics);
       await step("seedCorePacks", seedCorePacks);
-      // seedPopCulturePacks() DISABLED — see revertPopCulturePacks() below.
-      // Real bug: importAllFeeds() (the job that fills `dispatches`, which
-      // IS the shared wire behind "Headlines: Best in the World" and
-      // N38YO's main political feed) pulls from every row in `feeds` with
-      // no Pack-membership filter. These outlets leaked straight into the
-      // political news wire. Not re-enabling until there's a real
-      // wire-isolation mechanism (e.g. a feeds.wire_eligible flag that
-      // importAllFeeds() respects).
-      await step("revertPopCulturePacks", revertPopCulturePacks);
+      // Re-enabled: wire_eligible (see the ALTER TABLE migration above)
+      // now actually isolates these from the shared political wire —
+      // GET /api/dispatches, the auto-sync Headlines Pack (both its
+      // display query and its own separate clone-source-list query), the
+      // Bluesky headline bot's story picker, and /api/nerve-center/site
+      // all filter on it. Pack-scoped queries (a Pack's own items, its
+      // RSS export) are deliberately NOT filtered — a reader who picked
+      // the Pack should see everything in it.
+      await step("seedPopCulturePacks", seedPopCulturePacks);
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Same "kick shortly after boot, not just on the interval" pattern as
       // the Bluesky bot below — a fresh deploy shouldn't have to wait up to
