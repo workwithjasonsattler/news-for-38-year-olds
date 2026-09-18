@@ -602,6 +602,12 @@
     readerFullscreen = false;
     const toggle = document.getElementById("sprayToggle");
     if (toggle && activeTab !== "read") toggle.hidden = true;
+    // Unlike the pill bar (which hides itself in Classic mode — that view
+    // has its own sidebar for the same picker), this caption is a general
+    // reminder of the Read tab's core promise and should hold across every
+    // display mode, so its visibility is keyed on the tab alone.
+    const promiseCaption = document.getElementById("readPromiseCaption");
+    if (promiseCaption) promiseCaption.hidden = activeTab !== "read";
     renderDesktopSidePanel();
     if (activeTab === "read") return renderRead();
     if (activeTab === "sources") return renderSources();

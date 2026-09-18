@@ -785,6 +785,13 @@ button { font-family: inherit; cursor: pointer; }
   -webkit-mask-image: linear-gradient(to right, transparent, black 18px, black calc(100% - 18px), transparent);
 }
 .spray-toggle::-webkit-scrollbar { display: none; }
+.read-promise-caption {
+  padding: 6px 14px;
+  font-size: 11px;
+  color: var(--ink-muted);
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
 .spray-pill {
   flex: 0 0 auto;
   display: inline-flex;
