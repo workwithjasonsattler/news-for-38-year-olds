@@ -1069,6 +1069,124 @@ async function seedPopCulturePacks() {
   }
 }
 
+// Progressive Podcasts — Jason's list, all 13. 11 verified via live web
+// search (FeedSpot/Podnews/Wikidata/official-site listings), same
+// diligence as the Pop Culture Pack correction pass; Next Comes What and
+// Ball of Thread are Jason's own shows, feed URLs given directly by him.
+// wire_eligible defaults to 0 (isolated to this Pack, not mixed into
+// the shared political wire) — a deliberate choice given the earlier
+// Pop Culture wire-leak lesson this session, even though these are
+// topically aligned; Jason can flip this per-outlet in admin if he
+// wants them blended into Headlines instead.
+// fallback_beat = 'Podcast' (distinct from Pop Culture's 'Entertainment')
+// so future reconciliation can target these rows specifically.
+const STARTER_PROGRESSIVE_PODCASTS = [
+  {
+    name: "Progressive Podcasts", topicSlug: "indie-media",
+    outlets: [
+      { outlet: "Behind the Bastards", feed_url: "https://www.omnycontent.com/d/playlist/e73c998e-6e60-432f-8610-ae210140c5b1/E5F91208-CC7E-4726-A312-AE280140AD11/D64F756D-6D5E-4FAE-B24F-AE280140AD36/podcast.rss", is_corporate: true, parent_company: "iHeartMedia" },
+      { outlet: "Why Is This Happening? The Chris Hayes Podcast", feed_url: "https://podcastfeeds.nbcnews.com/why-is-this-happening-with-chris-hayes", is_corporate: true, parent_company: "NBCUniversal" },
+      { outlet: "Pod Save America", feed_url: "https://feeds.simplecast.com/dxZsm5kX" },
+      { outlet: "Citations Needed", feed_url: "https://citationsneeded.libsyn.com/rss" },
+      { outlet: "The Majority Report", feed_url: "https://majorityfm.libsyn.com/rss" },
+      { outlet: "5-4", feed_url: "https://feeds.acast.com/public/shows/fivefourpod" },
+      { outlet: "Volts", feed_url: "https://api.substack.com/feed/podcast/193024.rss" },
+      { outlet: "Daily Blast", feed_url: "https://feeds.megaphone.fm/dailyblast2024" },
+      { outlet: "Kagro In the Morning", feed_url: "https://kagrox.libsyn.com/rss" },
+      { outlet: "Democracy Now! Audio", feed_url: "https://www.democracynow.org/podcast.xml" },
+      { outlet: "The Daily Beans", feed_url: "https://feeds.simplecast.com/bOogzwqU" },
+      { outlet: "Next Comes What", feed_url: "https://feeds.libsyn.com/555737/rss" },
+      { outlet: "Ball of Thread", feed_url: "https://feeds.libsyn.com/528757/rss" },
+    ],
+  },
+];
+
+// Same idempotent, reconcile-on-change, safety-marker-guarded pattern as
+// seedPopCulturePacks() above — see that function's comments for the
+// reasoning behind each piece (fallback_beat guard on the UPDATE/DELETE,
+// LEFT JOIN reasoning is in the wire_eligible query sites, etc.).
+async function seedProgressivePodcasts() {
+  const existingFeeds = await dbAll(`SELECT id, outlet, feed_url, fallback_beat, is_corporate, parent_company FROM feeds`);
+  const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
+  const byFeedUrl = new Map(existingFeeds.filter(f => f.feed_url).map(f => [f.feed_url.trim(), f]));
+  let feedsInserted = 0, feedsUpdated = 0, packsCreated = 0, feedUrlReused = 0;
+
+  for (const pack of STARTER_PROGRESSIVE_PODCASTS) {
+    const resolvedOutlets = [];
+    for (const o of pack.outlets) {
+      const byName = byOutletLower.get(o.outlet.toLowerCase());
+      let match = byName || byFeedUrl.get(o.feed_url.trim());
+      if (match && !byName) {
+        feedUrlReused++;
+        console.warn(`Progressive Podcasts seed: "${o.outlet}"'s feed_url already exists under outlet "${match.outlet}" — reusing that row instead of inserting a duplicate.`);
+      }
+      if (!match) {
+        const info = await dbRun(
+          `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status, is_corporate, parent_company, wire_eligible)
+           VALUES (?, '', ?, '', '', 'Podcast', '{}', 3, '', 'outlet', NULL, 'approved', ?, ?, 0)`,
+          [o.outlet, o.feed_url, o.is_corporate ? 1 : 0, o.parent_company || null]
+        );
+        match = { id: info.lastInsertRowid, outlet: o.outlet, feed_url: o.feed_url, fallback_beat: "Podcast" };
+        byOutletLower.set(o.outlet.toLowerCase(), match);
+        byFeedUrl.set(o.feed_url.trim(), match);
+        feedsInserted++;
+      } else if (
+        byName && match.fallback_beat === "Podcast" &&
+        (match.feed_url !== o.feed_url || !!match.is_corporate !== !!o.is_corporate || (match.parent_company || null) !== (o.parent_company || null))
+      ) {
+        await dbRun(
+          `UPDATE feeds SET feed_url = ?, is_corporate = ?, parent_company = ? WHERE id = ?`,
+          [o.feed_url, o.is_corporate ? 1 : 0, o.parent_company || null, match.id]
+        );
+        feedsUpdated++;
+      }
+      resolvedOutlets.push(match.outlet);
+    }
+
+    const slug = slugify(pack.name);
+    const existingPack = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [slug]);
+    if (existingPack) {
+      // Unlike a brand-new pack, this one may need new sources added on a
+      // later run (e.g. once Next Comes What/Ball of Thread's URLs land).
+      // Add any resolved outlet not already in this pack's source list —
+      // never removes anything, so a reader's own edits are untouched.
+      const existingSources = await dbAll(`SELECT outlet FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'admin_outlet'`, [existingPack.id]);
+      const existingOutletSet = new Set(existingSources.map(s => s.outlet));
+      const maxOrderRow = await dbGet(`SELECT MAX(sort_order) AS m FROM feed_mix_sources WHERE mix_id = ?`, [existingPack.id]);
+      let nextOrder = (maxOrderRow && maxOrderRow.m != null ? maxOrderRow.m : -1) + 1;
+      for (const outlet of resolvedOutlets) {
+        if (!existingOutletSet.has(outlet)) {
+          await dbRun(
+            `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, 'admin_outlet', ?, NULL, ?)`,
+            [existingPack.id, outlet, nextOrder++]
+          );
+        }
+      }
+      continue;
+    }
+
+    const info = await dbRun(
+      `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, is_official, auto_sync)
+       VALUES (?, ?, 0, NULL, 1, 0, 0)`,
+      [slug, pack.name]
+    );
+    for (let i = 0; i < resolvedOutlets.length; i++) {
+      await dbRun(
+        `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, 'admin_outlet', ?, NULL, ?)`,
+        [info.lastInsertRowid, resolvedOutlets[i], i]
+      );
+    }
+    const topic = await dbGet(`SELECT id FROM topics WHERE slug = ?`, [pack.topicSlug]);
+    if (topic) {
+      await dbRun(`INSERT OR IGNORE INTO feed_mix_topics (mix_id, topic_id) VALUES (?, ?)`, [info.lastInsertRowid, topic.id]);
+    }
+    packsCreated++;
+  }
+  if (feedsInserted || feedsUpdated || packsCreated || feedUrlReused) {
+    console.log(`Progressive Podcasts seed: inserted ${feedsInserted} feed(s), updated ${feedsUpdated} feed(s), created ${packsCreated} Pack(s)${feedUrlReused ? `, reused ${feedUrlReused} existing feed_url(s)` : ""}.`);
+  }
+}
+
 // a duplicate row. Only inserts a new row when no matching outlet exists.
 async function seedYoutubeChannels() {
   const existingFeeds = await dbAll(`SELECT id, outlet, youtube_channel_id FROM feeds`);
@@ -5497,6 +5615,7 @@ async function start() {
       // RSS export) are deliberately NOT filtered — a reader who picked
       // the Pack should see everything in it.
       await step("seedPopCulturePacks", seedPopCulturePacks);
+      await step("seedProgressivePodcasts", seedProgressivePodcasts);
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Same "kick shortly after boot, not just on the interval" pattern as
       // the Bluesky bot below — a fresh deploy shouldn't have to wait up to
