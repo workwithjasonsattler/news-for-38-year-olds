@@ -832,6 +832,25 @@ button { font-family: inherit; cursor: pointer; }
   vertical-align: middle;
 }
 .spray-pill-x:hover { background: rgba(255,255,255,0.32); }
+.spray-pill-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: 7px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.08);
+  color: inherit;
+  font-size: 11px;
+  line-height: 1;
+  vertical-align: middle;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.spray-pill-remove:hover { background: rgba(0,0,0,0.16); }
+.spray-pill.active .spray-pill-remove { background: rgba(255,255,255,0.18); }
+.spray-pill.active .spray-pill-remove:hover { background: rgba(255,255,255,0.32); }
 .spray-pill-create {
   color: var(--accent-dim);
   border-color: var(--accent-soft);
@@ -1910,6 +1929,8 @@ body.pane-resizing * {
   font-weight: 700;
 }
 .classic-sidebar-create { color: var(--ink-muted); font-style: italic; margin-top: 4px; }
+.classic-sidebar-row { display: flex; align-items: center; }
+.classic-sidebar-row .classic-sidebar-remove { margin: 0 10px 0 -6px; }
 
 /* Item list — deliberately NOT boxed cards like the rest of the app.
    Hairline row separators, one-line title clamp, so many more items

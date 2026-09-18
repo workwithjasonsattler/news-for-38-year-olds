@@ -715,11 +715,34 @@
   async function getSprayBarPills() {
     await loadSprayBar();
     return [
-      { key: "all", label: "All" },
-      { key: sprayBarData.news.slug, label: sprayDisplayName(sprayBarData.news.slug, sprayBarData.news.name) || "News" },
-      { key: "__youtube", label: "Best of YouTube" },
-      { key: "__bluesky", label: "Best of Bluesky" },
-    ].concat(sprayBarData.sprays.map(s => ({ key: s.slug, label: sprayDisplayName(s.slug, s.name) })));
+      { key: "all", label: "All", removable: false },
+      { key: sprayBarData.news.slug, label: sprayDisplayName(sprayBarData.news.slug, sprayBarData.news.name) || "News", removable: false },
+      { key: "__youtube", label: "Best of YouTube", removable: false },
+      { key: "__bluesky", label: "Best of Bluesky", removable: false },
+    ].concat(sprayBarData.sprays.map(s => ({ key: s.slug, label: sprayDisplayName(s.slug, s.name), removable: true })));
+  }
+
+  // Removes an RSS Pack from the reader's own bar/sidebar list (DELETE
+  // /api/my/spray-bar/:slug) — does NOT delete the Pack itself, whether
+  // owned or merely followed; it's still findable via Your Sources or
+  // Browse RSS Packs and can be re-added anytime. Distinct from the
+  // active-only × in renderSprayToggle, which just deselects a pill from
+  // the CURRENT multi-select view without touching the bar list at all.
+  async function removeSprayFromBar(slug) {
+    if (activeSprayKeys.has(slug)) {
+      activeSprayKeys.delete(slug);
+      if (activeSprayKeys.size === 0) activeSprayKeys.add("all");
+      persistActiveSprayKeys();
+    }
+    try {
+      await api(`/api/my/spray-bar/${encodeURIComponent(slug)}`, { method: "DELETE" });
+      sprayBarData = await api("/api/my/spray-bar");
+      toast("Removed from your bar.");
+    } catch (e) {
+      toast(e.message || "Couldn't remove that RSS Pack.");
+    }
+    selectedDispatch = null;
+    renderRead();
   }
 
   async function renderSprayToggle() {
@@ -736,7 +759,7 @@
       const active = activeSprayKeys.has(p.key);
       return `
         <button class="spray-pill${active ? " active" : ""}" data-key="${escapeHtml(p.key)}" title="${escapeHtml(p.label)}">
-          <span class="spray-pill-label">${escapeHtml(p.label)}</span>${active && p.key !== "all" ? `<span class="spray-pill-x" data-key="${escapeHtml(p.key)}">×</span>` : ""}
+          <span class="spray-pill-label">${escapeHtml(p.label)}</span>${p.removable ? `<span class="spray-pill-remove" data-remove-slug="${escapeHtml(p.key)}" title="Remove from your bar">×</span>` : (active && p.key !== "all" ? `<span class="spray-pill-x" data-key="${escapeHtml(p.key)}">×</span>` : "")}
         </button>`;
     }).join("")
       + `<button class="spray-pill spray-pill-create" data-key="__addfeed">+ Add a Feed</button>`
@@ -746,6 +769,12 @@
       x.addEventListener("click", (e) => {
         e.stopPropagation();
         toggleActiveSpray(x.dataset.key);
+      });
+    });
+    el.querySelectorAll(".spray-pill-remove").forEach(x => {
+      x.addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeSprayFromBar(x.dataset.removeSlug);
       });
     });
     el.querySelectorAll(".spray-pill").forEach(btn => {
@@ -1108,11 +1137,28 @@
     el.innerHTML = `<div class="classic-sidebar-head">RSS Packs</div>` +
       pills.map(p => {
         const active = activeSprayKeys.has(p.key);
-        return `<button class="classic-sidebar-item${active ? " active" : ""}" data-key="${escapeHtml(p.key)}" title="${escapeHtml(p.label)}">${escapeHtml(p.label)}</button>`;
+        if (!p.removable) {
+          return `<button class="classic-sidebar-item${active ? " active" : ""}" data-key="${escapeHtml(p.key)}" title="${escapeHtml(p.label)}">${escapeHtml(p.label)}</button>`;
+        }
+        // Removable rows: the label button (toggles active, same as any
+        // other row) sits alongside a SIBLING remove control, not nested
+        // inside it — a <button> can't contain another interactive
+        // element, so this needs its own small wrapper.
+        return `
+          <div class="classic-sidebar-row">
+            <button class="classic-sidebar-item${active ? " active" : ""}" data-key="${escapeHtml(p.key)}" title="${escapeHtml(p.label)}" style="flex:1;">${escapeHtml(p.label)}</button>
+            <span class="spray-pill-remove classic-sidebar-remove" data-remove-slug="${escapeHtml(p.key)}" title="Remove from your bar">×</span>
+          </div>`;
       }).join("") +
       `<button class="classic-sidebar-item classic-sidebar-create" data-key="__addfeed">+ Add a Feed</button>` +
       `<button class="classic-sidebar-item classic-sidebar-create" data-key="__browse">+ Browse RSS Packs</button>` +
       `<button class="classic-sidebar-item classic-sidebar-create" data-key="__create">+ Create an RSS Pack</button>`;
+    el.querySelectorAll(".classic-sidebar-remove").forEach(x => {
+      x.addEventListener("click", (e) => {
+        e.stopPropagation();
+        removeSprayFromBar(x.dataset.removeSlug);
+      });
+    });
     el.querySelectorAll(".classic-sidebar-item").forEach(btn => {
       btn.addEventListener("click", () => {
         if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
