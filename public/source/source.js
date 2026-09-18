@@ -3540,7 +3540,7 @@
     }
     if (posts.length > 0) {
       const scrollMode = getReadDisplay() === "scroll";
-      html += `<div class="section-label">TRENDING ON BLUESKY</div>` + posts.slice(0, 40).map(p => renderBluePost(p, scrollMode ? "card-scroll-post" : "")).join("");
+      html += `<div class="section-label">TRENDING ON BLUESKY</div><p class="section-sub">Individual posts, not grouped by story</p>` + posts.slice(0, 40).map(p => renderBluePost(p, scrollMode ? "card-scroll-post" : "")).join("");
     }
     html += `</div>`;
     main.innerHTML = html;
