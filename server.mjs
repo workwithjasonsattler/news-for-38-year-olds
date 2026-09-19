@@ -5666,9 +5666,6 @@ async function start() {
       // the Pack should see everything in it.
       await step("seedPopCulturePacks", seedPopCulturePacks);
       await step("seedProgressivePodcasts", seedProgressivePodcasts);
-      // ONE-TIME — see the function's own comment. Remove this line once
-      // confirmed live (do not leave as a permanent boot step).
-      await step("featureNewlySeededPacks", featureNewlySeededPacks);
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Same "kick shortly after boot, not just on the interval" pattern as
       // the Bluesky bot below — a fresh deploy shouldn't have to wait up to
