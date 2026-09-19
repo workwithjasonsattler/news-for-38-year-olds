@@ -2829,12 +2829,19 @@ function utf8ByteLength(str) {
 // Bluesky facets need byte offsets (UTF-8), not JS string-index offsets —
 // those can diverge whenever the text contains anything outside plain
 // ASCII (emoji, curly quotes, etc.) ahead of the URL.
-function buildLinkFacet(fullText, url) {
-  const idx = fullText.indexOf(url);
+// displayText is the literal text that must appear in fullText (what the
+// reader sees); href is the actual link the facet points to. They're the
+// same for a plain URL shown in full (the article link), but differ for a
+// short call-to-action label standing in for a long tracking URL (the tip/
+// subscribe line) — see buildBlueskyPostRecord below for why that split
+// matters for the character budget, not just cosmetics.
+function buildLinkFacet(fullText, displayText, href) {
+  const uri = href || displayText;
+  const idx = fullText.indexOf(displayText);
   if (idx === -1) return null;
   const byteStart = utf8ByteLength(fullText.slice(0, idx));
-  const byteEnd = byteStart + utf8ByteLength(url);
-  return { index: { byteStart, byteEnd }, features: [{ $type: "app.bsky.richtext.facet#link", uri: url }] };
+  const byteEnd = byteStart + utf8ByteLength(displayText);
+  return { index: { byteStart, byteEnd }, features: [{ $type: "app.bsky.richtext.facet#link", uri } ] };
 }
 
 // Format: headline / outlet / link / (tip-or-subscribe line, only if one
@@ -2844,22 +2851,31 @@ function buildLinkFacet(fullText, url) {
 // limit. Both the article link and the tip/subscribe link (if present)
 // get real clickable facets, not just plain text — a post built via the
 // API doesn't get Bluesky's own client-side auto-link-detection.
+//
+// The tip/subscribe line shows a short label ("Tip your reporter →" /
+// "Subscribe →"), NOT the raw tip_url/subscribe_url — those URLs often
+// carry campaign/UTM tracking params and can run 80-150+ characters.
+// Showing them literally ate most of the char budget before the headline
+// ever got a turn, which is exactly what was truncating headlines down to
+// a few words on outlets with long tip links (Truthout, TPM, NPR
+// donation links, etc.) — the full URL still works as the link's real
+// href, it's just not spelled out in the post text anymore.
 function buildBlueskyPostRecord(story) {
   const outlet = story.outlet || "";
   const link = story.link;
 
-  let tipLine = null;
+  let tipLabel = null;
   let tipUrl = null;
   if (story.tip_url) {
     tipUrl = story.tip_url;
-    tipLine = `TIP YOUR REPORTER: ${tipUrl}`;
+    tipLabel = "Tip your reporter →";
   } else if (story.subscribe_url) {
     tipUrl = story.subscribe_url;
-    tipLine = `SUBSCRIBE: ${tipUrl}`;
+    tipLabel = "Subscribe →";
   }
 
   const suffixParts = [outlet, link];
-  if (tipLine) suffixParts.push(tipLine);
+  if (tipLabel) suffixParts.push(tipLabel);
   const suffix = "\n\n" + suffixParts.filter(Boolean).join("\n\n");
 
   const maxHeadlineLen = Math.max(0, BLUESKY_POST_CHAR_LIMIT - suffix.length);
@@ -2873,8 +2889,8 @@ function buildBlueskyPostRecord(story) {
   const facets = [];
   const linkFacet = buildLinkFacet(text, link);
   if (linkFacet) facets.push(linkFacet);
-  if (tipUrl) {
-    const tipFacet = buildLinkFacet(text, tipUrl);
+  if (tipUrl && tipLabel) {
+    const tipFacet = buildLinkFacet(text, tipLabel, tipUrl);
     if (tipFacet) facets.push(tipFacet);
   }
 
