@@ -3530,7 +3530,7 @@ app.get("/api/mixes", async (req, res) => {
   }
 
   const rows = await dbAll(
-    `SELECT fm.slug, fm.name, fm.location_label, fm.created_at, fm.clone_count, fm.featured
+    `SELECT fm.id, fm.slug, fm.name, fm.location_label, fm.created_at, fm.clone_count, fm.featured
      FROM feed_mixes fm
      WHERE ${conditions.join(" AND ")}
      ORDER BY fm.featured DESC, fm.featured_order ASC, fm.clone_count DESC, fm.created_at DESC
@@ -3539,13 +3539,31 @@ app.get("/api/mixes", async (req, res) => {
   );
   // Topics are attached per-row after the fact (a mix can carry several) —
   // one extra query per result page rather than a join that would
-  // duplicate rows per topic. 60-row cap keeps this cheap.
+  // duplicate rows per topic. 60-row cap keeps this cheap. Source preview
+  // (first few outlet/custom-source names + a total count) is attached
+  // the same way, so a directory/picker UI can show what's actually
+  // INSIDE a Pack — not just its name — without a second round-trip per
+  // Pack the reader taps on.
   for (const row of rows) {
     row.featured = !!row.featured;
     row.topics = await dbAll(
-      `SELECT t.name, t.slug, t.category FROM feed_mix_topics fmt JOIN topics t ON t.id = fmt.topic_id WHERE fmt.mix_id = (SELECT id FROM feed_mixes WHERE slug = ?)`,
-      [row.slug]
+      `SELECT t.name, t.slug, t.category FROM feed_mix_topics fmt JOIN topics t ON t.id = fmt.topic_id WHERE fmt.mix_id = ?`,
+      [row.id]
     );
+    const sourceRows = await dbAll(
+      `SELECT fms.source_type, fms.outlet, ucs.name AS custom_name
+       FROM feed_mix_sources fms
+       LEFT JOIN user_custom_sources ucs ON ucs.id = fms.custom_source_id
+       WHERE fms.mix_id = ?
+       ORDER BY fms.sort_order ASC`,
+      [row.id]
+    );
+    row.source_count = sourceRows.length;
+    row.source_preview = sourceRows
+      .slice(0, 4)
+      .map((s) => (s.source_type === "admin_outlet" ? s.outlet : s.custom_name))
+      .filter(Boolean);
+    delete row.id; // internal-only, not part of the public response shape
   }
   res.json(rows);
 });

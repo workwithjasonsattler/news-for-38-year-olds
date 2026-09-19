@@ -2760,15 +2760,27 @@
     const q = publicPackPickerState.query.trim().toLowerCase();
     const pool = publicPacksCache || [];
     const filtered = q
-      ? pool.filter(p => (p.name || "").toLowerCase().includes(q) || (p.location_label || "").toLowerCase().includes(q))
+      ? pool.filter(p =>
+          (p.name || "").toLowerCase().includes(q) ||
+          (p.location_label || "").toLowerCase().includes(q) ||
+          (p.source_preview || []).some(s => s.toLowerCase().includes(q))
+        )
       : pool;
     container.innerHTML = filtered.length === 0
       ? `<div class="spray-picker-empty">No public RSS Packs match.</div>`
       : `<div class="spray-picker-list">` + filtered.map(p => {
           const following = followedSlugs.has(p.slug);
+          const preview = p.source_preview || [];
+          const extra = Math.max(0, (p.source_count || preview.length) - preview.length);
+          const previewLine = preview.length
+            ? `${escapeHtml(preview.join(", "))}${extra ? ` +${extra} more` : ""}`
+            : "No sources yet";
           return `
-            <div class="spray-picker-row" style="justify-content:space-between;">
-              <span>${p.featured ? "⭐ " : ""}${escapeHtml(p.name)}${p.location_label ? ` <span style="color:var(--ink-muted);font-weight:400;">· ${escapeHtml(p.location_label)}</span>` : ""}</span>
+            <div class="spray-picker-row" style="justify-content:space-between;align-items:flex-start;">
+              <span style="min-width:0;">
+                <span style="display:block;">${p.featured ? "⭐ " : ""}${escapeHtml(p.name)}${p.location_label ? ` <span style="color:var(--ink-muted);font-weight:400;">· ${escapeHtml(p.location_label)}</span>` : ""}</span>
+                <span class="spray-picker-source-preview">${previewLine}</span>
+              </span>
               <button class="btn" data-slug="${escapeHtml(p.slug)}" style="flex:0 0 auto;">${following ? "Following ✓" : "+ Follow"}</button>
             </div>`;
         }).join("") + `</div>`;
