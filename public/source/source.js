@@ -406,7 +406,7 @@
   function wireSaveButtons(root) {
     root.querySelectorAll(".save-btn").forEach(btn => {
       btn.addEventListener("click", async () => {
-        if (!currentUser) { toast("Sign in to save items"); switchTab("you"); return; }
+        if (!currentUser) { toast("Sign in to save this — it'll be there whenever you come back."); switchTab("you"); return; }
         btn.disabled = true;
         try {
           const payload = JSON.parse(btn.dataset.savePayload);
