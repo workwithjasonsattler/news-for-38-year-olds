@@ -1187,6 +1187,38 @@ async function seedProgressivePodcasts() {
   }
 }
 
+// ONE-TIME step, not a recurring reconciliation — feature every Pack from
+// this session's two seeders (Pop Culture + Progressive Podcasts) so they
+// aren't buried behind older Packs with real clone counts (see the
+// discoverability finding this session — sort order is featured DESC,
+// then clone_count DESC, and all of these start at 0 clones). Guarded by
+// `featured = 0` so a re-run is a no-op for anything already featured —
+// but that same guard means if Jason later un-features one of these
+// himself in admin, a later boot would re-feature it right back. This is
+// only safe to leave in the boot sequence until that first successful
+// run; REMOVE this call from the boot sequence below once confirmed live
+// (do not leave it as a permanent step).
+const NEWLY_SEEDED_PACK_SLUGS_TO_FEATURE = [
+  ...STARTER_POP_CULTURE_PACKS.map(p => slugify(p.name)),
+  ...STARTER_PROGRESSIVE_PODCASTS.map(p => slugify(p.name)),
+];
+
+async function featureNewlySeededPacks() {
+  if (NEWLY_SEEDED_PACK_SLUGS_TO_FEATURE.length === 0) return;
+  const placeholders = NEWLY_SEEDED_PACK_SLUGS_TO_FEATURE.map(() => "?").join(",");
+  const rows = await dbAll(
+    `SELECT id, slug FROM feed_mixes WHERE featured = 0 AND slug IN (${placeholders})`,
+    NEWLY_SEEDED_PACK_SLUGS_TO_FEATURE
+  );
+  if (rows.length === 0) return;
+  const maxOrderRow = await dbGet(`SELECT MAX(featured_order) AS m FROM feed_mixes WHERE featured = 1`);
+  let nextOrder = (maxOrderRow && maxOrderRow.m != null ? maxOrderRow.m : -1) + 1;
+  for (const row of rows) {
+    await dbRun(`UPDATE feed_mixes SET featured = 1, featured_order = ? WHERE id = ?`, [nextOrder++, row.id]);
+  }
+  console.log(`Featured ${rows.length} newly-seeded Pack(s): ${rows.map(r => r.slug).join(", ")}.`);
+}
+
 // a duplicate row. Only inserts a new row when no matching outlet exists.
 async function seedYoutubeChannels() {
   const existingFeeds = await dbAll(`SELECT id, outlet, youtube_channel_id FROM feeds`);
@@ -5616,6 +5648,9 @@ async function start() {
       // the Pack should see everything in it.
       await step("seedPopCulturePacks", seedPopCulturePacks);
       await step("seedProgressivePodcasts", seedProgressivePodcasts);
+      // ONE-TIME — see the function's own comment. Remove this line once
+      // confirmed live (do not leave as a permanent boot step).
+      await step("featureNewlySeededPacks", featureNewlySeededPacks);
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Same "kick shortly after boot, not just on the interval" pattern as
       // the Bluesky bot below — a fresh deploy shouldn't have to wait up to
