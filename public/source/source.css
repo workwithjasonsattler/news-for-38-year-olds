@@ -23,10 +23,22 @@
   --follow: #2E5F82;
   --follow-soft: #EAF2F7;
 
+  /* "Live" — a signal color, not a decoration. Means exactly one thing
+     everywhere it appears: this is new / happening now (the pulse dot,
+     the live-count strip, a new-since-last-visit marker on a headline).
+     Deliberately its own token, NOT a reuse of --alert (#B8123A) above —
+     --alert already carries a real, different meaning (danger/destructive:
+     hard-paywall badge, remove buttons, delete-account) and mixing the two
+     would give one color family two conflicting jobs. Part of the
+     "Control Room" direction — Reader's own density, now visibly alert to
+     what it's reading. */
+  --live: #FF3E1D;
+  --live-soft: #FFF1EE;
+
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
 
-  --display: "Poppins", "Inter", -apple-system, sans-serif;
+  --display: "Space Grotesk", "Inter", -apple-system, sans-serif;
   --body: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --data: "IBM Plex Mono", ui-monospace, monospace;
 }
@@ -82,6 +94,8 @@ button { font-family: inherit; cursor: pointer; }
   color: var(--ink);
 }
 
+.wordmark-bang { color: var(--live); }
+
 .wordmark-rule {
   width: 46px;
   height: 3px;
@@ -96,6 +110,65 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 11px;
   color: var(--ink-muted);
   margin-top: 5px;
+}
+
+/* ---------------------------------------------------------------
+   Live strip — "N dispatches since you last opened this." Purely a
+   client-side signal (see updateLiveStrip() in source.js): never
+   affects ordering, never sent anywhere, hidden entirely on a
+   reader's first-ever visit. The pulse dot is the one place --live
+   gets to move — everywhere else it's static.
+   --------------------------------------------------------------- */
+.live-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 18px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--data);
+  font-size: 11.5px;
+  color: var(--ink-muted);
+}
+
+.live-strip[hidden] { display: none; }
+
+.pulse {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--live);
+  position: relative;
+  flex-shrink: 0;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .pulse::after {
+    content: "";
+    position: absolute;
+    inset: -5px;
+    border-radius: 50%;
+    border: 1px solid var(--live);
+    animation: pulse-ring 2.2s ease-out infinite;
+  }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.5); opacity: 0.9; }
+  100% { transform: scale(2.1); opacity: 0; }
+}
+
+/* New-since-last-visit marker on a headline — same signal, same color,
+   no separate meaning to learn. */
+.new-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--live);
+  margin-right: 7px;
+  vertical-align: middle;
+  flex-shrink: 0;
 }
 
 .header-actions {

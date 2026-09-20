@@ -322,6 +322,10 @@
 
   // Block-style badge for card lists (mobile cards, matches the visual
   // language of the existing .buzz-badge trending pill).
+  function newDotHtml(d) {
+    return dispatchIsNew(d) ? `<span class="new-dot" aria-hidden="true"></span>` : "";
+  }
+
   function tipSubscribeBadge(d) {
     const info = tipSubscribeInfo(d);
     if (!info) return "";
@@ -602,6 +606,8 @@
     readerFullscreen = false;
     const toggle = document.getElementById("sprayToggle");
     if (toggle && activeTab !== "read") toggle.hidden = true;
+    const liveStrip = document.getElementById("liveStrip");
+    if (liveStrip && activeTab !== "read") liveStrip.hidden = true;
     // Unlike the pill bar (which hides itself in Classic mode — that view
     // has its own sidebar for the same picker), this caption is a general
     // reminder of the Read tab's core promise and should hold across every
@@ -909,6 +915,49 @@
     return deduped;
   }
 
+  // ---------------------------------------------------------------
+  // Live/new-dispatch tracking — purely client-side, no backend, never
+  // sent anywhere, and never touches ordering (still strictly reverse-
+  // chronological everywhere). Powers the live-strip banner ("N
+  // dispatches since you last opened this") and the .new-dot marker on
+  // individual headlines. lastSeenAt is read from localStorage exactly
+  // ONCE per page load (before it gets overwritten), so switching Sprays
+  // or tabs mid-session doesn't keep resetting what counts as "new" —
+  // then it's advanced to "now" once the reader's actually seen the
+  // current count. Missing/blocked storage (private browsing, etc.)
+  // just means the strip stays hidden — same fail-soft posture as
+  // every other localStorage read in this file.
+  const LIVE_LAST_SEEN_KEY = "sourceLastSeenAt";
+  let lastSeenAt = null; // ms epoch; null = never computed yet OR first-ever visit
+  let lastSeenRead = false;
+
+  function dispatchIsNew(d) {
+    if (lastSeenAt == null) return false;
+    const t = new Date(d.date || 0).getTime();
+    return Number.isFinite(t) && t > lastSeenAt;
+  }
+
+  function updateLiveStrip(items) {
+    const el = document.getElementById("liveStrip");
+    const textEl = document.getElementById("liveStripText");
+    if (!el || !textEl) return;
+    if (!lastSeenRead) {
+      const raw = localStorage.getItem(LIVE_LAST_SEEN_KEY);
+      lastSeenAt = raw ? Number(raw) : null;
+      lastSeenRead = true;
+    }
+    if (lastSeenAt == null) {
+      el.hidden = true;
+    } else {
+      const newCount = items.filter(dispatchIsNew).length;
+      el.hidden = false;
+      textEl.textContent = newCount > 0
+        ? `${newCount} dispatch${newCount === 1 ? "" : "es"} since you last opened this`
+        : "You're caught up";
+    }
+    localStorage.setItem(LIVE_LAST_SEEN_KEY, String(Date.now()));
+  }
+
   async function renderRead() {
     const main = document.getElementById("main");
     renderSprayToggle();
@@ -938,6 +987,8 @@
         .slice()
         .sort((a, b) => new Date(b.date) - new Date(a.date))
         .slice(0, cap);
+
+      updateLiveStrip(shown);
 
       // Paint immediately with no trending badges yet — a badge is a pure
       // enhancement (a small chip / "see the conversation" link), never
@@ -1586,7 +1637,7 @@
             ${hasImage ? `<div class="card-scroll-media"><img class="card-thumb loaded" id="thumb-${d.id}" src="${escapeHtml(d.image_url)}" alt="" loading="lazy" onerror="this.closest('.card-scroll-media').remove()"></div>` : `<img class="card-thumb" id="thumb-${d.id}" alt="" loading="lazy" onerror="this.remove()" style="display:none;">`}
             <div class="card-scroll-body${hasImage ? "" : " card-scroll-body-textonly"}">
               <div class="card-scroll-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
-              <div class="card-scroll-title">${escapeHtml(title)}</div>
+              <div class="card-scroll-title">${newDotHtml(d)}${escapeHtml(title)}</div>
               ${excerpt ? `<div class="card-scroll-excerpt">${escapeHtml(excerpt)}</div>` : ""}
             </div>
           </a>
@@ -1607,7 +1658,7 @@
           <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
             ${headlinesOnly ? "" : `<div class="card-featured-media">${thumb}</div>`}
             <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
-            <div class="card-title">${escapeHtml(title)}</div>
+            <div class="card-title">${newDotHtml(d)}${escapeHtml(title)}</div>
             ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt)}</div>` : ""}
           </a>
           ${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}
@@ -1620,7 +1671,7 @@
         <div class="card card-headlines-only">
           <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
             <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
-            <div class="card-title">${escapeHtml(title)}</div>
+            <div class="card-title">${newDotHtml(d)}${escapeHtml(title)}</div>
           </a>
           ${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
@@ -1633,7 +1684,7 @@
         <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
           <div class="card-body">
             <div class="card-text">
-              <div class="card-title">${escapeHtml(title)}</div>
+              <div class="card-title">${newDotHtml(d)}${escapeHtml(title)}</div>
               ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt)}</div>` : ""}
             </div>
             ${thumb}

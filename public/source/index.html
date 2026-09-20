@@ -18,12 +18,15 @@
 <meta name="theme-color" content="#FFFFFF">
 <link rel="icon" href="/source/icons/icon-192.png">
 <link rel="apple-touch-icon" href="/source/icons/icon-192.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/source/source.css">
 </head>
 <body>
   <header class="source-header">
     <div class="wordmark-wrap">
-      <div class="wordmark">SOURCE!</div>
+      <div class="wordmark">SOURCE<span class="wordmark-bang">!</span></div>
       <div class="wordmark-rule"></div>
       <div class="tagline">Take Back Your Morning</div>
     </div>
@@ -32,6 +35,15 @@
       <div class="view-menu" id="viewMenu"></div>
     </div>
   </header>
+
+  <!-- Client-only "since you last opened this" signal — see updateLiveStrip()
+       in source.js. Never affects ordering or ranking, purely a local count
+       computed from what's already loaded; hidden entirely on a reader's
+       first-ever visit (nothing to compare against yet). -->
+  <div class="live-strip" id="liveStrip" hidden>
+    <span class="pulse" aria-hidden="true"></span>
+    <span id="liveStripText"></span>
+  </div>
 
   <div class="spray-toggle" id="sprayToggle" hidden></div>
   <div class="read-promise-caption" id="readPromiseCaption" hidden>Sorted by time. Nothing hidden.</div>
