@@ -71,6 +71,15 @@ a:hover { text-decoration: underline; }
 
 button { font-family: inherit; cursor: pointer; }
 
+/* No text input/textarea/select anywhere in the app declares its own
+   font-size, so they all fell back to the browser's tiny default —
+   which is under 16px, and iOS auto-zooms the whole page on focus for
+   any text field smaller than that (to keep it readable), producing a
+   jarring zoom-and-pan the instant a reader taps in. Explicit 16px
+   here is the fix, matches --body's own base size, and is a floor —
+   anything that wants a different size still overrides it normally. */
+input, textarea, select { font-family: inherit; font-size: 16px; }
+
 /* ---------------------------------------------------------------
    Header / wordmark
    --------------------------------------------------------------- */
