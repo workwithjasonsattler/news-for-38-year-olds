@@ -544,24 +544,74 @@
   // ---------------------------------------------------------------
   // Tab shell
   // ---------------------------------------------------------------
+  // Read | Videos | Buzz | More — Videos promoted out of Read's toggle
+  // bar into its own top-level tab; Sources and You moved off the bar
+  // entirely into the More sheet (see openMoreSheet below) rather than
+  // being dropped. "more" is never a real activeTab value — tapping it
+  // opens the sheet without touching activeTab — so the bar's active-
+  // highlight logic below has to also light up More whenever Sources or
+  // You is actually on screen, or the bar would show nothing selected.
   const TABS = [
     { key: "read", label: "READ", prompt: ">" },
-    { key: "sources", label: "SOURCES", prompt: ">" },
+    { key: "videos", label: "VIDEOS", prompt: ">" },
     { key: "buzz", label: "BUZZ", prompt: ">" },
-    { key: "you", label: "YOU", prompt: ">" },
+    { key: "more", label: "MORE", prompt: ">" },
   ];
+  const MORE_SHEET_TABS = ["sources", "you"];
 
   let activeTab = "read";
 
   function renderTabBar() {
     const bar = document.getElementById("tabBar");
-    bar.innerHTML = TABS.map(t => `
-      <button class="tab-btn${t.key === activeTab ? " active" : ""}" data-tab="${t.key}">
+    bar.innerHTML = TABS.map(t => {
+      const isActive = t.key === activeTab || (t.key === "more" && MORE_SHEET_TABS.includes(activeTab));
+      return `
+      <button class="tab-btn${isActive ? " active" : ""}" data-tab="${t.key}">
         <span class="tab-prompt">${t.prompt}</span>${t.label}
-      </button>`).join("");
+      </button>`;
+    }).join("");
     bar.querySelectorAll(".tab-btn").forEach(btn => {
-      btn.addEventListener("click", () => switchTab(btn.dataset.tab));
+      btn.addEventListener("click", () => {
+        if (btn.dataset.tab === "more") { openMoreSheet(); return; }
+        switchTab(btn.dataset.tab);
+      });
     });
+  }
+
+  // More sheet — reuses the exact .spray-picker-overlay/.spray-picker-card
+  // shell already built for openPublicPackPicker(), same reasoning as
+  // every other reuse of it: a second bottom-sheet component would just
+  // be a copy of this one. Two static rows (Sources, You), tap closes the
+  // sheet and switches tabs the same way the old top-level buttons did.
+  function openMoreSheet() {
+    let el = document.getElementById("moreSheetOverlay");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "moreSheetOverlay";
+      el.className = "spray-picker-overlay";
+      document.body.appendChild(el);
+      el.addEventListener("click", (e) => { if (e.target === el) closeMoreSheet(); });
+    }
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span>More</span>
+          <button class="spray-picker-close" id="moreSheetClose" aria-label="Close">×</button>
+        </div>
+        <div class="spray-picker-list">
+          <button class="spray-picker-row" data-tab="sources">Sources</button>
+          <button class="spray-picker-row" data-tab="you">You</button>
+        </div>
+      </div>`;
+    document.getElementById("moreSheetClose").addEventListener("click", closeMoreSheet);
+    el.querySelectorAll("[data-tab]").forEach(btn => {
+      btn.addEventListener("click", () => { closeMoreSheet(); switchTab(btn.dataset.tab); });
+    });
+  }
+
+  function closeMoreSheet() {
+    const el = document.getElementById("moreSheetOverlay");
+    if (el) el.remove();
   }
 
   function switchTab(key) {
@@ -616,9 +666,51 @@
     if (promiseCaption) promiseCaption.hidden = activeTab !== "read";
     renderDesktopSidePanel();
     if (activeTab === "read") return renderRead();
+    if (activeTab === "videos") return renderVideos();
     if (activeTab === "sources") return renderSources();
     if (activeTab === "buzz") return renderBuzz();
     if (activeTab === "you") return renderYou();
+  }
+
+  // ---------------------------------------------------------------
+  // VIDEOS — dedicated top-level tab for Best of YouTube, promoted out
+  // of Read's toggle bar (nav restructure). Reuses fetchItemsForSprayKey
+  // ("__youtube") for data and renderDispatchCard() for rendering, so
+  // Follow/Save/tip-badge and the reader's chosen display density
+  // (Headlines Only/Expanded/Scroll) all come along for free — see
+  // sprayableSource()'s own comment confirming video creators resolve
+  // to a real followable source. Deliberately single-column on every
+  // layout (no Desktop two-pane split, no Columns/Classic) — Videos is
+  // a browse-and-watch list, not a full reading surface with its own
+  // reader pane.
+  // ---------------------------------------------------------------
+  async function renderVideos() {
+    const main = document.getElementById("main");
+    main.innerHTML = stateBlock({ title: "Loading Videos", body: "Best of YouTube", spin: true });
+    try {
+      const items = await fetchItemsForSprayKey("__youtube");
+      const shown = items.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+      if (shown.length === 0) {
+        main.innerHTML = stateBlock({ glyph: "∅", title: "NO SIGNAL", body: "No videos available right now." });
+        return;
+      }
+      main.innerHTML = `<div class="source-single-col-screen">`
+        + shown.map((d, i) => renderDispatchCard(d, false, i === 0, null)).join("")
+        + `</div>`;
+      main.querySelectorAll(".spray-add-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const source = JSON.parse(btn.dataset.spraySource);
+          if (btn.dataset.removeSlug) {
+            quickRemoveFromActiveSpray(source, btn.dataset.removeSlug, btn, () => renderVideos());
+          } else {
+            openSprayPicker(source);
+          }
+        });
+      });
+      wireSaveButtons(main);
+    } catch (e) {
+      main.innerHTML = stateBlock({ glyph: "!", title: "TRANSMISSION FAILED", body: e.message || "Could not load videos." });
+    }
   }
 
   // ---------------------------------------------------------------
@@ -670,7 +762,15 @@
       // Migrate the old single-string format from before multi-select.
       if (raw[0] !== "[") return new Set([raw]);
       const arr = JSON.parse(raw);
-      return new Set(Array.isArray(arr) && arr.length ? arr : ["all"]);
+      // Migrate readers who had Best of YouTube active in Read's
+      // multi-select before it moved to its own Videos tab — it's no
+      // longer a valid toggle-bar member (no pill renders for it
+      // anymore), so a returning reader with it as their sole/only
+      // selection would otherwise be stuck viewing it with no way to
+      // toggle it off. It's still available fine as a source, just via
+      // the Videos tab now instead of merged into Read.
+      const filtered = Array.isArray(arr) ? arr.filter(k => k !== "__youtube") : [];
+      return new Set(filtered.length ? filtered : ["all"]);
     } catch (e) {
       return new Set(["all"]);
     }
@@ -729,7 +829,6 @@
     return [
       { key: "all", label: "All", removable: false },
       { key: sprayBarData.news.slug, label: sprayDisplayName(sprayBarData.news.slug, sprayBarData.news.name) || "News", removable: false },
-      { key: "__youtube", label: "Best of YouTube", removable: false },
       { key: "__bluesky", label: "Best of Bluesky", removable: false },
     ].concat(sprayBarData.sprays.map(s => ({ key: s.slug, label: sprayDisplayName(s.slug, s.name), removable: true })));
   }

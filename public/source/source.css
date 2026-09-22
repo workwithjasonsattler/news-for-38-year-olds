@@ -743,6 +743,14 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 13.5px;
   color: var(--ink);
   border-radius: 8px;
+  /* Also used as a plain <button> (More sheet's Sources/You rows) —
+     these resets strip default button chrome and are harmless no-ops
+     on the <div> usage above (Browse RSS Packs picker), since a div
+     has no border/background to reset in the first place. */
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
 }
 .spray-picker-row:hover { background: var(--bg); }
 .spray-picker-source-preview {
