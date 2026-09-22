@@ -3825,7 +3825,7 @@
           <div class="card-meta"><span>ACCESS</span></div>
           <div class="card-title" style="margin-bottom:10px;">Sign in to save your RSS Packs across devices.</div>
           <input id="youEmail" type="email" placeholder="you@domain.com"
-            style="width:100%; padding:9px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--body); font-size:14px; margin-bottom:8px; border-radius:8px;">
+            style="width:100%; padding:9px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--body); margin-bottom:8px; border-radius:8px;">
           <button class="btn primary" id="youSendLink">SEND ACCESS LINK</button>
           ${isStandaloneApp() ? `<p style="font-size:12.5px; color: var(--ink-muted); margin-top:10px;">Heads up: on an installed/Home-Screen app, the sign-in link opens in your regular browser, not this app — you'll need to sign in there for now. We're working on fixing this for the installed app.</p>` : ""}
         </div>
