@@ -10,7 +10,7 @@ import { XMLParser } from "fast-xml-parser";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import sanitizeHtml from "sanitize-html";
@@ -1542,6 +1542,49 @@ app.get("/api/auth/verify", async (req, res) => {
   }
 
   res.redirect(302, "/");
+});
+
+// App-store review bypass: a single static link that signs a dedicated
+// reviewer account straight in, with no email round-trip. Exists because
+// SOURCE!'s sign-in is passwordless (magic link only), and neither Apple's
+// nor Google's reviewers can be relied on to have access to a live inbox
+// mid-review. Gated on REVIEWER_LOGIN_SECRET (set only in Render's env,
+// never committed) rather than anything guessable — this is a genuine
+// unauthenticated-login endpoint, so treat the secret with the same care
+// as a password. Rotate it (change the env var) if it's ever shared
+// anywhere it shouldn't be, e.g. pasted into a support ticket. The
+// reviewer account itself is a normal `users` row like any other — no
+// special privileges, just a fixed email so repeat review passes land on
+// the same account instead of creating a fresh one each time.
+const REVIEWER_EMAIL = "app-reviewer@newsfor38yearolds.com";
+
+app.get("/api/auth/reviewer-verify", async (req, res) => {
+  const secret = process.env.REVIEWER_LOGIN_SECRET;
+  const supplied = req.query.secret || "";
+  if (!secret) return res.status(503).send("Reviewer login not configured.");
+  // constant-time compare so response timing can't leak how much of a
+  // guessed secret matched — cheap insurance on an endpoint whose whole
+  // job is bypassing normal auth
+  const secretBuf = Buffer.from(secret);
+  const suppliedBuf = Buffer.from(String(supplied));
+  const matches = secretBuf.length === suppliedBuf.length && timingSafeEqual(secretBuf, suppliedBuf);
+  if (!matches) return res.status(403).send("Invalid or missing secret.");
+
+  let user = await dbGet(`SELECT * FROM users WHERE email = ?`, [REVIEWER_EMAIL]);
+  if (!user) {
+    const info = await dbRun(`INSERT INTO users (email) VALUES (?)`, [REVIEWER_EMAIL]);
+    user = { id: info.lastInsertRowid, email: REVIEWER_EMAIL };
+  }
+  await dbRun(`UPDATE users SET last_active_at = datetime('now') WHERE id = ?`, [user.id]);
+
+  const sessionToken = newToken();
+  const sessionExpires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  await dbRun(`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`, [sessionToken, user.id, sessionExpires]);
+  setSessionCookie(res, sessionToken);
+
+  // Same app=source handoff the real magic-link flow uses — lands the
+  // reviewer signed into SOURCE!'s own UI, not the desktop N38YO site.
+  res.redirect(302, `/source/?auth_token=${sessionToken}`);
 });
 
 app.post("/api/auth/logout", async (req, res) => {
