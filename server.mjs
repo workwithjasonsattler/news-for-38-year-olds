@@ -5583,20 +5583,26 @@ app.delete("/api/feeds/:id", requireAdmin, async (req, res) => {
 });
 
 async function importAllFeeds() {
-  const feeds = await dbAll(`SELECT * FROM feeds`);
-  if (feeds.length === 0) return { added: 0, errors: ["No feeds configured yet — add one below."] };
+  const allFeeds = await dbAll(`SELECT * FROM feeds`);
+  if (allFeeds.length === 0) return { added: 0, errors: ["No feeds configured yet — add one below."] };
 
-  let added = 0;
-  const errors = [];
-  for (const feed of feeds) {
-    if (!feed.feed_url || feed.feed_type === "journalist") continue; // Bluesky-only journalist, no wire column
+  const feeds = allFeeds.filter(f => f.feed_url && f.feed_type !== "journalist"); // Bluesky-only journalist, no wire column
+
+  async function processFeed(feed) {
     try {
-      const r = await fetch(feed.feed_url, { headers: { "User-Agent": "n38-cms/1.0" } });
+      // Per-feed timeout so one slow/dead feed can't stall the whole run —
+      // without this, a single hanging fetch had no ceiling at all, and the
+      // GitHub Action calling this route has its own 60s curl timeout.
+      const r = await fetch(feed.feed_url, {
+        headers: { "User-Agent": "n38-cms/1.0" },
+        signal: AbortSignal.timeout(8000),
+      });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const xml = await r.text();
       const parsed = xmlParser.parse(xml);
       const beatKeywords = JSON.parse(feed.beat_keywords || "{}");
       const items = extractItems(parsed).slice(0, feed.items_per_feed || 3);
+      let feedAdded = 0;
       for (const item of items) {
         const headline = stripHtml(item.title);
         const excerpt = truncate(stripHtml(item.summary), 160);
@@ -5616,10 +5622,27 @@ async function importAllFeeds() {
             item.image || "",
           ]
         );
-        if (info.changes) added++;
+        if (info.changes) feedAdded++;
       }
+      return { added: feedAdded, error: null };
     } catch (err) {
-      errors.push(`${feed.outlet}: ${err.message}`);
+      const msg = (err.name === "TimeoutError" || err.name === "AbortError") ? "timed out after 8s" : err.message;
+      return { added: 0, error: `${feed.outlet}: ${msg}` };
+    }
+  }
+
+  // Process in small concurrent batches instead of one feed at a time —
+  // sequential+untimed fetches across 150+ feeds is what was blowing past
+  // the GitHub Action's 60s curl timeout on every single run.
+  const BATCH_SIZE = 12;
+  let added = 0;
+  const errors = [];
+  for (let i = 0; i < feeds.length; i += BATCH_SIZE) {
+    const batch = feeds.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(batch.map(processFeed));
+    for (const r of results) {
+      added += r.added;
+      if (r.error) errors.push(r.error);
     }
   }
   return { added, errors };
