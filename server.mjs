@@ -5634,7 +5634,7 @@ async function importAllFeeds() {
   // Process in small concurrent batches instead of one feed at a time —
   // sequential+untimed fetches across 150+ feeds is what was blowing past
   // the GitHub Action's 60s curl timeout on every single run.
-  const BATCH_SIZE = 12;
+  const BATCH_SIZE = 25;
   let added = 0;
   const errors = [];
   for (let i = 0; i < feeds.length; i += BATCH_SIZE) {
