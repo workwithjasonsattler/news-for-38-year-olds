@@ -2,7 +2,7 @@ name: Refresh feeds
 
 on:
   schedule:
-    - cron: "*/20 * * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch: {}
 
 jobs:
