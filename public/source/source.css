@@ -760,6 +760,10 @@ input, textarea, select { font-family: inherit; font-size: 16px; }
   text-align: left;
   background: none;
   border: none;
+  /* Also used as an <a> (More sheet's Contact/Support row) — strips the
+     default link underline/color so it matches the button rows exactly. */
+  text-decoration: none;
+  cursor: pointer;
 }
 .spray-picker-row:hover { background: var(--bg); }
 .spray-picker-source-preview {

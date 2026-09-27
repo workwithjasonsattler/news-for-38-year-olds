@@ -601,6 +601,7 @@
         <div class="spray-picker-list">
           <button class="spray-picker-row" data-tab="sources">Sources</button>
           <button class="spray-picker-row" data-tab="you">You</button>
+          <a class="spray-picker-row" href="/source/support.html" target="_blank" rel="noopener">Contact / Support</a>
         </div>
       </div>`;
     document.getElementById("moreSheetClose").addEventListener("click", closeMoreSheet);
