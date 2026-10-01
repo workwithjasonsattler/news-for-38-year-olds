@@ -930,7 +930,7 @@ async function loadBlueskyPopular(filter){
         <a href="${item.link}" target="_blank" rel="noopener">${trim(stripUrls(item.text), 110) || item.outlet}</a>
         <span class="bsky-meta">${item.outlet} · ${item.likeCount} likes · ${item.repostCount} reposts · <a href="${item.blueskyUrl}" target="_blank" rel="noopener">view on Bluesky</a></span>
       </li>
-    `).join('') + (items.length > 12 ? `<li class="bsky-more"><a href="/nerve-center.html">More on Nerve Center &rarr;</a></li>` : '');
+    `).join('');
     box.style.display = '';
   } catch (err) {
     box.style.display = 'none'; // fail quietly — this module is a nice-to-have, never block the wire
@@ -1024,7 +1024,7 @@ function renderWire(){
       </aside>
 
       <aside class="wire-bluesky-box" id="blueskyPopularBox" style="display:none;">
-        <h4>Most Popular on Bluesky <a href="/nerve-center.html" style="font-family:var(--mono);font-size:10px;font-style:normal;font-weight:400;text-transform:uppercase;color:var(--wire-blue);text-decoration:underline;letter-spacing:.03em;">Nerve Center &rarr;</a></h4>
+        <h4>Most Popular on Bluesky</h4>
         <div class="bsky-filter-toggle" id="blueskyFilterToggle">
           <label class="bsky-filter-btn"><input type="radio" name="bskyFilter" value="all" checked> All</label>
           <label class="bsky-filter-btn"><input type="radio" name="bskyFilter" value="links"> Links</label>

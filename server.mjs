@@ -1369,6 +1369,9 @@ app.get("/.well-known/assetlinks.json", (req, res) => {
     },
   ]);
 });
+// Nerve Center page retired (Oct 2026) — Buzz in SOURCE! replaces it. Keep the
+// old URL alive for already-posted bot links and shared links.
+app.get("/nerve-center.html", (req, res) => res.redirect(301, "/source/"));
 app.use(express.static(path.join(__dirname, "public")));
 
 function requireAdmin(req, res, next) {
@@ -3181,12 +3184,12 @@ async function getNerveCenterThumbBlob(session) {
 }
 
 function buildNerveCenterRoundupPost(topPost) {
-  const nerveCenterLink = `${SITE_URL}/nerve-center.html`;
+  const nerveCenterLink = `${SITE_URL}/source/`;
   const snippetMax = 160;
   let snippet = (topPost.text || "").trim();
   if (snippet.length > snippetMax) snippet = snippet.slice(0, snippetMax - 1).trimEnd() + "…";
 
-  const intro = "🗞️ TOP OF THE NERVE CENTER";
+  const intro = "🗞️ TOP ON BLUESKY RIGHT NOW";
   const body = `${topPost.outlet} on Bluesky: "${snippet}"`;
   const cta = `See what's trending → ${nerveCenterLink}`;
   const text = [intro, body, cta].join("\n\n");
@@ -3219,21 +3222,9 @@ async function postNerveCenterRoundupToBluesky() {
 
     const { text: postText, facets } = buildNerveCenterRoundupPost(topPost);
 
-    const nerveCenterLink = `${SITE_URL}/nerve-center.html`;
-    let embed;
-    try {
-      const thumbBlob = await getNerveCenterThumbBlob(session);
-      if (thumbBlob) {
-        embed = buildExternalEmbed({
-          uri: nerveCenterLink,
-          title: "News for 38 Year Olds — Nerve Center",
-          description: "What's trending on Bluesky, ranked with no algorithm you can't see.",
-          thumbBlob,
-        });
-      }
-    } catch (err) {
-      console.error("Nerve Center roundup link-card image failed (posting without it):", err.message);
-    }
+    // No link-card image: the old card art was branded "Nerve Center", which
+    // no longer exists. Posts as text + clickable link.
+    const embed = undefined;
 
     const resp = await fetch("https://bsky.social/xrpc/com.atproto.repo.createRecord", {
       method: "POST",
@@ -4603,23 +4594,6 @@ async function fetchPopularStarterPacks() {
     .slice(0, 10);
 }
 
-app.get("/api/nerve-center/bluesky-discover", async (req, res) => {
-  try {
-    const now = Date.now();
-    if (now - blueskyDiscoverCache.fetchedAt > BLUESKY_DISCOVER_TTL_MS) {
-      const [feeds, starterPacks] = await Promise.all([
-        fetchPopularBlueskyFeeds().catch(err => { console.error("Popular feeds error:", err.message); return blueskyDiscoverCache.feeds; }),
-        fetchPopularStarterPacks().catch(err => { console.error("Popular starter packs error:", err.message); return blueskyDiscoverCache.starterPacks; }),
-      ]);
-      blueskyDiscoverCache = { feeds, starterPacks, fetchedAt: now };
-    }
-    res.json({ feeds: blueskyDiscoverCache.feeds, starterPacks: blueskyDiscoverCache.starterPacks });
-  } catch (err) {
-    console.error("Bluesky discover error:", err);
-    res.json({ feeds: blueskyDiscoverCache.feeds, starterPacks: blueskyDiscoverCache.starterPacks }); // fail soft
-  }
-});
-
 // ---------- Nerve Center: full Bluesky trending + site engagement leaderboard ----------
 // Public (no admin gate) — aggregate engagement numbers only, nothing sensitive.
 // Reuses the same Bluesky cache as the homepage box (fetchBlueskyPopular pulls
@@ -4641,29 +4615,6 @@ app.get("/api/nerve-center/bluesky", async (req, res) => {
     res.json(data.slice(0, 40));
   } catch (err) {
     console.error("Nerve center Bluesky error:", err);
-    res.json([]);
-  }
-});
-
-app.get("/api/nerve-center/site", async (req, res) => {
-  try {
-    const { section } = req.query;
-    const validSection = section && VALID_NERVE_SECTIONS.includes(section) ? section : null;
-    const rows = await dbAll(
-      `SELECT d.id, d.headline, d.outlet, d.name, d.beat, d.link, d.tip_url, d.subscribe_url, d.date,
-              COUNT(DISTINCT c.id) AS clicks, COUNT(DISTINCT t.id) AS tip_clicks, COALESCE(SUM(t.amount),0) AS tip_amount
-       FROM dispatches d
-       LEFT JOIN clicks c ON c.dispatch_id = d.id
-       LEFT JOIN tip_clicks t ON t.dispatch_id = d.id
-       WHERE ${WIRE_OK_SQL} ${validSection ? "AND d.beat = ?" : ""}
-       GROUP BY d.id
-       ORDER BY clicks DESC, tip_clicks DESC
-       LIMIT 40`,
-      validSection ? [validSection] : []
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error("Nerve center site error:", err);
     res.json([]);
   }
 });

@@ -3546,7 +3546,7 @@
         return `<div class="panel-stat"><span class="panel-stat-value">${data.disasters}</span><span class="panel-stat-label">billion-dollar disasters this year</span></div>`;
       case "topbluesky":
         if (!data.topPost) return null;
-        return `<div class="panel-stat-label" style="margin-bottom:6px;">Top on Bluesky</div>${renderBluePost(data.topPost, "panel-top-post")}<a class="desktop-bsky-rail-more" href="/nerve-center.html" target="_blank" rel="noopener">More on Nerve Center →</a>`;
+        return `<div class="panel-stat-label" style="margin-bottom:6px;">Top on Bluesky</div>${renderBluePost(data.topPost, "panel-top-post")}`;
       default:
         return null;
     }
