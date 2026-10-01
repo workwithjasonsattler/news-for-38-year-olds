@@ -413,6 +413,14 @@ async function initSchema() {
     // feed) are never filtered by this — a reader who explicitly picked a
     // Pack should always see everything in it.
     `ALTER TABLE feeds ADD COLUMN wire_eligible INTEGER NOT NULL DEFAULT 1`,
+    // Read-limit fix (Oct 2026): without these, every wire query did a full
+    // scan + sort of ~64K dispatches rows even with LIMIT 1. The wire index
+    // matches ORDER BY pinned DESC, date DESC, id DESC so SQLite can walk it
+    // in order and stop early.
+    `CREATE INDEX IF NOT EXISTS idx_dispatches_wire ON dispatches(pinned, date, id)`,
+    `CREATE INDEX IF NOT EXISTS idx_dispatches_beat_wire ON dispatches(beat, pinned, date, id)`,
+    `CREATE INDEX IF NOT EXISTS idx_dispatches_outlet ON dispatches(outlet)`,
+    `CREATE INDEX IF NOT EXISTS idx_dispatches_date ON dispatches(date, id)`,
   ]) {
     try { await dbRun(stmt); } catch { /* column already exists */ }
   }
@@ -470,10 +478,27 @@ async function migrateFeedsJsonIfNeeded() {
   } catch { /* no feeds.json, nothing to migrate */ }
 }
 
+// Wire-eligibility gate, as a subquery against the small feeds table instead
+// of a LEFT JOIN (the join defeated index-ordered early stopping). Outlets
+// with no feeds row still count as eligible, same as the old COALESCE.
+const WIRE_OK_SQL = `d.outlet NOT IN (SELECT outlet FROM feeds WHERE wire_eligible = 0 AND outlet IS NOT NULL)`;
+// Max rows GET /api/dispatches returns. It used to return the entire table.
+const WIRE_MAX_ROWS = 1500;
+// Eligible outlets that actually have dispatches, driven from the ~255-row
+// feeds table with an index probe each, instead of SELECT DISTINCT over 64K rows.
+const WIRE_OUTLETS_SQL = `SELECT f.outlet FROM feeds f
+  WHERE f.outlet IS NOT NULL AND COALESCE(f.wire_eligible, 1) != 0
+    AND EXISTS (SELECT 1 FROM dispatches d WHERE d.outlet = f.outlet)
+  ORDER BY f.outlet ASC`;
+
 // one-time migration: old rows stored "Jul 18" style text which sorts
 // alphabetically, not chronologically (e.g. "Jun" < "Jul" as text but
 // scrambles once months mix). Convert those to sortable ISO dates.
 async function migrateDateFormats() {
+  // Gated: this used to scan all of dispatches on EVERY boot. Once it has run
+  // clean, the importer only writes ISO dates, so it never needs to again.
+  const done = await dbGet(`SELECT value FROM bot_state WHERE key = 'date_formats_migrated'`);
+  if (done) return;
   const rows = await dbAll(`SELECT id, date FROM dispatches WHERE date IS NOT NULL AND date != ''`);
   let fixed = 0;
   for (const row of rows) {
@@ -485,6 +510,7 @@ async function migrateDateFormats() {
     }
   }
   if (fixed) console.log(`Migrated ${fixed} dispatch date(s) to sortable ISO format.`);
+  await dbRun(`INSERT INTO bot_state (key, value) VALUES ('date_formats_migrated', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
 }
 
 // ---------- auto-seed on startup if the database is empty ----------
@@ -528,8 +554,8 @@ const STARTER_DISPATCHES = [
 ];
 
 async function autoSeedIfEmpty() {
-  const count = (await dbGet(`SELECT COUNT(*) AS n FROM dispatches`)).n;
-  if (count > 0) return;
+  const anyRow = await dbGet(`SELECT 1 AS n FROM dispatches LIMIT 1`);
+  if (anyRow) return;
   let added = 0;
   for (const d of STARTER_DISPATCHES) {
     const info = await dbRun(
@@ -2361,13 +2387,10 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
     // contributing to the current unfiltered wire right now (not a
     // stored, driftable list) — same wire_eligible gate as GET
     // /api/dispatches, since this Pack IS the shared unfiltered wire.
-    const outletRows = await dbAll(
-      `SELECT DISTINCT d.outlet FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
-       WHERE COALESCE(f.wire_eligible, 1) != 0 ORDER BY d.outlet ASC`
-    );
+    const outletRows = await dbAll(WIRE_OUTLETS_SQL);
     const items = await dbAll(
-      `SELECT d.* FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
-       WHERE COALESCE(f.wire_eligible, 1) != 0
+      `SELECT d.* FROM dispatches d
+       WHERE ${WIRE_OK_SQL}
        ORDER BY d.pinned DESC, d.date DESC, d.id DESC LIMIT 60`
     );
     const markers = await corporateMarkersFor(outletRows.map((r) => r.outlet));
@@ -3034,11 +3057,16 @@ async function pickTopStoryForBot() {
   // official political Bluesky account, so a Pop-Culture-style outlet's
   // item must never be eligible here even though it's a perfectly normal
   // dispatches row.
+  // 3-day window: the bot only ever wants fresh stories, and the window lets
+  // the date index stop early instead of scanning the whole table.
+  const cutoff = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
   const candidates = await dbAll(
-    `SELECT d.* FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
-     WHERE d.id NOT IN (SELECT dispatch_id FROM bluesky_bot_posts)
-       AND COALESCE(f.wire_eligible, 1) != 0
-     ORDER BY d.date DESC, d.id DESC LIMIT 1`
+    `SELECT d.* FROM dispatches d
+     WHERE d.date >= ?
+       AND d.id NOT IN (SELECT dispatch_id FROM bluesky_bot_posts)
+       AND ${WIRE_OK_SQL}
+     ORDER BY d.date DESC, d.id DESC LIMIT 1`,
+    [cutoff]
   );
   return candidates[0] || null;
 }
@@ -3257,10 +3285,7 @@ app.post("/api/mixes/:slug/clone", async (req, res) => {
   // official (admin-curated) Packs have a real stored list, same as any
   // reader-made Pack, so they fall through to the normal query below.
   const sourceRows = mix.auto_sync
-    ? (await dbAll(
-        `SELECT DISTINCT d.outlet FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
-         WHERE COALESCE(f.wire_eligible, 1) != 0`
-      )).map((r) => ({ source_type: "admin_outlet", outlet: r.outlet }))
+    ? (await dbAll(WIRE_OUTLETS_SQL)).map((r) => ({ source_type: "admin_outlet", outlet: r.outlet }))
     : await dbAll(
         `SELECT fms.*, ucs.name AS custom_name, ucs.feed_url AS custom_feed_url, ucs.submission_status AS custom_status
          FROM feed_mix_sources fms
@@ -4011,24 +4036,39 @@ app.post("/api/login", (req, res) => {
 });
 
 // ---------- public read endpoints ----------
+const dispatchesBaseCache = new Map(); // key -> { ts, rows }
+const DISPATCHES_CACHE_TTL_MS = 45 * 1000;
+
 app.get("/api/dispatches", async (req, res) => {
   const { beat } = req.query;
   // LEFT JOIN (not INNER) so a dispatches row whose feed was since renamed
   // or deleted still shows (COALESCE defaults an orphaned row to eligible
   // — fails open to the pre-wire_eligible behavior rather than silently
   // vanishing an otherwise-normal item).
-  let rows = beat
-    ? await dbAll(
-        `SELECT d.* FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
-         WHERE d.beat = ? AND COALESCE(f.wire_eligible, 1) != 0
-         ORDER BY d.pinned DESC, d.date DESC, d.id DESC`,
-        [beat]
-      )
-    : await dbAll(
-        `SELECT d.* FROM dispatches d LEFT JOIN feeds f ON f.outlet = d.outlet
-         WHERE COALESCE(f.wire_eligible, 1) != 0
-         ORDER BY d.pinned DESC, d.date DESC, d.id DESC`
-      );
+  // Base rows are identical for every reader (personalization happens below,
+  // in memory), so cache them briefly and capped. Rows are never mutated in
+  // place below — every personalization step builds a new array.
+  const cacheKey = beat ? `beat:${beat}` : "all";
+  const hit = dispatchesBaseCache.get(cacheKey);
+  let rows;
+  if (hit && Date.now() - hit.ts < DISPATCHES_CACHE_TTL_MS) {
+    rows = hit.rows;
+  } else {
+    rows = beat
+      ? await dbAll(
+          `SELECT d.* FROM dispatches d
+           WHERE d.beat = ? AND ${WIRE_OK_SQL}
+           ORDER BY d.pinned DESC, d.date DESC, d.id DESC LIMIT ${WIRE_MAX_ROWS}`,
+          [beat]
+        )
+      : await dbAll(
+          `SELECT d.* FROM dispatches d
+           WHERE ${WIRE_OK_SQL}
+           ORDER BY d.pinned DESC, d.date DESC, d.id DESC LIMIT ${WIRE_MAX_ROWS}`
+        );
+    if (dispatchesBaseCache.size > 50) dispatchesBaseCache.clear();
+    dispatchesBaseCache.set(cacheKey, { ts: Date.now(), rows });
+  }
 
   // Personalize for signed-in readers via conscious filtering — the reader
   // sets an explicit tier per source (pinned/normal/less/hidden), not an
@@ -4613,10 +4653,9 @@ app.get("/api/nerve-center/site", async (req, res) => {
       `SELECT d.id, d.headline, d.outlet, d.name, d.beat, d.link, d.tip_url, d.subscribe_url, d.date,
               COUNT(DISTINCT c.id) AS clicks, COUNT(DISTINCT t.id) AS tip_clicks, COALESCE(SUM(t.amount),0) AS tip_amount
        FROM dispatches d
-       LEFT JOIN feeds f ON f.outlet = d.outlet
        LEFT JOIN clicks c ON c.dispatch_id = d.id
        LEFT JOIN tip_clicks t ON t.dispatch_id = d.id
-       WHERE COALESCE(f.wire_eligible, 1) != 0 ${validSection ? "AND d.beat = ?" : ""}
+       WHERE ${WIRE_OK_SQL} ${validSection ? "AND d.beat = ?" : ""}
        GROUP BY d.id
        ORDER BY clicks DESC, tip_clicks DESC
        LIMIT 40`,
