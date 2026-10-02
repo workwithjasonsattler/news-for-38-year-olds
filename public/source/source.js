@@ -320,6 +320,25 @@
     return null;
   }
 
+  // Video cards: a band across the top with Save + Support. Support opens
+  // tip_url, falls back to subscribe_url, and is hidden if neither exists —
+  // one fixed label ("Support") whichever link it resolves to. Share is
+  // deliberately NOT here; see the note on shareButton() below.
+  function videoSupportBand(d) {
+    if (!d.is_video) return "";
+    const url = d.tip_url || d.subscribe_url;
+    const support = url
+      ? `<a class="video-support-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener">💛 Support</a>`
+      : "";
+    return `<div class="video-band">${saveButton(d)}${support}</div>`;
+  }
+
+  // Bottom action row for every card shape. Videos get Save/Support in the
+  // top band instead, so only the Follow control stays down here.
+  function cardActionsHtml(d) {
+    return d.is_video ? sprayAddButton(d) : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}`;
+  }
+
   // Block-style badge for card lists (mobile cards, matches the visual
   // language of the existing .buzz-badge trending pill).
   function newDotHtml(d) {
@@ -917,6 +936,8 @@
         date: v.published_at,
         excerpt: "",
         is_video: true,
+        tip_url: v.tip_url || null,
+        subscribe_url: v.subscribe_url || null,
       }));
     }
     if (key === "__bluesky") {
@@ -1733,6 +1754,7 @@
       const hasImage = !!d.image_url;
       return `
         <div class="card card-scroll">
+          ${videoSupportBand(d)}
           <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
             ${hasImage ? `<div class="card-scroll-media"><img class="card-thumb loaded" id="thumb-${d.id}" src="${escapeHtml(d.image_url)}" alt="" loading="lazy" onerror="this.closest('.card-scroll-media').remove()"></div>` : `<img class="card-thumb" id="thumb-${d.id}" alt="" loading="lazy" onerror="this.remove()" style="display:none;">`}
             <div class="card-scroll-body${hasImage ? "" : " card-scroll-body-textonly"}">
@@ -1741,7 +1763,7 @@
               ${excerpt ? `<div class="card-scroll-excerpt">${escapeHtml(excerpt)}</div>` : ""}
             </div>
           </a>
-          ${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}
+          ${cardActionsHtml(d)}
           ${discussUrl ? `<a class="card-scroll-discuss" href="${escapeHtml(discussUrl)}" target="_blank" rel="noopener">See the conversation on Bluesky ↗</a>` : ""}
         </div>`;
     }
@@ -1755,13 +1777,14 @@
     if (featured) {
       return `
         <div class="card card-featured${headlinesOnly ? " card-headlines-only" : ""}">
+          ${videoSupportBand(d)}
           <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
             ${headlinesOnly ? "" : `<div class="card-featured-media">${thumb}</div>`}
             <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
             <div class="card-title">${newDotHtml(d)}${escapeHtml(title)}</div>
             ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt)}</div>` : ""}
           </a>
-          ${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}
+          ${cardActionsHtml(d)}
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         </div>`;
     }
@@ -1769,17 +1792,19 @@
     if (headlinesOnly) {
       return `
         <div class="card card-headlines-only">
+          ${videoSupportBand(d)}
           <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
             <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
             <div class="card-title">${newDotHtml(d)}${escapeHtml(title)}</div>
           </a>
-          ${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}
+          ${cardActionsHtml(d)}
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         </div>`;
     }
 
     return `
       <div class="card">
+        ${videoSupportBand(d)}
         <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
         <a class="card-link" href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener">
           <div class="card-body">
@@ -1790,7 +1815,7 @@
             ${thumb}
           </div>
         </a>
-        ${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}
+        ${cardActionsHtml(d)}
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
       </div>`;
   }

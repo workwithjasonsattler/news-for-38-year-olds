@@ -5121,7 +5121,7 @@ async function getVideoFeed() {
   if (now - youtubeVideoCache.fetchedAt < YOUTUBE_VIDEO_CACHE_TTL_MS) return youtubeVideoCache.data;
 
   const channels = await dbAll(
-    `SELECT outlet, youtube_channel_id FROM feeds WHERE youtube_channel_id IS NOT NULL AND youtube_channel_id != '' AND submission_status = 'approved'`
+    `SELECT outlet, youtube_channel_id, tip_url, subscribe_url FROM feeds WHERE youtube_channel_id IS NOT NULL AND youtube_channel_id != '' AND submission_status = 'approved'`
   );
   const results = await Promise.allSettled(
     channels.map(c => fetchChannelVideos(c.youtube_channel_id, c.outlet))
@@ -5133,7 +5133,12 @@ async function getVideoFeed() {
   // A prolific channel (e.g. a cable-news account posting many clips a day)
   // would otherwise crowd out slower-posting channels entirely, especially
   // in a capped teaser list — this keeps the curated list actually diverse.
+  // Attach each channel's tip/subscribe link (from its feeds row) to its
+  // videos so the client's Support button needs no extra lookup.
   const perChannel = results
+    .map((r, i) => r.status === "fulfilled"
+      ? { status: "fulfilled", value: r.value.map(v => ({ ...v, tip_url: channels[i].tip_url || null, subscribe_url: channels[i].subscribe_url || null })) }
+      : r)
     .filter(r => r.status === "fulfilled")
     .map(r => [...r.value].sort((a, b) => new Date(b.published_at) - new Date(a.published_at)))
     .filter(list => list.length > 0);
