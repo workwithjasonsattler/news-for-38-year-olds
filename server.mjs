@@ -5692,6 +5692,84 @@ async function sweepInactiveUserEmails() {
 
 setInterval(sweepInactiveUserEmails, EMAIL_RETENTION_SWEEP_MS);
 
+// ---------- Turso usage alert ----------
+// Emails when this month's Turso usage crosses 70% / 90% of the plan limit,
+// or when Turso reports reads/writes are already blocked. Off unless
+// TURSO_API_TOKEN is set. Limits are env-configurable because the Platform
+// API's usage response doesn't carry plan quotas.
+//   TURSO_API_TOKEN, TURSO_ORG_SLUG (default workwithjasonsattler),
+//   TURSO_READS_LIMIT (default 500M), TURSO_WRITES_LIMIT (default 10M),
+//   USAGE_ALERT_EMAIL (default lolgopstudios@gmail.com)
+const TURSO_API_BASE = process.env.TURSO_API_BASE || "https://api.turso.tech";
+const TURSO_ORG_SLUG = process.env.TURSO_ORG_SLUG || "workwithjasonsattler";
+const TURSO_READS_LIMIT = Number(process.env.TURSO_READS_LIMIT || 500_000_000);
+const TURSO_WRITES_LIMIT = Number(process.env.TURSO_WRITES_LIMIT || 10_000_000);
+const USAGE_ALERT_EMAIL = process.env.USAGE_ALERT_EMAIL || "lolgopstudios@gmail.com";
+const TURSO_CHECK_EVERY_MS = 12 * 60 * 60 * 1000;
+const TURSO_ALERT_STATE_KEY = "turso_usage_alert_sent";
+const TURSO_LEVEL_RANK = { ok: 0, warn: 1, crit: 2, blocked: 3 };
+
+async function sendUsageAlertEmail(subject, text) {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) { console.log(`[turso-usage] (no RESEND_API_KEY) would email ${USAGE_ALERT_EMAIL}: ${subject} — ${text}`); return true; }
+  const from = process.env.RESEND_FROM || "News for 38 Year Olds <login@newsfor38yearolds.com>";
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to: USAGE_ALERT_EMAIL, subject, text }),
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!resp.ok) { console.error("[turso-usage] alert email failed:", resp.status, await resp.text().catch(() => "")); return false; }
+    return true;
+  } catch (err) { console.error("[turso-usage] alert email failed:", err.message); return false; }
+}
+
+async function checkTursoUsage() {
+  const token = process.env.TURSO_API_TOKEN;
+  if (!token) return;
+  try {
+    const headers = { Authorization: `Bearer ${token}` };
+    const [usageResp, orgsResp] = await Promise.all([
+      fetch(`${TURSO_API_BASE}/v1/organizations/${TURSO_ORG_SLUG}/usage`, { headers, signal: AbortSignal.timeout(10000) }),
+      fetch(`${TURSO_API_BASE}/v1/organizations`, { headers, signal: AbortSignal.timeout(10000) }),
+    ]);
+    if (!usageResp.ok) throw new Error(`usage API ${usageResp.status}: ${(await usageResp.text().catch(() => "")).slice(0, 200)}`);
+    const usage = (await usageResp.json())?.organization?.usage || {};
+    let org = null;
+    if (orgsResp.ok) { const list = await orgsResp.json(); org = Array.isArray(list) ? list.find((o) => o.slug === TURSO_ORG_SLUG) : null; }
+
+    const reads = Number(usage.rows_read), writes = Number(usage.rows_written);
+    if (!Number.isFinite(reads) || !Number.isFinite(writes)) throw new Error(`unexpected usage response shape: keys=${Object.keys(usage).join(",")}`);
+    const readPct = (reads / TURSO_READS_LIMIT) * 100, writePct = (writes / TURSO_WRITES_LIMIT) * 100;
+    const blocked = !!(org?.blocked_reads || org?.blocked_writes);
+    const top = Math.max(readPct, writePct);
+    const level = blocked ? "blocked" : top >= 90 ? "crit" : top >= 70 ? "warn" : "ok";
+    console.log(`[turso-usage] reads ${reads.toLocaleString()} (${readPct.toFixed(1)}%), writes ${writes.toLocaleString()} (${writePct.toFixed(1)}%), blocked=${blocked}, level=${level}`);
+    if (level === "ok") return;
+
+    // One email per level per calendar month (UTC); only escalate, never repeat.
+    const month = new Date().toISOString().slice(0, 7);
+    const row = await dbGet(`SELECT value FROM bot_state WHERE key = ?`, [TURSO_ALERT_STATE_KEY]);
+    const [sentMonth, sentLevel] = (row?.value || "").split(":");
+    if (sentMonth === month && (TURSO_LEVEL_RANK[sentLevel] || 0) >= TURSO_LEVEL_RANK[level]) return;
+
+    const subject = blocked ? "Turso is BLOCKING reads/writes — SOURCE! may be down" : `Turso usage at ${top.toFixed(0)}% of monthly limit`;
+    const text = `Turso usage for ${TURSO_ORG_SLUG} this billing period:\n\nRows read: ${reads.toLocaleString()} of ${TURSO_READS_LIMIT.toLocaleString()} (${readPct.toFixed(1)}%)\nRows written: ${writes.toLocaleString()} of ${TURSO_WRITES_LIMIT.toLocaleString()} (${writePct.toFixed(1)}%)\nBlocked: ${blocked ? "YES" : "no"}\nOverages enabled: ${org?.overages ?? "unknown"}\n\nCheck Top Queries (ranked by rows read) in the Turso dashboard to find what's burning reads.`;
+    if (await sendUsageAlertEmail(subject, text)) {
+      await dbRun(`INSERT INTO bot_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [TURSO_ALERT_STATE_KEY, `${month}:${level}`]);
+    }
+  } catch (err) {
+    console.error("[turso-usage] check failed:", err.message); // fail soft
+  }
+}
+
+if (process.env.TURSO_API_TOKEN) {
+  setTimeout(checkTursoUsage, Number(process.env.TURSO_CHECK_INITIAL_DELAY_MS || 60000));
+  setInterval(checkTursoUsage, TURSO_CHECK_EVERY_MS);
+  console.log(`Turso usage alert enabled — checking every 12h, emailing ${USAGE_ALERT_EMAIL}`);
+}
+
 // ---------- startup ----------
 async function start() {
   // Turso can occasionally return a transient 5xx (a host blip, a brief
