@@ -3883,6 +3883,9 @@
       <div class="section-label" style="margin-top:22px;">MY SAVES</div>
       <div class="section-sub">${saves.length} saved item${saves.length === 1 ? "" : "s"} — a personal reading list, not an RSS Pack.</div>
       ${renderMySavesSection(saves, visibility)}
+      <div class="section-label" style="margin-top:22px;">TAKE YOUR FEEDS WITH YOU</div>
+      <div class="section-sub">Download your RSS Packs and custom sources as an OPML file — any other RSS reader can import it. Leave anytime.</div>
+      <button class="btn" id="youExportOpml" style="margin-top:8px;">Export my feeds (OPML)</button>
       <div class="section-label" style="margin-top:22px; color: var(--alert);">DELETE MY ACCOUNT</div>
       <div class="section-sub">Permanently erases your saves, RSS Packs, custom sources, and preferences. This can't be undone.</div>
       <button class="btn" id="youDeleteAccount" style="margin-top:8px; border-color: var(--alert); color: var(--alert);">Delete my account</button>
@@ -3896,6 +3899,31 @@
       currentUser = null;
       sprayBarData = null;
       renderYou();
+    });
+    document.getElementById("youExportOpml").addEventListener("click", async () => {
+      try {
+        const headers = {};
+        const t = getToken();
+        if (t) headers["Authorization"] = "Bearer " + t;
+        const res = await fetch("/api/my/export.opml", { headers, credentials: "include" });
+        if (!res.ok) throw new Error("Couldn't build your export — try again");
+        const blob = await res.blob();
+        const file = new File([blob], "source-feeds.opml", { type: "text/x-opml" });
+        // Native/mobile: the share sheet is the reliable way to save a file.
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({ files: [file], title: "SOURCE! feeds" });
+          return;
+        }
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url; a.download = "source-feeds.opml";
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 2000);
+        toast("Feeds exported");
+      } catch (e) {
+        if (e && e.name === "AbortError") return; // reader closed the share sheet
+        toast(e.message || "Couldn't export — try again");
+      }
     });
     document.getElementById("youDeleteAccount").addEventListener("click", async () => {
       const ok = confirm(

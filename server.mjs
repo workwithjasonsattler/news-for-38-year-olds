@@ -3410,6 +3410,78 @@ app.post("/api/my/mixes/:slug/toggle-source", async (req, res) => {
 // source dispatch ages out of the wire or the underlying feed changes.
 const SAVE_CAP = 500; // generous personal-tray cap, not an RSS Pack-style curation limit
 
+// OPML export ("leave anytime"): the reader's own RSS Packs as folders, plus
+// all of their custom sources, as standard OPML any other RSS reader imports.
+// Feeds and Packs only — Saves aren't feeds, so they're not part of OPML.
+// Auth is cookie OR Bearer (same as every /api/my route), so the native app
+// can fetch it with its stored token.
+app.get("/api/my/export.opml", async (req, res) => {
+  try {
+    const user = await getCurrentUser(req);
+    if (!user) return res.status(401).json({ error: "not signed in" });
+
+    const feedUrlFor = (r) =>
+      r.feed_url || (r.youtube_channel_id ? `https://www.youtube.com/feeds/videos.xml?channel_id=${r.youtube_channel_id}` : null);
+    const feedLine = (name, url) =>
+      `      <outline type="rss" text="${escapeXml(name)}" title="${escapeXml(name)}" xmlUrl="${escapeXml(url)}"/>`;
+
+    const mixes = await dbAll(
+      `SELECT id, name FROM feed_mixes WHERE creator_user_id = ? AND COALESCE(auto_sync, 0) = 0 ORDER BY created_at ASC, id ASC`,
+      [user.id]
+    );
+    const folders = [];
+    let skipped = 0;
+    for (const mix of mixes) {
+      const rows = await dbAll(
+        `SELECT fms.source_type, fms.outlet, f.feed_url, f.youtube_channel_id,
+                ucs.name AS custom_name, ucs.feed_url AS custom_feed_url
+         FROM feed_mix_sources fms
+         LEFT JOIN feeds f ON fms.source_type = 'admin_outlet' AND f.outlet = fms.outlet
+         LEFT JOIN user_custom_sources ucs ON fms.source_type = 'custom' AND ucs.id = fms.custom_source_id
+         WHERE fms.mix_id = ? ORDER BY fms.sort_order ASC, fms.id ASC`,
+        [mix.id]
+      );
+      const seen = new Set();
+      const lines = [];
+      for (const r of rows) {
+        const name = r.source_type === "custom" ? r.custom_name : r.outlet;
+        const url = r.source_type === "custom" ? r.custom_feed_url : feedUrlFor(r);
+        if (!name || !url) { skipped++; continue; } // e.g. Bluesky-only sources have no feed URL
+        if (seen.has(url)) continue;
+        seen.add(url);
+        lines.push(feedLine(name, url));
+      }
+      if (lines.length) folders.push(`    <outline text="${escapeXml(mix.name)}" title="${escapeXml(mix.name)}">\n${lines.join("\n")}\n    </outline>`);
+    }
+
+    const customs = await dbAll(
+      `SELECT name, feed_url FROM user_custom_sources WHERE user_id = ? ORDER BY name ASC`,
+      [user.id]
+    );
+    if (customs.length) {
+      folders.push(`    <outline text="My custom sources" title="My custom sources">\n${customs.map((c) => feedLine(c.name, c.feed_url)).join("\n")}\n    </outline>`);
+    }
+
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<opml version="2.0">
+  <head>
+    <title>SOURCE! — my feeds</title>
+    <dateCreated>${new Date().toUTCString()}</dateCreated>
+  </head>
+  <body>
+${folders.join("\n")}
+  </body>
+</opml>
+`;
+    res.setHeader("Content-Type", "text/x-opml; charset=utf-8");
+    res.setHeader("Content-Disposition", 'attachment; filename="source-feeds.opml"');
+    res.send(xml);
+  } catch (err) {
+    console.error("OPML export failed:", err.message);
+    res.status(500).json({ error: "Couldn't build your export" });
+  }
+});
+
 app.get("/api/my/saves", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
