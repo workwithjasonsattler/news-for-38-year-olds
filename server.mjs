@@ -5484,8 +5484,26 @@ function textOf(field) {
 }
 function stripHtml(str = "") {
   return str.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
-    .replace(/&#8217;|&rsquo;/g, "'").replace(/&#8220;|&#8221;|&ldquo;|&rdquo;/g, '"')
+    .replace(/&#8217;|&rsquo;/g, "'").replace(/&mdash;|&#8212;/g, "—").replace(/&ndash;|&#8211;/g, "–").replace(/&hellip;|&#8230;/g, "…").replace(/&#8220;|&#8221;|&ldquo;|&rdquo;/g, '"')
     .replace(/\s+/g, " ").trim();
+}
+// Podcast show notes often open with sponsor reads, "ad choices" boilerplate,
+// timestamps and "support the show" lines, which would otherwise become the
+// card excerpt. Applied only to audio items (enclosure type audio/*). Works
+// on already-stripped text; falls back to the original if nothing useful is left.
+const PODCAST_BOILERPLATE_RE = /brought to you by|sponsored by|ad choices|adchoices|promo code|use code|\d+% off|free trial|support the show|patreon\.com|become a (member|patron)|subscribe (on|to|at)|rate and review|listen ad[- ]free|visit [a-z0-9.-]+\.(com|fm|org)\/|learn more about your ad/i;
+function cleanPodcastText(html = "") {
+  // Split on paragraph/line boundaries BEFORE stripping tags: stripHtml()
+  // collapses them into plain spaces, which would glue a sponsor line onto
+  // the real first sentence and make the whole thing look like boilerplate.
+  const chunks = String(html).split(/<\/p>|<\/div>|<\/li>|<br\s*\/?>/i).map((c) => stripHtml(c)).filter(Boolean);
+  const kept = chunks
+    .map((c) => c.replace(/\b\d{1,2}:\d{2}(?::\d{2})?\b/g, " ").replace(/\s+/g, " ").trim())
+    .flatMap((c) => c.split(/(?<=[.!?])\s+/))
+    .filter((sent) => sent && !PODCAST_BOILERPLATE_RE.test(sent))
+    .join(" ")
+    .trim();
+  return kept.length >= 20 ? kept : stripHtml(html);
 }
 function truncate(str, max = 160) {
   return str.length <= max ? str : str.slice(0, max).replace(/\s+\S*$/, "") + "…";
@@ -5521,6 +5539,11 @@ function extractImage(it, summaryHtml) {
   const enclosure = it.enclosure;
   if (enclosure?.["@_url"] && (enclosure["@_type"] || "").startsWith("image")) return enclosure["@_url"];
 
+  // Podcast episodes carry their artwork as <itunes:image href="...">.
+  const itunes = it["itunes:image"];
+  const itunesUrl = Array.isArray(itunes) ? itunes[0]?.["@_href"] : itunes?.["@_href"];
+  if (itunesUrl) return itunesUrl;
+
   const imgMatch = (summaryHtml || "").match(/<img[^>]+src=["']([^"']+)["']/i);
   if (imgMatch) return imgMatch[1];
 
@@ -5539,6 +5562,7 @@ function extractItems(parsed) {
         author: textOf(it["dc:creator"] ?? it.author),
         summary: summaryHtml,
         image: extractImage(it, summaryHtml),
+        isAudio: /^audio\//i.test(String((Array.isArray(it.enclosure) ? it.enclosure[0] : it.enclosure)?.["@_type"] || "")),
       };
     });
   }
@@ -5672,7 +5696,7 @@ async function importAllFeeds() {
       let feedAdded = 0;
       for (const item of items) {
         const headline = stripHtml(item.title);
-        const excerpt = truncate(stripHtml(item.summary), 160);
+        const excerpt = truncate(item.isAudio ? cleanPodcastText(item.summary) : stripHtml(item.summary), 160);
         if (!headline || !item.link) continue;
         const info = await dbRun(
           `INSERT OR IGNORE INTO dispatches (name, outlet, beat, date, headline, excerpt, link, tip_url, subscribe_url, image_url) VALUES (?,?,?,?,?,?,?,?,?,?)`,
