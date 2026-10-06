@@ -320,17 +320,32 @@
     return null;
   }
 
-  // Video cards: a band across the top with Save + Support. Support opens
-  // tip_url, falls back to subscribe_url, and is hidden if neither exists —
-  // one fixed label ("Support") whichever link it resolves to. Share is
-  // deliberately NOT here; see the note on shareButton() below.
+  // Video cards: a band across the top with Save | Share | Support, per the
+  // approved wireframe. Support opens tip_url, falls back to subscribe_url,
+  // hidden if neither exists — one fixed label ("Support") whichever link
+  // it resolves to. Share shows whenever the video has a shareable link.
+  // Class-based (not the reader pane's fixed-id #readerShareBtn) since many
+  // video cards render on screen at once.
+  function videoShareButton(d) {
+    if (!d.link) return "";
+    return `<button class="video-share-btn" data-share-url="${escapeHtml(d.link)}" data-share-title="${escapeHtml(d.title || d.headline || "")}">Share ↗</button>`;
+  }
+
+  function wireVideoShareButtons(root) {
+    root.querySelectorAll(".video-share-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        doShare(btn.dataset.shareUrl, btn.dataset.shareTitle);
+      });
+    });
+  }
+
   function videoSupportBand(d) {
     if (!d.is_video) return "";
     const url = d.tip_url || d.subscribe_url;
     const support = url
       ? `<a class="video-support-btn" href="${escapeHtml(url)}" target="_blank" rel="noopener">💛 Support</a>`
       : "";
-    return `<div class="video-band">${saveButton(d)}${support}</div>`;
+    return `<div class="video-band">${saveButton(d)}${videoShareButton(d)}${support}</div>`;
   }
 
   // Bottom action row for every card shape. Videos get Save/Support in the
@@ -497,26 +512,28 @@
     return `<button class="btn" id="readerShareBtn" data-share-url="${escapeHtml(d.link)}" data-share-title="${escapeHtml(d.title || d.headline || "")}">Share ↗</button>`;
   }
 
+  // Shared by the reader-pane Share button and the video-card Share button
+  // below, so the native-share-sheet-or-clipboard-copy behavior never
+  // drifts between the two surfaces.
+  async function doShare(url, title) {
+    if (navigator.share) {
+      try { await navigator.share({ title, url }); }
+      catch (e) { /* reader cancelled the share sheet — not an error */ }
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast("Link copied");
+    } catch (e) {
+      toast(url);
+    }
+  }
+
   function wireShareButton(root) {
     const btn = root.querySelector("#readerShareBtn");
     if (!btn) return;
-    btn.addEventListener("click", async () => {
-      const url = btn.dataset.shareUrl;
-      const title = btn.dataset.shareTitle;
-      if (navigator.share) {
-        try { await navigator.share({ title, url }); }
-        catch (e) { /* reader cancelled the share sheet — not an error */ }
-        return;
-      }
-      // No native share sheet (most desktop browsers) — fall back to
-      // copying the link, same "always leave the reader with a working
-      // action" spirit as everything else that touches the clipboard.
-      try {
-        await navigator.clipboard.writeText(url);
-        toast("Link copied");
-      } catch (e) {
-        toast(url);
-      }
+    btn.addEventListener("click", () => {
+      doShare(btn.dataset.shareUrl, btn.dataset.shareTitle);
     });
   }
 
@@ -728,6 +745,7 @@
         });
       });
       wireSaveButtons(main);
+      wireVideoShareButtons(main);
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "TRANSMISSION FAILED", body: e.message || "Could not load videos." });
     }
@@ -1186,6 +1204,7 @@
         });
       });
       wireSaveButtons(main);
+      wireVideoShareButtons(main);
     }
   }
 
@@ -1487,6 +1506,7 @@
         });
       });
       wireSaveButtons(body);
+      wireVideoShareButtons(body);
     } catch (e) {
       if (readColumns[i] !== slug) return;
       body.innerHTML = `<p class="card-meta" style="padding:16px;">Couldn't load this RSS Pack — try a different one.</p>`;
@@ -1575,6 +1595,7 @@
       });
     }
     wireSaveButtons(pane);
+    wireVideoShareButtons(pane);
     wireShareButton(pane);
     const fsBtn = document.getElementById("readerFullscreenBtn");
     if (fsBtn) fsBtn.addEventListener("click", toggleReaderFullscreen);
