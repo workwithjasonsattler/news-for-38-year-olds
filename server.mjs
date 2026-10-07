@@ -4099,6 +4099,97 @@ app.post("/api/login", (req, res) => {
 });
 
 // ---------- public read endpoints ----------
+// ---------- dispatch search (v1.1) ----------
+// Retrieval, not ranking: results are ALWAYS newest-first, no relevance
+// score, and no engagement fields are ever returned. Bounded to a recent
+// date window so idx_dispatches_date can stop early — an unbounded
+// LIKE '%term%' over the whole table is exactly the full-scan shape that
+// burned Turso reads in Sept 2026. Cached briefly per query and rate-
+// limited per IP because typeahead fires on every keystroke.
+const SEARCH_WINDOW_DAYS = Math.max(1, parseInt(process.env.SEARCH_WINDOW_DAYS || "14", 10) || 14);
+const SEARCH_MIN_CHARS = 2;
+const SEARCH_MAX_LIMIT = 50;
+const SEARCH_CACHE_TTL_MS = 60 * 1000;
+const SEARCH_RATE_WINDOW_MS = 60 * 1000;
+const SEARCH_RATE_MAX = 40;
+const searchCache = new Map(); // key -> { ts, results }
+const searchRate = new Map(); // ip -> { start, count }
+
+function searchRateOk(ip) {
+  const now = Date.now();
+  const rec = searchRate.get(ip);
+  if (!rec || now - rec.start > SEARCH_RATE_WINDOW_MS) {
+    if (searchRate.size > 5000) searchRate.clear();
+    searchRate.set(ip, { start: now, count: 1 });
+    return true;
+  }
+  rec.count += 1;
+  return rec.count <= SEARCH_RATE_MAX;
+}
+
+app.get("/api/search", async (req, res) => {
+  const q = String(req.query.q || "").trim().toLowerCase().slice(0, 80);
+  if (q.length < SEARCH_MIN_CHARS) return res.json({ q, results: [], window_days: SEARCH_WINDOW_DAYS });
+  const limit = Math.min(SEARCH_MAX_LIMIT, Math.max(1, parseInt(req.query.limit, 10) || 8));
+
+  const ip = req.ip || req.headers["x-forwarded-for"] || "unknown";
+  if (!searchRateOk(ip)) return res.status(429).json({ error: "Slow down a moment, then try again." });
+
+  try {
+    // Outlets the wire excludes (wire_eligible=0: Pop Culture, Podcasts)
+    // are searchable ONLY for a signed-in reader who follows an RSS Pack
+    // containing them — keeps the wire-isolation fix intact.
+    const user = await getCurrentUser(req);
+    let extraOutlets = [];
+    if (user) {
+      const rows = await dbAll(
+        `SELECT DISTINCT fms.outlet FROM user_spray_bar b
+         JOIN feed_mixes fm ON fm.slug = b.mix_slug
+         JOIN feed_mix_sources fms ON fms.mix_id = fm.id
+         WHERE b.user_id = ? AND fms.source_type = 'admin_outlet' AND fms.outlet IS NOT NULL`,
+        [user.id]
+      );
+      extraOutlets = rows.map((r) => r.outlet).sort();
+    }
+
+    const cacheKey = `${q}|${limit}|${extraOutlets.join("\u0001")}`;
+    const hit = searchCache.get(cacheKey);
+    if (hit && Date.now() - hit.ts < SEARCH_CACHE_TTL_MS) {
+      return res.json({ q, results: hit.results, window_days: SEARCH_WINDOW_DAYS });
+    }
+
+    const like = "%" + q.replace(/[\\%_]/g, (c) => "\\" + c) + "%";
+    const cutoff = new Date(Date.now() - SEARCH_WINDOW_DAYS * 86400000).toISOString();
+    const extraSql = extraOutlets.length
+      ? ` OR d.outlet IN (${extraOutlets.map(() => "?").join(",")})`
+      : "";
+    const rows = await dbAll(
+      `SELECT d.id, d.headline, d.outlet, d.date, d.link, d.excerpt
+       FROM dispatches d
+       WHERE d.date >= ?
+         AND (${WIRE_OK_SQL}${extraSql})
+         AND (d.headline LIKE ? ESCAPE '\\' OR d.outlet LIKE ? ESCAPE '\\' OR d.excerpt LIKE ? ESCAPE '\\')
+       ORDER BY d.date DESC, d.id DESC
+       LIMIT ?`,
+      [cutoff, ...extraOutlets, like, like, like, limit]
+    );
+    const results = rows.map((r) => ({
+      id: r.id,
+      headline: r.headline,
+      outlet: r.outlet,
+      date: r.date,
+      link: r.link,
+      excerpt: r.excerpt ? String(r.excerpt).slice(0, 160) : null,
+    }));
+    if (searchCache.size > 300) searchCache.clear();
+    searchCache.set(cacheKey, { ts: Date.now(), results });
+    res.json({ q, results, window_days: SEARCH_WINDOW_DAYS });
+  } catch (err) {
+    console.error("Search failed:", err?.message || err);
+    res.status(500).json({ error: "Search isn't available right now." });
+  }
+});
+
 const dispatchesBaseCache = new Map(); // key -> { ts, rows }
 const DISPATCHES_CACHE_TTL_MS = 45 * 1000;
 

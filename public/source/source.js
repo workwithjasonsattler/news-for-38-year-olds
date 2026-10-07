@@ -4166,6 +4166,143 @@
       </div>`;
   }
 
+  // ---------------------------------------------------------------
+  // Search (v1.1) — typeahead over recent dispatches. Retrieval only:
+  // results come back newest-first from GET /api/search, never ranked,
+  // never carrying engagement numbers. The panel is a normal block
+  // inserted under the header (not a floating overlay), so it behaves
+  // the same in Mobile, Desktop and the phone-frame preview.
+  // ---------------------------------------------------------------
+  const SEARCH_MIN = 2;
+  const SEARCH_PREVIEW_LIMIT = 8;
+  const SEARCH_ALL_LIMIT = 50;
+  let searchSeq = 0;
+  let searchAbort = null;
+  let searchTimer = null;
+
+  function highlightMatch(text, q) {
+    const raw = String(text || "");
+    if (!q) return escapeHtml(raw);
+    const lower = raw.toLowerCase();
+    const needle = q.toLowerCase();
+    let out = "";
+    let i = 0;
+    while (i < raw.length) {
+      const hit = lower.indexOf(needle, i);
+      if (hit === -1) { out += escapeHtml(raw.slice(i)); break; }
+      out += escapeHtml(raw.slice(i, hit)) + "<mark>" + escapeHtml(raw.slice(hit, hit + needle.length)) + "</mark>";
+      i = hit + needle.length;
+    }
+    return out;
+  }
+
+  function initSearch() {
+    const btn = document.getElementById("searchBtn");
+    const header = document.querySelector(".source-header");
+    if (!btn || !header) return;
+
+    const panel = document.createElement("div");
+    panel.className = "search-panel";
+    panel.id = "searchPanel";
+    panel.hidden = true;
+    panel.innerHTML = `
+      <div class="search-input-row">
+        <input type="search" id="searchInput" class="search-input" placeholder="Search recent headlines" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="Search recent headlines" maxlength="80">
+        <button type="button" class="search-close" id="searchClose" aria-label="Close search">×</button>
+      </div>
+      <div class="search-results" id="searchResults" role="listbox"></div>`;
+    header.after(panel);
+
+    const input = panel.querySelector("#searchInput");
+    const results = panel.querySelector("#searchResults");
+
+    function setHint(text) {
+      results.innerHTML = `<div class="search-state">${escapeHtml(text)}</div>`;
+      panel.classList.remove("search-expanded");
+    }
+
+    function openSearch() {
+      panel.hidden = false;
+      btn.setAttribute("aria-expanded", "true");
+      if (!input.value.trim()) setHint("Type to search the last couple of weeks of headlines.");
+      input.focus();
+    }
+    function closeSearch() {
+      panel.hidden = true;
+      btn.setAttribute("aria-expanded", "false");
+      clearTimeout(searchTimer);
+      if (searchAbort) searchAbort.abort();
+    }
+
+    async function runSearch(q, limit) {
+      const seq = ++searchSeq;
+      if (searchAbort) searchAbort.abort();
+      searchAbort = new AbortController();
+      results.innerHTML = `<div class="search-state">Searching…</div>`;
+      try {
+        const data = await api(`/api/search?q=${encodeURIComponent(q)}&limit=${limit}`, { signal: searchAbort.signal });
+        if (seq !== searchSeq) return; // a newer keystroke already took over
+        const list = (data && data.results) || [];
+        const days = (data && data.window_days) || 14;
+        if (list.length === 0) {
+          setHint(`Nothing in the last ${days} days for "${q}".`);
+          return;
+        }
+        const expanded = limit > SEARCH_PREVIEW_LIMIT;
+        panel.classList.toggle("search-expanded", expanded);
+        results.innerHTML = list.map((d) => `
+          <a class="search-result" role="option" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">
+            <span class="search-result-title">${highlightMatch(d.headline, q)}</span>
+            <span class="search-result-meta">${outletChip(d.outlet)}<span>${relTime(d.date)}</span></span>
+          </a>`).join("")
+          + (!expanded && list.length >= SEARCH_PREVIEW_LIMIT
+            ? `<button type="button" class="search-see-all" id="searchSeeAll">See all results</button>`
+            : `<div class="search-state search-footnote">Newest first · last ${days} days</div>`);
+        const seeAll = results.querySelector("#searchSeeAll");
+        if (seeAll) seeAll.addEventListener("click", () => runSearch(q, SEARCH_ALL_LIMIT));
+      } catch (e) {
+        if (e && e.name === "AbortError") return;
+        if (seq !== searchSeq) return;
+        setHint(e && e.status === 429 ? "Slow down a moment, then try again." : "Search isn't available right now.");
+      }
+    }
+
+    input.addEventListener("input", () => {
+      clearTimeout(searchTimer);
+      const q = input.value.trim();
+      if (q.length < SEARCH_MIN) {
+        searchSeq++;
+        if (searchAbort) searchAbort.abort();
+        setHint(q.length === 0 ? "Type to search the last couple of weeks of headlines." : "Keep typing…");
+        return;
+      }
+      searchTimer = setTimeout(() => runSearch(q, SEARCH_PREVIEW_LIMIT), 250);
+    });
+
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowDown") {
+        const first = results.querySelector(".search-result");
+        if (first) { e.preventDefault(); first.focus(); }
+      } else if (e.key === "Enter") {
+        const q = input.value.trim();
+        if (q.length >= SEARCH_MIN) { clearTimeout(searchTimer); runSearch(q, SEARCH_ALL_LIMIT); }
+      }
+    });
+
+    results.addEventListener("keydown", (e) => {
+      const items = Array.from(results.querySelectorAll(".search-result"));
+      const idx = items.indexOf(document.activeElement);
+      if (e.key === "ArrowDown" && idx > -1 && idx < items.length - 1) { e.preventDefault(); items[idx + 1].focus(); }
+      else if (e.key === "ArrowUp" && idx > -1) { e.preventDefault(); (idx === 0 ? input : items[idx - 1]).focus(); }
+    });
+
+    panel.querySelector("#searchClose").addEventListener("click", closeSearch);
+    btn.addEventListener("click", () => { panel.hidden ? openSearch() : closeSearch(); });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !panel.hidden) closeSearch();
+    });
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
     // Capture a bearer token handed back from the magic-link email flow
     // (see GET /api/auth/verify's `app=source` branch server-side) BEFORE
@@ -4244,6 +4381,8 @@
     document.addEventListener("keydown", (e) => {
       if (e.key === "Escape" && readerFullscreen) toggleReaderFullscreen();
     });
+
+    initSearch();
 
     const refreshBtn = document.getElementById("refreshBtn");
     if (refreshBtn) {
