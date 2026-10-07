@@ -4164,7 +4164,7 @@ app.get("/api/search", async (req, res) => {
       ? ` OR d.outlet IN (${extraOutlets.map(() => "?").join(",")})`
       : "";
     const rows = await dbAll(
-      `SELECT d.id, d.headline, d.outlet, d.date, d.link, d.excerpt
+      `SELECT d.id, d.headline, d.outlet, d.date, d.link, d.excerpt, d.tip_url, d.subscribe_url
        FROM dispatches d
        WHERE d.date >= ?
          AND (${WIRE_OK_SQL}${extraSql})
@@ -4179,7 +4179,9 @@ app.get("/api/search", async (req, res) => {
       outlet: r.outlet,
       date: r.date,
       link: r.link,
-      excerpt: r.excerpt ? String(r.excerpt).slice(0, 160) : null,
+      excerpt: r.excerpt ? String(r.excerpt).slice(0, 500) : null,
+      tip_url: r.tip_url || null,
+      subscribe_url: r.subscribe_url || null,
     }));
     if (searchCache.size > 300) searchCache.clear();
     searchCache.set(cacheKey, { ts: Date.now(), results });

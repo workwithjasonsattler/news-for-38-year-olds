@@ -762,6 +762,7 @@
   // manual refresh as long as that story is still in the fresh list;
   // falls back to the newest item otherwise.
   let selectedDispatch = null;
+  let pendingSearchDispatch = null; // set by a search-result click that needs Read to render with this item selected
   // Expand-in-place toggle for the Desktop split reader pane (read-layout)
   // and Classic's 3-pane reader (read-classic) — hides the feed list/
   // sidebar and lets the reader pane use the full main content width.
@@ -1280,7 +1281,10 @@
     main.classList.add("read-layout");
     main.classList.toggle("reader-fullscreen", readerFullscreen);
     applyStoredPaneWidth(main, "--layout-reader-w", LAYOUT_READER_WIDTH_KEY);
-    if (!selectedDispatch || !shown.some(d => d.id === selectedDispatch.id)) {
+    if (pendingSearchDispatch) {
+      selectedDispatch = pendingSearchDispatch;
+      pendingSearchDispatch = null;
+    } else if (!selectedDispatch || !shown.some(d => d.id === selectedDispatch.id)) {
       selectedDispatch = shown[0];
     }
     main.innerHTML = `
@@ -1308,7 +1312,10 @@
     main.classList.add("read-classic");
     main.classList.toggle("reader-fullscreen", readerFullscreen);
     applyStoredPaneWidth(main, "--classic-list-w", CLASSIC_LIST_WIDTH_KEY);
-    if (!selectedDispatch || !shown.some(d => d.id === selectedDispatch.id)) {
+    if (pendingSearchDispatch) {
+      selectedDispatch = pendingSearchDispatch;
+      pendingSearchDispatch = null;
+    } else if (!selectedDispatch || !shown.some(d => d.id === selectedDispatch.id)) {
       selectedDispatch = shown[0];
     }
     main.innerHTML = `
@@ -4196,6 +4203,57 @@
     return out;
   }
 
+  // Desktop reader-pane integration: Classic and the two-pane Headlines/
+  // Expanded views have a reader pane; Scroll, Columns and Mobile don't,
+  // so a search result there keeps opening the article directly.
+  function searchCanUsePane() {
+    if (getLayoutMode() !== "desktop") return false;
+    const mode = getReadDisplay();
+    return mode !== "scroll" && mode !== "columns";
+  }
+
+  function openSearchResultInPane(d) {
+    const item = {
+      id: d.id,
+      headline: d.headline,
+      title: d.headline,
+      outlet: d.outlet,
+      date: d.date,
+      link: d.link,
+      excerpt: d.excerpt,
+      tip_url: d.tip_url || null,
+      subscribe_url: d.subscribe_url || null,
+    };
+    selectedDispatch = item;
+    if (activeTab === "read" && document.getElementById("readerPane")) {
+      renderReaderPane(item, false, undefined);
+      const feed = document.getElementById("readerFeed");
+      if (feed) {
+        feed.querySelectorAll(".feed-item, .feed-item-classic").forEach((b) => {
+          b.classList.toggle("active", b.dataset.id === String(item.id));
+        });
+      }
+    } else {
+      // Not on Read (or Read hasn't painted its panes yet): have the
+      // next Read render open with this item selected.
+      pendingSearchDispatch = item;
+      if (activeTab !== "read") switchTab("read");
+      else renderRead();
+    }
+    // Pane artwork — dispatches don't store an image, so fetch it the
+    // same way the list thumbnails do, then repaint the pane if the
+    // reader is still looking at this item.
+    if (typeof item.id === "number") {
+      api(`/api/dispatches/thumbnails?ids=${item.id}`).then((map) => {
+        const url = map && map[item.id];
+        if (url && selectedDispatch === item && document.getElementById("readerPane")) {
+          item.image_url = url;
+          renderReaderPane(item, false, undefined);
+        }
+      }).catch(() => { /* artwork is a nice-to-have */ });
+    }
+  }
+
   function initSearch() {
     const btn = document.getElementById("searchBtn");
     const header = document.querySelector(".source-header");
@@ -4215,6 +4273,7 @@
 
     const input = panel.querySelector("#searchInput");
     const results = panel.querySelector("#searchResults");
+    let lastResults = [];
 
     function setHint(text) {
       results.innerHTML = `<div class="search-state">${escapeHtml(text)}</div>`;
@@ -4250,8 +4309,9 @@
         }
         const expanded = limit > SEARCH_PREVIEW_LIMIT;
         panel.classList.toggle("search-expanded", expanded);
+        lastResults = list;
         results.innerHTML = list.map((d) => `
-          <a class="search-result" role="option" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">
+          <a class="search-result" role="option" data-id="${escapeHtml(String(d.id))}" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">
             <span class="search-result-title">${highlightMatch(d.headline, q)}</span>
             <span class="search-result-meta">${outletChip(d.outlet)}<span>${relTime(d.date)}</span></span>
           </a>`).join("")
@@ -4294,6 +4354,20 @@
       const idx = items.indexOf(document.activeElement);
       if (e.key === "ArrowDown" && idx > -1 && idx < items.length - 1) { e.preventDefault(); items[idx + 1].focus(); }
       else if (e.key === "ArrowUp" && idx > -1) { e.preventDefault(); (idx === 0 ? input : items[idx - 1]).focus(); }
+    });
+
+    results.addEventListener("click", (e) => {
+      const a = e.target.closest && e.target.closest(".search-result");
+      if (!a) return;
+      // Leave new-tab / modified clicks alone, and fall back to opening
+      // the article directly anywhere there's no reader pane.
+      if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (!searchCanUsePane()) return;
+      const d = lastResults.find((x) => String(x.id) === a.dataset.id);
+      if (!d) return;
+      e.preventDefault();
+      openSearchResultInPane(d);
+      closeSearch();
     });
 
     panel.querySelector("#searchClose").addEventListener("click", closeSearch);
