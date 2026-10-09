@@ -587,6 +587,40 @@
   // opens the sheet without touching activeTab — so the bar's active-
   // highlight logic below has to also light up More whenever Sources or
   // You is actually on screen, or the bar would show nothing selected.
+  // Keyboard fix (Android WebView): when the soft keyboard opens, a focused
+  // field could end up hidden behind it or scrolled off screen, so readers
+  // couldn't see what they typed (sign-in email box). Scroll the focused
+  // field into the middle of the visible area once the keyboard is up, and
+  // hide the fixed bottom tab bar while it is open so it can't cover or
+  // float over the form.
+  (function setupKeyboardFix() {
+    const vv = window.visualViewport;
+    let maxH = Math.max(window.innerHeight, vv ? vv.height : 0);
+    const isField = (el) => !!el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+    function reveal() {
+      const el = document.activeElement;
+      if (!isField(el)) return;
+      try { el.scrollIntoView({ block: "center" }); } catch (e) { /* ignore */ }
+    }
+    document.addEventListener("focusin", (e) => {
+      if (!isField(e.target)) return;
+      setTimeout(reveal, 300);
+      setTimeout(reveal, 700);
+    });
+    window.addEventListener("orientationchange", () => {
+      maxH = 0;
+      setTimeout(() => { maxH = Math.max(window.innerHeight, vv ? vv.height : 0); }, 500);
+    });
+    if (vv) {
+      vv.addEventListener("resize", () => {
+        maxH = Math.max(maxH, window.innerHeight, vv.height);
+        const open = maxH - vv.height > 150;
+        document.body.classList.toggle("kb-open", open);
+        if (open) setTimeout(reveal, 100);
+      });
+    }
+  })();
+
   const TABS = [
     { key: "read", label: "READ", prompt: ">" },
     { key: "videos", label: "VIDEOS", prompt: ">" },

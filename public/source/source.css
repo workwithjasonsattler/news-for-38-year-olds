@@ -2933,3 +2933,7 @@ body[data-layout="desktop"] #main.read-columns {
   border: 0;
   border-top: 1px solid var(--line);
 }
+
+/* Hide the fixed bottom tab bar while the soft keyboard is open (mobile
+   layout only) so it never covers or floats over a focused field. */
+body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
