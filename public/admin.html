@@ -50,6 +50,20 @@
 
 <div id="adminArea" class="hidden">
 
+  <div class="panel" id="usagePanel">
+    <h2 style="font-family:var(--mono);font-size:14px;">READERS &amp; PACK ADOPTION</h2>
+    <p style="font-size:12px;color:#666;margin:0 0 10px;">Counts only, no emails. Account numbers are cheap to load; page-view/click counts scan bigger tables, so they load on request.</p>
+    <div style="margin-bottom:10px;font-family:var(--mono);font-size:12px;">
+      Leave out user ids (yours, test, reviewer): <input type="text" id="usageExclude" placeholder="e.g. 1,2" style="width:120px;">
+      <button type="button" onclick="loadUsage(false)">Refresh</button>
+      <button type="button" onclick="loadUsage(true)">Refresh + traffic</button>
+    </div>
+    <div class="stat-row" id="usageBoxes"></div>
+    <h3 style="font-family:var(--mono);font-size:12px;">PACKS BY FOLLOWS</h3>
+    <div id="usagePacks"></div>
+    <p id="usageNote" style="font-size:11px;color:#666;"></p>
+  </div>
+
   <div class="panel" id="statsPanel">
     <h2 style="font-family:var(--mono);font-size:14px;">STATS</h2>
     <div class="stat-row" id="statBoxes"></div>
@@ -260,6 +274,7 @@ function authHeaders(){ return {'Content-Type':'application/json','X-Admin-Token
 async function showAdmin(){
   document.getElementById('loginPanel').classList.add('hidden');
   document.getElementById('adminArea').classList.remove('hidden');
+  await loadUsage(false);
   await loadStats();
   await loadDispatches();
   await loadFeeds();
@@ -267,6 +282,45 @@ async function showAdmin(){
   await loadTopicsForPacks();
   await loadOfficialPacks();
   await loadPublicPacks();
+}
+
+function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+async function loadUsage(withTraffic){
+  const exInput = document.getElementById('usageExclude');
+  if (exInput && !exInput.dataset.init){
+    exInput.value = localStorage.getItem('n38_usage_exclude') || '';
+    exInput.dataset.init = '1';
+  }
+  const exclude = (exInput ? exInput.value : '').replace(/[^0-9,]/g, '');
+  try { localStorage.setItem('n38_usage_exclude', exclude); } catch(e){}
+  const qs = new URLSearchParams();
+  if (exclude) qs.set('exclude', exclude);
+  if (withTraffic) qs.set('traffic', '1');
+  const res = await fetch('/api/admin/usage' + (qs.toString() ? '?' + qs : ''), {headers: authHeaders()});
+  if (res.status === 401){ localStorage.removeItem('n38_admin_token'); location.reload(); return; }
+  if (!res.ok){ document.getElementById('usageNote').textContent = 'Usage query failed (' + res.status + ').'; return; }
+  const u = await res.json();
+  const box = (n, label) => `<div class="stat-box"><div class="num">${esc(n)}</div><div class="label">${esc(label)}</div></div>`;
+  const a = u.accounts, e = u.engagement, p = u.packs;
+  let html = box(a.total,'Accounts') + box(a.new_7d,'New, last 7 days') + box(a.new_30d,'New, last 30 days')
+    + box(a.active_1d,'Active, last 24h') + box(a.active_7d,'Active, last 7 days') + box(a.active_30d,'Active, last 30 days')
+    + box(e.accounts_with_saves,'Accounts with saves') + box(e.accounts_with_own_packs,'Accounts with own Packs')
+    + box(e.accounts_following_a_pack,'Accounts following a Pack') + box(e.accounts_with_custom_sources,'Accounts with custom feeds')
+    + box(p.reader_made_total,'Reader-made Packs') + box(p.reader_made_public,'...of them public');
+  if (u.traffic){
+    html += box(u.traffic.last_1d.page_views,'Page views, 24h') + box(u.traffic.last_7d.page_views,'Page views, 7d')
+      + box(u.traffic.last_1d.clicks,'Outbound clicks, 24h') + box(u.traffic.last_7d.clicks,'Outbound clicks, 7d');
+  }
+  document.getElementById('usageBoxes').innerHTML = html;
+  const maxF = Math.max(1, ...p.top_by_follows.map(t => t.bar_follows));
+  document.getElementById('usagePacks').innerHTML = p.top_by_follows.map(t => `
+    <div class="bar-row">
+      <div style="width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${esc(t.name)}${t.is_official ? ' (official)' : ''}</div>
+      <div class="bar-track"><div class="bar-fill" style="width:${(t.bar_follows/maxF*100)}%;"></div></div>
+      <div>${esc(t.bar_follows)} follows · ${esc(t.clone_count)} clones</div>
+    </div>`).join('') || '<p style="font-size:12px;color:#666;">No public Packs yet.</p>';
+  document.getElementById('usageNote').textContent = 'Active = signed in or created in the window (checked at most once a day per reader). Updated ' + new Date(u.generated_at).toLocaleString() + '.';
 }
 
 async function loadStats(){
