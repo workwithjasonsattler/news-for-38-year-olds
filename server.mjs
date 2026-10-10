@@ -5557,6 +5557,72 @@ app.get("/api/stats", requireAdmin, async (req, res) => {
   });
 });
 
+// ---------- admin usage snapshot (reader accounts + Pack adoption) ----------
+// Read-only, admin-token gated. Uses only data already stored; returns
+// aggregate counts and public Pack names, NEVER emails. Account queries
+// hit small tables. Traffic counts scan page_views/clicks (no ts index),
+// so they only run with ?traffic=1 to protect Turso reads.
+//   GET /api/admin/usage                    (header: x-admin-token)
+//   GET /api/admin/usage?exclude=1,2,7      (leave test/reviewer user ids out)
+//   GET /api/admin/usage?traffic=1          (adds page view / click counts)
+app.get("/api/admin/usage", requireAdmin, async (req, res) => {
+  try {
+    const excludeIds = String(req.query.exclude || "")
+      .split(",").map((s) => parseInt(s, 10)).filter((n) => Number.isInteger(n));
+    const notIn = excludeIds.length ? `AND id NOT IN (${excludeIds.map(() => "?").join(",")})` : "";
+    const notInU = excludeIds.length ? `AND u.id NOT IN (${excludeIds.map(() => "?").join(",")})` : "";
+    const ex = excludeIds;
+    const one = async (sql, params = []) => (await dbGet(sql, params)).n;
+
+    const accounts = {
+      total: await one(`SELECT COUNT(*) AS n FROM users WHERE 1=1 ${notIn}`, ex),
+      new_1d: await one(`SELECT COUNT(*) AS n FROM users WHERE created_at >= datetime('now','-1 day') ${notIn}`, ex),
+      new_7d: await one(`SELECT COUNT(*) AS n FROM users WHERE created_at >= datetime('now','-7 days') ${notIn}`, ex),
+      new_30d: await one(`SELECT COUNT(*) AS n FROM users WHERE created_at >= datetime('now','-30 days') ${notIn}`, ex),
+      active_1d: await one(`SELECT COUNT(*) AS n FROM users WHERE COALESCE(last_active_at, created_at) >= datetime('now','-1 day') ${notIn}`, ex),
+      active_7d: await one(`SELECT COUNT(*) AS n FROM users WHERE COALESCE(last_active_at, created_at) >= datetime('now','-7 days') ${notIn}`, ex),
+      active_30d: await one(`SELECT COUNT(*) AS n FROM users WHERE COALESCE(last_active_at, created_at) >= datetime('now','-30 days') ${notIn}`, ex),
+    };
+
+    const engagement = {
+      accounts_with_saves: await one(`SELECT COUNT(DISTINCT s.user_id) AS n FROM user_saves s JOIN users u ON u.id = s.user_id WHERE 1=1 ${notInU}`, ex),
+      accounts_with_custom_sources: await one(`SELECT COUNT(DISTINCT c.user_id) AS n FROM user_custom_sources c JOIN users u ON u.id = c.user_id WHERE 1=1 ${notInU}`, ex),
+      accounts_with_own_packs: await one(`SELECT COUNT(DISTINCT m.creator_user_id) AS n FROM feed_mixes m JOIN users u ON u.id = m.creator_user_id WHERE m.is_official = 0 ${notInU}`, ex),
+      accounts_following_a_pack: await one(`SELECT COUNT(DISTINCT b.user_id) AS n FROM user_spray_bar b JOIN users u ON u.id = b.user_id WHERE 1=1 ${notInU}`, ex),
+      total_saves: await one(`SELECT COUNT(*) AS n FROM user_saves s JOIN users u ON u.id = s.user_id WHERE 1=1 ${notInU}`, ex),
+    };
+
+    const packs = {
+      // "reader-made" = non-official Packs whose creator is a real reader account
+      // (admin-seeded Packs like Pop Culture have no matching users row).
+      reader_made_total: await one(`SELECT COUNT(*) AS n FROM feed_mixes m JOIN users u ON u.id = m.creator_user_id WHERE m.is_official = 0 ${notInU}`, ex),
+      reader_made_public: await one(`SELECT COUNT(*) AS n FROM feed_mixes m JOIN users u ON u.id = m.creator_user_id WHERE m.is_official = 0 AND m.is_public = 1 ${notInU}`, ex),
+      top_by_follows: await dbAll(
+        `SELECT m.slug, m.name, m.is_official, m.featured, m.clone_count,
+                (SELECT COUNT(*) FROM user_spray_bar b WHERE b.mix_slug = m.slug) AS bar_follows
+         FROM feed_mixes m WHERE m.is_public = 1
+         ORDER BY bar_follows DESC, m.clone_count DESC LIMIT 15`
+      ),
+    };
+
+    const out = { generated_at: new Date().toISOString(), excluded_user_ids: excludeIds, accounts, engagement, packs };
+
+    if (String(req.query.traffic || "") === "1") {
+      out.traffic = {};
+      for (const days of [1, 7]) {
+        const t = {};
+        t.page_views = await one(`SELECT COUNT(*) AS n FROM page_views WHERE ts >= datetime('now','-${days} day')`);
+        t.clicks = await one(`SELECT COUNT(*) AS n FROM clicks WHERE ts >= datetime('now','-${days} day')`);
+        out.traffic[`last_${days}d`] = { page_views: t.page_views, clicks: t.clicks };
+      }
+    }
+    res.json(out);
+  } catch (err) {
+    console.error("[admin/usage]", err);
+    res.status(500).json({ error: "usage query failed", detail: String(err.message || err) });
+  }
+});
+
 // ---------- feed import helpers ----------
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
