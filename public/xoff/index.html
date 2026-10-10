@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>X OFF | SOURCE!</title>
+<title>X OFF</title>
 <meta name="description" content="Until every vote is counted, get your news somewhere other than X, and ask the people running for office to publish it somewhere else too.">
 <meta property="og:title" content="X OFF">
 <meta property="og:description" content="Until every vote is counted, get your news somewhere other than X, and ask the people running for office to publish it somewhere else too.">
@@ -24,10 +24,7 @@ p{margin:0 0 16px}
 <div style="background:#fff;color:#111;font-family:'IBM Plex Sans',Arial,sans-serif;font-size:18px;line-height:1.55">
 <div style="max-width:820px;margin:0 auto;padding:0 24px">
 
-<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;padding:24px 0;border-bottom:1px solid #111">
-<a href="/home/" style="text-decoration:none;font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:28px">SOURCE<span style="color:#FF3E1D">!</span></a>
-<div style="font-size:16px"><a href="/home/" style="text-decoration:none">About the app</a></div>
-</div>
+<div style="padding:24px 0;border-bottom:1px solid #111;font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:28px">X OFF<span style="color:#FF3E1D">.</span></div>
 
 <div style="padding:80px 0 64px">
 <h1 style="margin:0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:clamp(64px,16vw,150px);line-height:.95;letter-spacing:-0.04em">X OFF<span style="color:#FF3E1D">.</span></h1>
@@ -40,18 +37,9 @@ p{margin:0 0 16px}
 
 <div class="sec" id="readers">
 <h2>If you read the news</h2>
-<p>Start your day with something that shows you stories in the order they were published. SOURCE! is a free news reader built on RSS, so the independent outlets and journalists you pick appear newest first, and nothing is boosted because it's controversial.</p>
-<p>Try building a feed of the outlets you would read instead of scrolling X. In SOURCE! it's called an RSS Pack. Feeds start out private, and you can share yours if you want to.</p>
-<div style="display:flex;flex-wrap:wrap;gap:16px;margin:24px 0 32px">
-<a class="btn btn-dark" href="https://apps.apple.com/us/app/source-news-reader/id6814234005">Get it on iPhone and iPad</a>
-<a class="btn btn-line" href="/source/">Open it in your browser</a>
-</div>
-<p style="margin:0 0 8px"><b>On Android?</b> The app is in closed beta, and testers are what let it launch publicly. It takes two minutes:</p>
-<ol style="margin:0;padding-left:24px">
-<li style="margin-bottom:6px"><a href="https://groups.google.com/g/sourcebeta">Join the beta group</a> with the Google account on your phone's Play Store.</li>
-<li style="margin-bottom:6px">Then open the <a href="https://play.google.com/apps/testing/com.newsfor38yearolds.source">Play testing link</a> and tap "Become a tester." Joining the group alone doesn't count.</li>
-<li>Install it from the Play Store and open it once. Please stay opted in for two weeks.</li>
-</ol>
+<p>Pick a few places to start your day that aren't X. Go straight to outlets and journalists you trust, subscribe to a newsletter or two, and follow reporters on Bluesky or Mastodon. If you want everything in one place, any RSS reader will do it. NetNewsWire, Feedly and Inoreader all work, and each one shows stories in the order they were published.</p>
+<p>Keep it up until every vote is counted. Tell a friend you're doing it, and send them this page.</p>
+<button type="button" class="btn btn-line" id="shareBtn">Copy the link to share</button>
 </div>
 
 <div class="sec" id="reps">
@@ -71,12 +59,8 @@ p{margin:0 0 16px}
 </div>
 
 <div style="padding:32px 0 48px;border-top:1px solid #111;display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;font-size:15px;color:#444">
-<div>X OFF is a campaign from SOURCE! by LOLGOP Studios</div>
-<div style="display:flex;flex-wrap:wrap;gap:24px">
-<a href="/home/">About the app</a>
-<a href="https://news-for-38-year-olds.onrender.com/source/privacy.html">Privacy</a>
-<a href="mailto:lolgopstudios@gmail.com">Contact</a>
-</div>
+<div>X OFF was started by LOLGOP Studios and is supported by <a href="/home/">SOURCE!</a></div>
+<div><a href="mailto:lolgopstudios@gmail.com">Contact</a></div>
 </div>
 
 </div>
@@ -94,6 +78,14 @@ p{margin:0 0 16px}
     }
     if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(text).then(done,fallback);}else{fallback();}
   });
+  var sb=document.getElementById('shareBtn');
+  if(sb){sb.addEventListener('click',function(){
+    var url=location.origin+'/xoff/';
+    function done(){sb.textContent='Link copied';setTimeout(function(){sb.textContent='Copy the link to share';},2000);}
+    if(navigator.share){navigator.share({title:'X OFF',url:url}).catch(function(){});}
+    else if(navigator.clipboard&&navigator.clipboard.writeText){navigator.clipboard.writeText(url).then(done,function(){sb.textContent=url;});}
+    else{sb.textContent=url;}
+  });}
 })();
 </script>
 </body>
