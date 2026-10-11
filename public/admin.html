@@ -59,6 +59,8 @@
       <button type="button" onclick="loadUsage(true)">Refresh + traffic</button>
     </div>
     <div class="stat-row" id="usageBoxes"></div>
+    <h3 style="font-family:var(--mono);font-size:12px;">HOMEPAGE HEADLINE TEST (LAST 30 DAYS)</h3>
+    <div id="usageAb" style="font-family:var(--mono);font-size:12px;margin-bottom:14px;"></div>
     <h3 style="font-family:var(--mono);font-size:12px;">PACKS BY FOLLOWS</h3>
     <div id="usagePacks"></div>
     <p id="usageNote" style="font-size:11px;color:#666;"></p>
@@ -314,6 +316,15 @@ async function loadUsage(withTraffic){
       + box(u.traffic.last_1d.clicks,'Outbound clicks, 24h') + box(u.traffic.last_7d.clicks,'Outbound clicks, 7d');
   }
   document.getElementById('usageBoxes').innerHTML = html;
+  const ab = u.home_ab || {a:{}, b:{}};
+  const abRow = (label, d) => {
+    const views = d.view || 0, ios = d.ios_click || 0, and = d.android_click || 0, xo = d.xoff_click || 0;
+    const rate = views ? (((ios + and) / views) * 100).toFixed(1) + '%' : '-';
+    return `<tr><td style="padding:2px 14px 2px 0;">${esc(label)}</td><td style="padding:2px 14px 2px 0;">${esc(views)}</td><td style="padding:2px 14px 2px 0;">${esc(ios)}</td><td style="padding:2px 14px 2px 0;">${esc(and)}</td><td style="padding:2px 14px 2px 0;">${esc(xo)}</td><td>${esc(rate)}</td></tr>`;
+  };
+  document.getElementById('usageAb').innerHTML = '<table><tr style="color:#666;"><td style="padding-right:14px;">Headline</td><td style="padding-right:14px;">New visitors</td><td style="padding-right:14px;">App Store taps</td><td style="padding-right:14px;">Android taps</td><td style="padding-right:14px;">X OFF taps</td><td>App taps / visitors</td></tr>'
+    + abRow('A: News first. Escape the algorithm.', ab.a) + abRow('B: Take Back Your Morning.', ab.b) + '</table>'
+    + '<div style="color:#666;margin-top:6px;">Counts one visit per browser. Small numbers swing wildly; wait for a few hundred visitors on each side before trusting a gap.</div>';
   const maxF = Math.max(1, ...p.top_by_follows.map(t => t.bar_follows));
   document.getElementById('usagePacks').innerHTML = p.top_by_follows.map(t => `
     <div class="bar-row">

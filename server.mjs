@@ -110,6 +110,14 @@ async function initSchema() {
       view_type TEXT NOT NULL,
       ts TEXT NOT NULL DEFAULT (datetime('now'))
     )`,
+    // Homepage headline A/B test: anonymous daily tallies only (no ids, no cookies).
+    `CREATE TABLE IF NOT EXISTS home_ab (
+      variant TEXT NOT NULL,
+      event TEXT NOT NULL,
+      day TEXT NOT NULL,
+      n INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (variant, event, day)
+    )`,
     `CREATE TABLE IF NOT EXISTS tip_clicks (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       dispatch_id INTEGER,
@@ -5462,6 +5470,31 @@ app.post("/api/track-view", async (req, res) => {
   res.json({ ok: true });
 });
 
+// Homepage headline A/B test. Anonymous: stores only variant + event + day + a count.
+const HOME_AB_EVENTS = new Set(["view", "ios_click", "android_click", "xoff_click"]);
+const homeAbHits = new Map(); // ip -> { start, count } (in-memory rate limit, never persisted)
+app.post("/api/home-ab", async (req, res) => {
+  try {
+    const { v, e } = req.body || {};
+    if ((v !== "a" && v !== "b") || !HOME_AB_EVENTS.has(e)) return res.status(400).json({ ok: false });
+    const ip = req.ip || req.headers["x-forwarded-for"] || "unknown";
+    const now = Date.now();
+    const rec = homeAbHits.get(ip);
+    if (!rec || now - rec.start > 60000) homeAbHits.set(ip, { start: now, count: 1 });
+    else if (++rec.count > 20) return res.status(429).json({ ok: false });
+    if (homeAbHits.size > 5000) homeAbHits.clear();
+    await dbRun(
+      `INSERT INTO home_ab (variant, event, day, n) VALUES (?, ?, date('now'), 1)
+       ON CONFLICT(variant, event, day) DO UPDATE SET n = n + 1`,
+      [v, e]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("[home-ab]", err);
+    res.status(500).json({ ok: false });
+  }
+});
+
 app.post("/api/track-tip", async (req, res) => {
   const { dispatch_id, amount } = req.body || {};
   await dbRun(`INSERT INTO tip_clicks (dispatch_id, amount) VALUES (?, ?)`, [dispatch_id || null, amount || 0]);
@@ -5606,6 +5639,11 @@ app.get("/api/admin/usage", requireAdmin, async (req, res) => {
     };
 
     const out = { generated_at: new Date().toISOString(), excluded_user_ids: excludeIds, accounts, engagement, packs };
+
+    // Homepage headline test, last 30 days (variant a = "News first. Escape the algorithm.", b = "Take Back Your Morning.")
+    const abRows = await dbAll(`SELECT variant, event, SUM(n) AS n FROM home_ab WHERE day >= date('now','-30 day') GROUP BY variant, event`);
+    out.home_ab = { a: {}, b: {} };
+    for (const r of abRows) if (out.home_ab[r.variant]) out.home_ab[r.variant][r.event] = r.n;
 
     if (String(req.query.traffic || "") === "1") {
       out.traffic = {};

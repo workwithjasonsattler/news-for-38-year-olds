@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SOURCE! | News first. Escape the algorithm.</title>
-<meta name="description" content="The news app you check first. The best journalism as it’s published, not when a billionaire flings it at you.">
+<meta name="description" content="The news app you check first. The best independent journalism as it’s published, not when a billionaire flings it at you.">
 <meta property="og:title" content="SOURCE! | News first. Escape the algorithm.">
-<meta property="og:description" content="The news app you check first. The best journalism as it’s published, not when a billionaire flings it at you.">
+<meta property="og:description" content="The news app you check first. The best independent journalism as it’s published, not when a billionaire flings it at you.">
 <meta property="og:image" content="https://news-for-38-year-olds.onrender.com/home/og.png">
 <meta name="twitter:card" content="summary_large_image">
 
@@ -35,11 +35,35 @@ a{color:#111}a:hover{color:#FF3E1D}
 
 <div style="padding:96px 0 80px">
 <div style="font-size:14px;letter-spacing:0.12em;text-transform:uppercase;color:#6b6b6b;margin-bottom:20px">A news reader, first draft</div>
-<h1 style="margin:0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:clamp(44px,8vw,96px);line-height:1;letter-spacing:-0.03em">News first.<br>Escape the algorithm<span style="color:#FF3E1D">.</span></h1>
-<p style="max-width:680px;margin:32px 0 0;font-size:26px;line-height:1.4">The news app you check first. The best journalism as it’s published, not when a billionaire flings it at you.</p>
+<h1 id="heroH1" style="margin:0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:clamp(44px,8vw,96px);line-height:1;letter-spacing:-0.03em">News first.<br>Escape the algorithm<span style="color:#FF3E1D">.</span></h1>
+<script>
+(function(){
+  var V;
+  try{V=localStorage.getItem('xo_home_h');if(V!=='a'&&V!=='b'){V=Math.random()<.5?'a':'b';localStorage.setItem('xo_home_h',V);}}
+  catch(e){V=Math.random()<.5?'a':'b';}
+  if(V==='b'){document.getElementById('heroH1').innerHTML='Take Back Your<br>Morning<span style="color:#FF3E1D">.</span>';}
+  function send(ev){
+    try{var k='xo_ab_'+ev;if(localStorage.getItem(k))return;localStorage.setItem(k,'1');}catch(e){}
+    var body=JSON.stringify({v:V,e:ev});
+    try{
+      if(navigator.sendBeacon){navigator.sendBeacon('/api/home-ab',new Blob([body],{type:'application/json'}));}
+      else{fetch('/api/home-ab',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true});}
+    }catch(e){}
+  }
+  send('view');
+  document.addEventListener('click',function(ev){
+    var a=ev.target.closest&&ev.target.closest('a');if(!a)return;
+    var u=a.getAttribute('href')||'';
+    if(u.indexOf('apps.apple.com')>-1)send('ios_click');
+    else if(a.getAttribute('data-ab')==='android'||u.indexOf('groups.google.com')>-1||u.indexOf('play.google.com')>-1)send('android_click');
+    else if(u.indexOf('/xoff/')===0)send('xoff_click');
+  });
+})();
+</script>
+<p style="max-width:680px;margin:32px 0 0;font-size:26px;line-height:1.4">The news app you check first. The best independent journalism as it’s published, not when a billionaire flings it at you.</p>
 <div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:40px">
 <a href="https://apps.apple.com/us/app/source-news-reader/id6814234005" style="background:#111111;color:#ffffff;text-decoration:none;padding:16px 28px;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;min-height:44px;box-sizing:border-box">Get it on iPhone and iPad</a>
-<a href="#get" style="background:#ffffff;color:#111111;text-decoration:none;padding:16px 28px;border:2px solid #111111;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;min-height:44px;box-sizing:border-box">Join the Android beta</a>
+<a href="#get" data-ab="android" style="background:#ffffff;color:#111111;text-decoration:none;padding:16px 28px;border:2px solid #111111;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;min-height:44px;box-sizing:border-box">Join the Android beta</a>
 </div>
 </div>
 
