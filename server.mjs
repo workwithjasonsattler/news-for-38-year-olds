@@ -1007,6 +1007,61 @@ const RETIRED_POP_CULTURE_OUTLETS = [
 ];
 const RETIRED_POP_CULTURE_PACK_SLUGS = ["college-sports"];
 
+// "Public Media Around the World" — the basic-news pack offered in
+// SOURCE!'s "Customize a bit" onboarding. Public/non-profit broadcasters
+// only (no state-run outlets). wire_eligible=0 on every NEW feed row so
+// these never leak into the shared political wire (same lesson as the
+// Pop Culture Packs). Existing registry rows with the same outlet name or
+// feed_url (e.g. NPR, PBS) are reused untouched. Idempotent.
+const PUBLIC_MEDIA_PACK = {
+  name: "Public Media Around the World",
+  outlets: [
+    { outlet: "BBC News", feed_url: "https://feeds.bbci.co.uk/news/world/rss.xml" },
+    { outlet: "NPR News", feed_url: "https://feeds.npr.org/1004/rss.xml" },
+    { outlet: "PBS NewsHour", feed_url: "https://www.pbs.org/newshour/feeds/rss/headlines" },
+    { outlet: "Deutsche Welle", feed_url: "https://rss.dw.com/xml/rss-en-all" },
+    { outlet: "ABC News Australia", feed_url: "https://www.abc.net.au/news/feed/51120/rss.xml" },
+    { outlet: "CBC News", feed_url: "https://www.cbc.ca/webfeed/rss/rss-world" },
+    { outlet: "RNZ", feed_url: "https://www.rnz.co.nz/rss/world.xml" },
+    { outlet: "France 24", feed_url: "https://www.france24.com/en/rss" },
+  ],
+};
+
+async function seedPublicMediaPack() {
+  const existingFeeds = await dbAll(`SELECT id, outlet, feed_url FROM feeds`);
+  const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
+  const byFeedUrl = new Map(existingFeeds.filter(f => f.feed_url).map(f => [f.feed_url.trim(), f]));
+  const resolved = [];
+  for (const o of PUBLIC_MEDIA_PACK.outlets) {
+    let match = byOutletLower.get(o.outlet.toLowerCase()) || byFeedUrl.get(o.feed_url.trim());
+    if (!match) {
+      const info = await dbRun(
+        `INSERT INTO feeds (outlet, default_author, feed_url, tip_url, subscribe_url, fallback_beat, beat_keywords, items_per_feed, bluesky_handle, feed_type, youtube_channel_id, submission_status, is_corporate, parent_company, wire_eligible)
+         VALUES (?, '', ?, '', '', 'World', '{}', 3, '', 'outlet', NULL, 'approved', 0, NULL, 0)`,
+        [o.outlet, o.feed_url]
+      );
+      match = { id: info.lastInsertRowid, outlet: o.outlet, feed_url: o.feed_url };
+      byOutletLower.set(o.outlet.toLowerCase(), match);
+      byFeedUrl.set(o.feed_url.trim(), match);
+    }
+    resolved.push(match.outlet);
+  }
+  const slug = slugify(PUBLIC_MEDIA_PACK.name);
+  const existing = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ?`, [slug]);
+  if (existing) return;
+  const info = await dbRun(
+    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, is_official, auto_sync)
+     VALUES (?, ?, 0, NULL, 1, 1, 0)`,
+    [slug, PUBLIC_MEDIA_PACK.name]
+  );
+  for (let i = 0; i < resolved.length; i++) {
+    await dbRun(
+      `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, 'admin_outlet', ?, NULL, ?)`,
+      [info.lastInsertRowid, resolved[i], i]
+    );
+  }
+}
+
 async function seedPopCulturePacks() {
   const existingFeeds = await dbAll(`SELECT id, outlet, feed_url, fallback_beat, is_corporate, parent_company FROM feeds`);
   const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
@@ -6229,6 +6284,7 @@ async function start() {
       // the Pack should see everything in it.
       await step("seedPopCulturePacks", seedPopCulturePacks);
       await step("seedProgressivePodcasts", seedProgressivePodcasts);
+      await step("seedPublicMediaPack", seedPublicMediaPack);
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Same "kick shortly after boot, not just on the interval" pattern as
       // the Bluesky bot below — a fresh deploy shouldn't have to wait up to

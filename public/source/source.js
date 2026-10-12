@@ -39,6 +39,9 @@
       const data = await api("/api/me");
       currentUser = (data && data.user) || null;
     } catch (e) { currentUser = null; }
+    if (currentUser && localStorage.getItem("source_onboarding_pending")) {
+      setTimeout(() => { applyPendingOnboarding(); }, 0);
+    }
     return currentUser;
   }
 
@@ -4267,11 +4270,13 @@
       <div class="ob-rule"></div>
       <h1>Take Back Your Morning</h1>
       <button class="ob-btn" id="obStart">Just dig in</button>
-      <button class="ob-btn secondary" id="obOwn">Pick my own sources</button>
+      <button class="ob-btn secondary" id="obCustom">Customize a bit<span class="ob-btn-sub">Pick a few packs and a view. Under a minute.</span></button>
+      <button class="ob-btn secondary" id="obOwn">Nerd out<span class="ob-btn-sub">Go straight to Sources and build it yourself.</span></button>
       <a href="#" class="ob-whats-this" id="obWhatsThis">What's this?</a>
     `;
     document.body.appendChild(el);
     document.getElementById("obStart").addEventListener("click", () => dismissOnboarding("read"));
+    document.getElementById("obCustom").addEventListener("click", () => startCustomizeFlow());
     document.getElementById("obOwn").addEventListener("click", () => dismissOnboarding("sources"));
     document.getElementById("obWhatsThis").addEventListener("click", (e) => {
       e.preventDefault();
@@ -4295,6 +4300,150 @@
     `;
     el.appendChild(panel);
     document.getElementById("obWhatsThisClose").addEventListener("click", () => panel.remove());
+  }
+
+
+  // ---------------------------------------------------------------
+  // "Customize a bit" onboarding. Four short steps: packs -> view ->
+  // publications you support (optional, private unless the reader opts
+  // in) -> save. Choices are HELD ON THE DEVICE (ONBOARD_PENDING_KEY)
+  // until the reader is signed in, then applied once by
+  // applyPendingOnboarding() (called from refreshSession). The view is
+  // purely local so it applies immediately.
+  // ---------------------------------------------------------------
+  const ONBOARD_PENDING_KEY = "source_onboarding_pending";
+  const SUPPORT_PACK_NAME = "Publications I Support";
+  const PUBLIC_MEDIA_SLUG = "public-media-around-the-world";
+  const OB_VIEWS = [
+    { key: "headlines", label: "Headlines only", sub: "A tight list. The most stories per screen." },
+    { key: "expanded", label: "Expanded", sub: "Headline plus a short excerpt." },
+    { key: "scroll", label: "Scroll", sub: "Big images, full excerpts, one story at a time." },
+  ];
+
+  function readPendingOnboarding() {
+    try { return JSON.parse(localStorage.getItem(ONBOARD_PENDING_KEY) || "null"); } catch (e) { return null; }
+  }
+
+  async function applyPendingOnboarding() {
+    const pending = readPendingOnboarding();
+    if (!pending || !currentUser) return;
+    localStorage.removeItem(ONBOARD_PENDING_KEY); // clear first so a failure can't double-apply
+    let failed = 0;
+    for (const slug of pending.packs || []) {
+      try { await api("/api/my/spray-bar/add", { method: "POST", body: JSON.stringify({ slug }) }); }
+      catch (e) { failed++; }
+    }
+    if ((pending.supported || []).length) {
+      try {
+        const sources = pending.supported.map(outlet => ({ source_type: "admin_outlet", outlet }));
+        const mix = await api("/api/mixes", { method: "POST", body: JSON.stringify({ name: SUPPORT_PACK_NAME, is_public: !!pending.supportPublic, sources }) });
+        await api("/api/my/spray-bar/add", { method: "POST", body: JSON.stringify({ slug: mix.slug }) });
+      } catch (e) { failed++; }
+    }
+    try { await loadSprayBar(true); await loadMyMixes(true); } catch (e) { /* fail soft */ }
+    if (activeTab === "read") renderRead();
+    toast(failed ? "Saved most of your setup. A few items didn't go through." : "Your setup is saved.");
+  }
+
+  async function startCustomizeFlow() {
+    const el = document.getElementById("onboarding");
+    if (!el) return;
+    const st = { step: 1, packs: new Set(), packList: [], view: getReadDisplay(), supported: new Set(), supportPublic: false, registry: [], filter: "" };
+    el.classList.add("ob-scroll");
+    el.innerHTML = `<div class="ob-wordmark">SOURCE!</div><div class="ob-rule"></div><p>Loading…</p>`;
+    try {
+      const [official, publicList, registry] = await Promise.all([
+        api("/api/mixes/official").catch(() => []),
+        api("/api/mixes").catch(() => []),
+        api("/api/sources").catch(() => []),
+      ]);
+      const seen = new Set();
+      st.packList = [...official, ...(publicList || []).slice(0, 6)].filter(m => m && !seen.has(m.slug) && seen.add(m.slug));
+      st.registry = (Array.isArray(registry) ? registry : []).filter(r => r.feed_type !== "journalist").sort((a, b) => (a.outlet || "").localeCompare(b.outlet || ""));
+      st.packList.forEach(m => { if (m.auto_sync || m.slug === PUBLIC_MEDIA_SLUG) st.packs.add(m.slug); });
+    } catch (e) { /* fall through with whatever loaded */ }
+    renderObStep(st);
+  }
+
+  function obChoice(label, sub, on, attr) {
+    return `<button type="button" class="ob-choice${on ? " on" : ""}" ${attr} aria-pressed="${on ? "true" : "false"}"><span class="ob-choice-label">${escapeHtml(label)}</span>${sub ? `<span class="ob-btn-sub">${escapeHtml(sub)}</span>` : ""}</button>`;
+  }
+
+  function renderObStep(st) {
+    const el = document.getElementById("onboarding");
+    if (!el) return;
+    const head = `<div class="ob-wordmark">SOURCE!</div><div class="ob-rule"></div><div class="ob-step">Step ${st.step} of 4</div>`;
+    let body = "";
+    if (st.step === 1) {
+      body = `<h1>Pick a few packs to start</h1>
+        <p>A pack is a bundle of outlets. Public media around the world is the basic news one. Change any of this later.</p>
+        ${st.packList.map(m => obChoice(sprayDisplayName(m.slug, m.name), m.slug === PUBLIC_MEDIA_SLUG ? "BBC, NPR, PBS, DW and other public broadcasters" : (m.auto_sync ? "The best of the independent web, in order" : ""), st.packs.has(m.slug), `data-pack="${escapeHtml(m.slug)}"`)).join("")}
+        <button class="ob-btn" id="obNext">Next</button>`;
+    } else if (st.step === 2) {
+      body = `<h1>How do you want to read?</h1>
+        <p>Every view is sorted by time, newest first.</p>
+        ${OB_VIEWS.map(v => obChoice(v.label, v.sub, st.view === v.key, `data-view="${v.key}"`)).join("")}
+        <button class="ob-btn" id="obNext">Next</button>`;
+    } else if (st.step === 3) {
+      const f = st.filter.trim().toLowerCase();
+      const rows = st.registry.filter(r => !f || (r.outlet || "").toLowerCase().includes(f)).slice(0, 60);
+      body = `<h1>Which publications do you support?</h1>
+        <p>Optional. Pick the outlets you pay for or want to back. We'll turn them into your first pack. It stays private unless you choose to share it.</p>
+        <input type="search" class="ob-search" id="obFilter" placeholder="Search outlets" value="${escapeHtml(st.filter)}" autocomplete="off">
+        <div class="ob-list">${rows.map(r => obChoice(r.outlet, "", st.supported.has(r.outlet), `data-outlet="${escapeHtml(r.outlet)}"`)).join("") || `<p>No matches.</p>`}</div>
+        <label class="ob-share"><input type="checkbox" id="obPublic" ${st.supportPublic ? "checked" : ""}> Share this list publicly so friends can follow it. Off by default.</label>
+        <button class="ob-btn" id="obNext">${st.supported.size ? "Next" : "Skip for now"}</button>`;
+    } else {
+      body = `<h1>${currentUser ? "All set" : "Save your setup"}</h1>
+        <p>${currentUser ? "Your picks will be applied now." : "Sign in with your email and we'll apply your picks. Until then they stay on this device."}</p>
+        <button class="ob-btn" id="obFinish">${currentUser ? "Start reading" : "Sign in to save"}</button>
+        ${currentUser ? "" : `<button class="ob-btn secondary" id="obLater">Not now</button>`}`;
+    }
+    el.innerHTML = head + body;
+    const next = document.getElementById("obNext");
+    if (next) next.addEventListener("click", () => { st.step++; renderObStep(st); el.scrollTop = 0; });
+    el.querySelectorAll("[data-pack]").forEach(b => b.addEventListener("click", () => {
+      const slug = b.getAttribute("data-pack");
+      st.packs.has(slug) ? st.packs.delete(slug) : st.packs.add(slug);
+      b.classList.toggle("on"); b.setAttribute("aria-pressed", st.packs.has(slug));
+    }));
+    el.querySelectorAll("[data-view]").forEach(b => b.addEventListener("click", () => {
+      st.view = b.getAttribute("data-view");
+      renderObStep(st);
+    }));
+    el.querySelectorAll("[data-outlet]").forEach(b => b.addEventListener("click", () => {
+      const o = b.getAttribute("data-outlet");
+      st.supported.has(o) ? st.supported.delete(o) : st.supported.add(o);
+      b.classList.toggle("on"); b.setAttribute("aria-pressed", st.supported.has(o));
+      const n = document.getElementById("obNext"); if (n) n.textContent = st.supported.size ? "Next" : "Skip for now";
+    }));
+    const filter = document.getElementById("obFilter");
+    if (filter) filter.addEventListener("input", () => {
+      st.filter = filter.value;
+      const list = el.querySelector(".ob-list");
+      const f = st.filter.trim().toLowerCase();
+      const rows = st.registry.filter(r => !f || (r.outlet || "").toLowerCase().includes(f)).slice(0, 60);
+      list.innerHTML = rows.map(r => obChoice(r.outlet, "", st.supported.has(r.outlet), `data-outlet="${escapeHtml(r.outlet)}"`)).join("") || `<p>No matches.</p>`;
+      list.querySelectorAll("[data-outlet]").forEach(b => b.addEventListener("click", () => {
+        const o = b.getAttribute("data-outlet");
+        st.supported.has(o) ? st.supported.delete(o) : st.supported.add(o);
+        b.classList.toggle("on"); b.setAttribute("aria-pressed", st.supported.has(o));
+        const n = document.getElementById("obNext"); if (n) n.textContent = st.supported.size ? "Next" : "Skip for now";
+      }));
+    });
+    const pub = document.getElementById("obPublic");
+    if (pub) pub.addEventListener("change", () => { st.supportPublic = pub.checked; });
+    const finish = (goSignIn) => {
+      localStorage.setItem(ONBOARD_PENDING_KEY, JSON.stringify({ packs: [...st.packs], supported: [...st.supported], supportPublic: st.supportPublic }));
+      localStorage.setItem(READ_DISPLAY_KEY, st.view);
+      el.classList.remove("ob-scroll");
+      dismissOnboarding(goSignIn ? "you" : "read");
+      if (currentUser) applyPendingOnboarding();
+    };
+    const fin = document.getElementById("obFinish");
+    if (fin) fin.addEventListener("click", () => finish(!currentUser));
+    const later = document.getElementById("obLater");
+    if (later) later.addEventListener("click", () => finish(false));
   }
 
   function dismissOnboarding(landOnTab) {

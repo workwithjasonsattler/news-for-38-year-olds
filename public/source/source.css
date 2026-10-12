@@ -2944,3 +2944,14 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .get-app-link { color: var(--follow); font-weight:500; text-decoration:none; }
 .get-app-link:hover { text-decoration:underline; }
 .get-app-x { background:none; border:0; color:var(--ink-muted); font-size:20px; line-height:1; padding:2px 6px; cursor:pointer; }
+
+
+/* Onboarding "Customize a bit" steps */
+.onboarding.ob-scroll { justify-content: flex-start; overflow-y: auto; -webkit-overflow-scrolling: touch; }
+.onboarding .ob-step { font-family: var(--body); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-muted); margin-bottom: 10px; }
+.ob-choice { display: block; width: 100%; text-align: left; font-family: var(--body); font-size: 15px; font-weight: 600; padding: 13px 14px; margin-bottom: 8px; border: 1.5px solid var(--line); background: transparent; color: var(--ink); border-radius: 10px; }
+.ob-choice.on { border-color: var(--ink); background: var(--surface); box-shadow: inset 3px 0 0 var(--accent); }
+.ob-search { width: 100%; box-sizing: border-box; font-family: var(--body); font-size: 16px; padding: 12px 14px; margin-bottom: 10px; border: 1.5px solid var(--line); border-radius: 10px; background: var(--bg); color: var(--ink); }
+.ob-list { max-height: 38vh; overflow-y: auto; margin-bottom: 12px; }
+.ob-share { display: flex; gap: 10px; align-items: flex-start; font-family: var(--body); font-size: 13.5px; line-height: 1.4; color: var(--ink-muted); margin: 6px 0 18px; }
+.ob-share input { margin-top: 3px; }
