@@ -600,7 +600,10 @@
     function reveal() {
       const el = document.activeElement;
       if (!isField(el)) return;
-      try { el.scrollIntoView({ block: "center" }); } catch (e) { /* ignore */ }
+      // A field can name its submit button (data-reveal-next) so the
+      // button, not just the field, ends up above the keyboard.
+      const next = el.dataset && el.dataset.revealNext ? document.getElementById(el.dataset.revealNext) : null;
+      try { (next || el).scrollIntoView({ block: next ? "end" : "center" }); } catch (e) { /* ignore */ }
     }
     document.addEventListener("focusin", (e) => {
       if (!isField(e.target)) return;
@@ -3912,7 +3915,7 @@
         <div class="card">
           <div class="card-meta"><span>ACCESS</span></div>
           <div class="card-title" style="margin-bottom:10px;">Sign in to save your RSS Packs across devices.</div>
-          <input id="youEmail" type="email" placeholder="you@domain.com"
+          <input id="youEmail" type="email" placeholder="you@domain.com" enterkeyhint="send" autocomplete="email" autocapitalize="none" autocorrect="off" data-reveal-next="youSendLink"
             style="width:100%; padding:9px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--body); margin-bottom:8px; border-radius:8px;">
           <button class="btn primary" id="youSendLink">SEND ME A SIGN-IN CODE</button>
           ${isStandaloneApp() ? `<p style="font-size:12.5px; color: var(--ink-muted); margin-top:10px;">Heads up: on an installed/Home-Screen app, the sign-in link opens in your regular browser, not this app — you'll need to sign in there for now. We're working on fixing this for the installed app.</p>` : ""}
@@ -3935,7 +3938,7 @@
           <div class="card-meta"><span>CHECK YOUR EMAIL</span></div>
           <div class="card-title" style="margin-bottom:6px;">Enter the 6-digit code we sent to ${escapeHtml(email)}.</div>
           <input id="youCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
-            autocomplete="one-time-code" placeholder="123456" aria-label="6-digit sign-in code"
+            autocomplete="one-time-code" enterkeyhint="go" data-reveal-next="youVerifyCode" placeholder="123456" aria-label="6-digit sign-in code"
             style="width:100%; padding:10px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--display); font-size:24px; letter-spacing:6px; text-align:center; margin:8px 0; border-radius:8px;">
           <button class="btn primary" id="youVerifyCode" disabled>SIGN IN</button>
           <p id="youCodeMsg" style="font-size:13px; color: var(--ink-muted); margin:10px 0 0;" aria-live="polite">
@@ -4014,6 +4017,7 @@
         document.getElementById("youChangeEmail").addEventListener("click", () => renderYou());
         codeInput.focus();
       }
+      emailInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendBtn.click(); } });
       sendBtn.addEventListener("click", async () => {
         const email = emailInput.value.trim();
         if (!email) return;
