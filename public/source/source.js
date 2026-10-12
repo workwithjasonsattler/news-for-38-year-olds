@@ -225,7 +225,12 @@
     // persists that the moment a reader is on Mobile layout, same as it
     // already does for anyone who explicitly picked Classic and then
     // opened the app on a phone.
-    return localStorage.getItem(READ_DISPLAY_KEY) || "classic";
+    // Default by layout: phones open in Headlines Only (the dense,
+    // Google-Reader-style RSS list); desktop keeps Classic. An explicit
+    // pick in the VIEW menu always wins.
+    const saved = localStorage.getItem(READ_DISPLAY_KEY);
+    if (saved) return saved;
+    return getLayoutMode() === "desktop" ? "classic" : "headlines";
   }
 
   function setReadDisplay(mode) {
@@ -350,8 +355,8 @@
   // disabled state.
   function tipSubscribeInfo(d) {
     const outlet = (d.outlet || d.source || "").trim();
-    if (d.tip_url) return { url: d.tip_url, label: outlet ? `Tip ${outlet}` : "Tip the reporter" };
-    if (d.subscribe_url) return { url: d.subscribe_url, label: outlet ? `Subscribe to ${outlet}` : "Subscribe" };
+    if (d.tip_url) return { url: d.tip_url, label: outlet ? `Support ${outlet}` : "Support" };
+    if (d.subscribe_url) return { url: d.subscribe_url, label: outlet ? `Support ${outlet}` : "Support" };
     return null;
   }
 

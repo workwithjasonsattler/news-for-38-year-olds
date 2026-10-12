@@ -3045,8 +3045,7 @@ function buildLinkFacet(fullText, displayText, href) {
 // get real clickable facets, not just plain text — a post built via the
 // API doesn't get Bluesky's own client-side auto-link-detection.
 //
-// The tip/subscribe line shows a short label ("Tip your reporter →" /
-// "Subscribe →"), NOT the raw tip_url/subscribe_url — those URLs often
+// The tip/subscribe line shows a short label ("Support →"), NOT the raw tip_url/subscribe_url — those URLs often
 // carry campaign/UTM tracking params and can run 80-150+ characters.
 // Showing them literally ate most of the char budget before the headline
 // ever got a turn, which is exactly what was truncating headlines down to
@@ -3061,10 +3060,10 @@ function buildBlueskyPostRecord(story) {
   let tipUrl = null;
   if (story.tip_url) {
     tipUrl = story.tip_url;
-    tipLabel = "Tip your reporter →";
+    tipLabel = "Support →";
   } else if (story.subscribe_url) {
     tipUrl = story.subscribe_url;
-    tipLabel = "Subscribe →";
+    tipLabel = "Support →";
   }
 
   const suffixParts = [outlet, link];
