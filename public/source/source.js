@@ -104,6 +104,41 @@
     return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
   }
 
+  // ---------------------------------------------------------------
+  // "Get the app" strip. Web visitors only: hidden inside the native app
+  // and the installed home-screen app, and after a dismissal. iPhone
+  // Safari already gets Apple's own Smart App Banner from the
+  // apple-itunes-app meta tag, so the strip stays out of its way there.
+  // ---------------------------------------------------------------
+  function initGetAppStrip() {
+    const el = document.getElementById("getAppStrip");
+    if (!el) return;
+    if (isNativeApp() || isStandaloneApp()) return;
+    try { if (localStorage.getItem("sourceGetAppDismissed") === "1") return; } catch (e) { /* storage blocked: just show it */ }
+    const ua = navigator.userAgent || "";
+    const isIOS = /iPhone|iPad|iPod/.test(ua);
+    const isIOSSafari = isIOS && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+    if (isIOSSafari) return;
+    let href, label;
+    if (isIOS) {
+      href = "https://apps.apple.com/us/app/source-news-reader/id6814234005";
+      label = "Get the app";
+    } else if (/Android/.test(ua)) {
+      href = "/home/#get";
+      label = "Join the Android beta";
+    } else {
+      href = "/home/#get";
+      label = "Get the app";
+    }
+    el.innerHTML = `<a class="get-app-link" href="${href}" ${href.startsWith("http") ? 'target="_blank" rel="noopener"' : ""}>${label} &rarr;</a>` +
+      `<button type="button" class="get-app-x" aria-label="Dismiss">&times;</button>`;
+    el.hidden = false;
+    el.querySelector(".get-app-x").addEventListener("click", () => {
+      el.hidden = true;
+      try { localStorage.setItem("sourceGetAppDismissed", "1"); } catch (e) { /* ignore */ }
+    });
+  }
+
   function setupInAppBrowserLinkHandling() {
     document.addEventListener("click", (e) => {
       if (!isNativeApp()) return; // plain web/PWA: leave target="_blank" behavior untouched
@@ -4585,6 +4620,7 @@
     });
 
     initSearch();
+    initGetAppStrip();
 
     const refreshBtn = document.getElementById("refreshBtn");
     if (refreshBtn) {

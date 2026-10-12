@@ -2937,3 +2937,10 @@ body[data-layout="desktop"] #main.read-columns {
 /* Hide the fixed bottom tab bar while the soft keyboard is open (mobile
    layout only) so it never covers or floats over a focused field. */
 body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
+
+/* "Get the app" strip: one quiet line under the header, web visitors only */
+.get-app-strip { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:6px 16px; border-bottom:1px solid var(--line); background:var(--bg); font-size:13px; }
+.get-app-strip[hidden] { display:none; }
+.get-app-link { color: var(--follow); font-weight:500; text-decoration:none; }
+.get-app-link:hover { text-decoration:underline; }
+.get-app-x { background:none; border:0; color:var(--ink-muted); font-size:20px; line-height:1; padding:2px 6px; cursor:pointer; }
