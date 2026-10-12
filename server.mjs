@@ -1369,7 +1369,13 @@ app.get("/.well-known/assetlinks.json", (req, res) => {
         namespace: "android_app",
         package_name: "com.newsfor38yearolds.source",
         sha256_cert_fingerprints: [
-          // Release keystore (SOURCE.jks, alias key0) — real Play Store builds.
+          // Play app signing key (Play Console > Protected with Play > Play
+          // app signing > App signing key certificate). This is the key
+          // phones actually see on apps installed from the Play Store, so
+          // it is the one Android App Links verification checks.
+          "C8:3C:AA:89:80:B4:C2:09:93:9C:A7:95:4B:8C:81:8D:8E:79:D0:DC:77:81:03:23:DA:8C:61:6E:72:1D:D1:08",
+          // Upload key (SOURCE.jks, alias key0) — what we sign bundles with
+          // before uploading; kept for builds installed signed with it.
           "FC:66:6D:B8:22:2F:D9:37:21:A2:F6:96:D8:5B:BD:33:12:F8:EA:32:23:23:38:FA:14:A6:91:6A:9F:93:21:37",
           // Debug keystore (~/.android/debug.keystore) — Android Studio's
           // Run/Debug button signs with this by default, so it's needed
