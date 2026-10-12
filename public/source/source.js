@@ -3914,26 +3914,116 @@
           <div class="card-title" style="margin-bottom:10px;">Sign in to save your RSS Packs across devices.</div>
           <input id="youEmail" type="email" placeholder="you@domain.com"
             style="width:100%; padding:9px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--body); margin-bottom:8px; border-radius:8px;">
-          <button class="btn primary" id="youSendLink">SEND ACCESS LINK</button>
+          <button class="btn primary" id="youSendLink">SEND ME A SIGN-IN CODE</button>
           ${isStandaloneApp() ? `<p style="font-size:12.5px; color: var(--ink-muted); margin-top:10px;">Heads up: on an installed/Home-Screen app, the sign-in link opens in your regular browser, not this app — you'll need to sign in there for now. We're working on fixing this for the installed app.</p>` : ""}
         </div>
         <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:14px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>
         <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; margin-top:6px; font-size:13px; color: var(--ink-muted);">Support</a>
         </div>`;
-      document.getElementById("youSendLink").addEventListener("click", async () => {
-        const email = document.getElementById("youEmail").value.trim();
+      const sendBtn = document.getElementById("youSendLink");
+      const emailInput = document.getElementById("youEmail");
+      // Step 1: request. Step 2 (showCodeStep): type the emailed 6-digit
+      // code. The emailed link still works as the fallback, so the second
+      // step also says so.
+      async function requestCode(email) {
+        const data = await api("/api/auth/request-link", { method: "POST", body: JSON.stringify({ email, client: "source" }) });
+        return data;
+      }
+      function showCodeStep(email) {
+        const card = sendBtn.closest(".card");
+        card.innerHTML = `
+          <div class="card-meta"><span>CHECK YOUR EMAIL</span></div>
+          <div class="card-title" style="margin-bottom:6px;">Enter the 6-digit code we sent to ${escapeHtml(email)}.</div>
+          <input id="youCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+            autocomplete="one-time-code" placeholder="123456" aria-label="6-digit sign-in code"
+            style="width:100%; padding:10px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--display); font-size:24px; letter-spacing:6px; text-align:center; margin:8px 0; border-radius:8px;">
+          <button class="btn primary" id="youVerifyCode" disabled>SIGN IN</button>
+          <p id="youCodeMsg" style="font-size:13px; color: var(--ink-muted); margin:10px 0 0;" aria-live="polite">
+            Or tap the link in the same email. It can take a minute, and it may land in spam.
+          </p>
+          <div style="display:flex; gap:14px; margin-top:12px; font-size:13px;">
+            <button class="btn" id="youResend" style="padding:6px 10px;" disabled>Resend code</button>
+            <button class="btn" id="youChangeEmail" style="padding:6px 10px;">Use a different email</button>
+          </div>`;
+        const codeInput = document.getElementById("youCode");
+        const verifyBtn = document.getElementById("youVerifyCode");
+        const resendBtn = document.getElementById("youResend");
+        const msg = document.getElementById("youCodeMsg");
+        let verifying = false;
+
+        let cooldown = 30;
+        const tick = setInterval(() => {
+          if (!document.body.contains(resendBtn)) { clearInterval(tick); return; }
+          cooldown -= 1;
+          if (cooldown <= 0) { resendBtn.disabled = false; resendBtn.textContent = "Resend code"; clearInterval(tick); }
+          else resendBtn.textContent = `Resend code (${cooldown}s)`;
+        }, 1000);
+        resendBtn.textContent = "Resend code (30s)";
+
+        async function submitCode() {
+          if (verifying) return;
+          const code = codeInput.value.replace(/\D/g, "");
+          if (code.length !== 6) return;
+          verifying = true;
+          verifyBtn.disabled = true;
+          verifyBtn.textContent = "CHECKING...";
+          try {
+            const data = await api("/api/auth/verify-code", { method: "POST", body: JSON.stringify({ email, code }) });
+            if (data && data.token) setToken(data.token);
+            await refreshSession();
+            renderActiveTab();
+            renderDesktopSidePanel();
+            toast(currentUser ? `Signed in as ${currentUser.email}` : "Signed in.");
+          } catch (e) {
+            verifying = false;
+            verifyBtn.textContent = "SIGN IN";
+            verifyBtn.disabled = codeInput.value.replace(/\D/g, "").length !== 6;
+            msg.style.color = "var(--alert)";
+            msg.textContent = e.message || "That code didn't work.";
+            codeInput.select();
+          }
+        }
+        codeInput.addEventListener("input", () => {
+          codeInput.value = codeInput.value.replace(/\D/g, "").slice(0, 6);
+          verifyBtn.disabled = codeInput.value.length !== 6;
+          // Autofill from the keyboard's one-time-code suggestion lands all
+          // six digits at once: submit without another tap.
+          if (codeInput.value.length === 6) submitCode();
+        });
+        codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submitCode(); });
+        verifyBtn.addEventListener("click", submitCode);
+        resendBtn.addEventListener("click", async () => {
+          resendBtn.disabled = true;
+          try {
+            await requestCode(email);
+            msg.style.color = "var(--ink-muted)";
+            msg.textContent = "New code sent. Only the newest one works.";
+            cooldown = 30; resendBtn.textContent = "Resend code (30s)";
+            const t2 = setInterval(() => {
+              if (!document.body.contains(resendBtn)) { clearInterval(t2); return; }
+              cooldown -= 1;
+              if (cooldown <= 0) { resendBtn.disabled = false; resendBtn.textContent = "Resend code"; clearInterval(t2); }
+              else resendBtn.textContent = `Resend code (${cooldown}s)`;
+            }, 1000);
+          } catch (e) {
+            msg.style.color = "var(--alert)";
+            msg.textContent = e.message || "Couldn't resend. Try again in a moment.";
+            resendBtn.disabled = false;
+          }
+        });
+        document.getElementById("youChangeEmail").addEventListener("click", () => renderYou());
+        codeInput.focus();
+      }
+      sendBtn.addEventListener("click", async () => {
+        const email = emailInput.value.trim();
         if (!email) return;
-        const sendBtn = document.getElementById("youSendLink");
-        const emailInput = document.getElementById("youEmail");
         try {
           sendBtn.disabled = true;
           sendBtn.textContent = "SENDING...";
-          await api("/api/auth/request-link", { method: "POST", body: JSON.stringify({ email, client: "source" }) });
+          const data = await requestCode(email);
+          if (data && data.code) { showCodeStep(email); return; }
+          // Fallback (server without code support): the old link-only confirmation.
           toast("Access link sent!");
-          // A 2.6s toast disappearing left the screen looking exactly like
-          // nothing had happened (same empty form, same button) — readers
-          // couldn't tell whether the send actually worked. Swap in a
-          // persistent confirmation instead of relying on the toast alone.
           emailInput.disabled = true;
           sendBtn.textContent = "LINK SENT ✓";
           const confirmMsg = document.createElement("p");
@@ -3942,7 +4032,7 @@
           sendBtn.insertAdjacentElement("afterend", confirmMsg);
         } catch (e) {
           sendBtn.disabled = false;
-          sendBtn.textContent = "SEND ACCESS LINK";
+          sendBtn.textContent = "SEND ME A SIGN-IN CODE";
           toast(e.message || "Could not send link.");
         }
       });

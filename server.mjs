@@ -10,7 +10,7 @@ import { XMLParser } from "fast-xml-parser";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes, timingSafeEqual } from "node:crypto";
+import { randomBytes, randomInt, createHash, timingSafeEqual } from "node:crypto";
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import sanitizeHtml from "sanitize-html";
@@ -396,6 +396,12 @@ async function initSchema() {
     `ALTER TABLE feed_mixes ADD COLUMN featured_order INTEGER`,
     `ALTER TABLE topics ADD COLUMN category TEXT`,
     `ALTER TABLE users ADD COLUMN last_active_at TEXT`,
+    // Emailed 6-digit sign-in code (Oct 2026), stored HASHED alongside the
+    // magic-link token on the same login_tokens row. code_expires_at is a
+    // shorter window than the link (10 min vs 15); attempts caps guessing.
+    `ALTER TABLE login_tokens ADD COLUMN code_hash TEXT`,
+    `ALTER TABLE login_tokens ADD COLUMN code_expires_at TEXT`,
+    `ALTER TABLE login_tokens ADD COLUMN attempts INTEGER NOT NULL DEFAULT 0`,
     // is_corporate/parent_company: an admin-curated transparency marker
     // ("no algorithm you can't see" extends to ownership, not just
     // ordering) — shown as a small marker next to an outlet's name
@@ -1426,10 +1432,10 @@ function clearSessionCookie(res) {
 // SOURCE! sign-ins — same verified sending ADDRESS either way (parsed out of
 // RESEND_FROM), just a different display name and copy, since Resend only
 // has the one domain verified and N38YO/SOURCE! share that infrastructure.
-async function sendMagicLink(email, link, client) {
+async function sendMagicLink(email, link, client, code) {
   const apiKey = process.env.RESEND_API_KEY;
   if (!apiKey) {
-    console.log(`[dev] Magic sign-in link for ${email}: ${link}`);
+    console.log(`[dev] Magic sign-in link for ${email}: ${link}${code ? ` (code ${code})` : ""}`);
     return;
   }
   const defaultFrom = process.env.RESEND_FROM || "News for 38 Year Olds <login@newsfor38yearolds.com>";
@@ -1437,21 +1443,23 @@ async function sendMagicLink(email, link, client) {
   const sendingAddress = addressMatch ? addressMatch[1] : defaultFrom;
   const from = client === "source" ? `SOURCE! <${sendingAddress}>` : defaultFrom;
   const productName = client === "source" ? "SOURCE!" : "News for 38 Year Olds";
+  // With a code, the code leads (subject + body) so it can be read from the
+  // notification and typed; the link stays as the fallback. Without one
+  // (N38YO and other callers), the email is exactly what it always was.
+  const subject = code ? `${code} is your ${productName} sign-in code` : "Your sign-in link";
+  const text = code
+    ? `Your ${productName} sign-in code is:\n\n${code}\n\nEnter it in the app. It expires in 10 minutes.\n\nOr tap this link instead (expires in 15 minutes):\n${link}\n\nIf you didn't request this, ignore this email. Nobody can sign in without the code or the link.`
+    : `Click to sign in to ${productName}:\n\n${link}\n\nThis link expires in 15 minutes. If you didn't request it, ignore this email.`;
+  const html = code
+    ? `<p>Your ${productName} sign-in code is:</p><p style="font-size:34px;font-weight:700;letter-spacing:6px;font-family:Menlo,Consolas,monospace;margin:8px 0 16px">${code}</p><p>Enter it in the app. It expires in 10 minutes.</p><p>Or <a href="${link}">tap here to sign in with a link</a> instead (expires in 15 minutes).</p><p style="color:#666;font-size:13px">If you didn't request this, ignore this email. Nobody can sign in without the code or the link.</p>`
+    : `<p>Click to sign in to ${productName}:</p><p><a href="${link}">${link}</a></p><p>This link expires in 15 minutes. If you didn't request it, ignore this email.</p>`;
   try {
     const resp = await fetch("https://api.resend.com/emails", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        from,
-        to: email,
-        subject: "Your sign-in link",
-        // A plain-text alternative alongside the HTML part is standard for
-        // legitimate transactional email, and its absence is a real,
-        // well-documented spam-filter signal on its own. Cheap, worth
-        // having regardless of anything else affecting deliverability.
-        text: `Click to sign in to ${productName}:\n\n${link}\n\nThis link expires in 15 minutes. If you didn't request it, ignore this email.`,
-        html: `<p>Click to sign in to ${productName}:</p><p><a href="${link}">${link}</a></p><p>This link expires in 15 minutes. If you didn't request it, ignore this email.</p>`,
-      }),
+      // A plain-text alternative alongside the HTML part is a real
+      // spam-filter signal; keep it on every send.
+      body: JSON.stringify({ from, to: email, subject, text, html }),
     });
     if (!resp.ok) {
       console.error("Resend error:", await resp.text());
@@ -1501,27 +1509,160 @@ async function getCurrentUser(req) {
   return { id: row.id, email: row.email };
 }
 
+// ---- sign-in abuse limits (in-memory; single Render instance) ----
+// Per-email: 30s between sends, 5 sends/hour (stops inbox-bombing someone).
+// Per-IP: 15 sends / 10 min and 30 code attempts / 10 min. The IP key is
+// the first X-Forwarded-For hop (Render sits behind a proxy, so req.ip
+// alone would be the proxy for everyone). That header is spoofable, so
+// the per-IP caps are a speed bump only; the security-critical limit is
+// the per-code attempt cap (5) below, which a spoofed IP cannot dodge.
+const AUTH_EMAIL_COOLDOWN_MS = 30 * 1000;
+const AUTH_EMAIL_HOURLY_MAX = 5;
+const AUTH_IP_SEND_MAX = 15;
+const AUTH_IP_VERIFY_MAX = 30;
+const AUTH_IP_WINDOW_MS = 10 * 60 * 1000;
+const CODE_TTL_MS = 10 * 60 * 1000;
+const CODE_MAX_ATTEMPTS = 5;
+const authEmailSends = new Map(); // email -> [timestamps]
+const authIpSends = new Map();    // ip -> [timestamps]
+const authIpVerifies = new Map(); // ip -> [timestamps]
+
+function authClientIp(req) {
+  const xff = String(req.headers["x-forwarded-for"] || "").split(",")[0].trim();
+  return xff || req.ip || "unknown";
+}
+function recentHits(map, key, windowMs) {
+  const now = Date.now();
+  const arr = (map.get(key) || []).filter((t) => now - t < windowMs);
+  map.set(key, arr);
+  return arr;
+}
+// Keep the maps from growing forever.
+setInterval(() => {
+  const now = Date.now();
+  for (const m of [authEmailSends, authIpSends, authIpVerifies]) {
+    for (const [k, arr] of m) {
+      const live = arr.filter((t) => now - t < 60 * 60 * 1000);
+      if (live.length) m.set(k, live); else m.delete(k);
+    }
+  }
+}, 10 * 60 * 1000).unref();
+
+function hashCode(email, code) {
+  return createHash("sha256").update(`${email}:${code}`).digest("hex");
+}
+
+// Shared by the magic link and the code path: find-or-create the user,
+// stamp activity (resets the 90-day clock), mint a session, set the cookie.
+async function completeSignIn(res, email) {
+  let user = await dbGet(`SELECT * FROM users WHERE email = ?`, [email]);
+  if (!user) {
+    const info = await dbRun(`INSERT INTO users (email) VALUES (?)`, [email]);
+    user = { id: info.lastInsertRowid, email };
+  }
+  await dbRun(`UPDATE users SET last_active_at = datetime('now') WHERE id = ?`, [user.id]);
+  const sessionToken = newToken();
+  const sessionExpires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  await dbRun(`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`, [sessionToken, user.id, sessionExpires]);
+  setSessionCookie(res, sessionToken);
+  return { user, sessionToken };
+}
+
 app.post("/api/auth/request-link", async (req, res) => {
   const { email, client } = req.body || {};
   const normalized = (email || "").trim().toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
     return res.status(400).json({ error: "valid email required" });
   }
+
+  // Rate limits apply to every client of this endpoint.
+  const ip = authClientIp(req);
+  const emailHits = recentHits(authEmailSends, normalized, 60 * 60 * 1000);
+  const lastEmailHit = emailHits.length ? emailHits[emailHits.length - 1] : 0;
+  if (Date.now() - lastEmailHit < AUTH_EMAIL_COOLDOWN_MS) {
+    return res.status(429).json({ error: "We just sent one. Give it 30 seconds, then ask again." });
+  }
+  if (emailHits.length >= AUTH_EMAIL_HOURLY_MAX) {
+    return res.status(429).json({ error: "Too many sign-in emails for this address. Try again in an hour." });
+  }
+  const ipHits = recentHits(authIpSends, ip, AUTH_IP_WINDOW_MS);
+  if (ipHits.length >= AUTH_IP_SEND_MAX) {
+    return res.status(429).json({ error: "Too many sign-in requests. Try again in a few minutes." });
+  }
+  emailHits.push(Date.now()); authEmailSends.set(normalized, emailHits);
+  ipHits.push(Date.now()); authIpSends.set(ip, ipHits);
+
   const token = newToken();
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
-  await dbRun(`INSERT INTO login_tokens (email, token, expires_at) VALUES (?, ?, ?)`, [normalized, token, expiresAt]);
+
+  // The 6-digit code is SOURCE!-only (other callers keep link-only emails).
+  // A new request kills any older still-live code for this address, so only
+  // the newest code works; older LINKS keep working until they expire.
+  let code = null;
+  let codeHash = null;
+  let codeExpiresAt = null;
+  if (client === "source") {
+    code = String(randomInt(0, 1000000)).padStart(6, "0");
+    codeHash = hashCode(normalized, code);
+    codeExpiresAt = new Date(Date.now() + CODE_TTL_MS).toISOString();
+    await dbRun(`UPDATE login_tokens SET code_hash = NULL WHERE email = ? AND code_hash IS NOT NULL`, [normalized]);
+  }
+  await dbRun(
+    `INSERT INTO login_tokens (email, token, expires_at, code_hash, code_expires_at) VALUES (?, ?, ?, ?, ?)`,
+    [normalized, token, expiresAt, codeHash, codeExpiresAt]
+  );
 
   // `client` lets a specific frontend (e.g. SOURCE!'s app shell) mark the
   // emailed link so /api/auth/verify knows to hand a bearer token back to
-  // THAT app instead of the default site redirect — see the matching
-  // branch below. Unrecognized/absent `client` values fall through to the
-  // exact same link as always; every other caller of this endpoint
-  // (desktop site, spray.html, N38YO's own app shell) is unaffected.
+  // THAT app instead of the default site redirect.
   const verifyUrl = client === "source"
     ? `${SITE_URL}/api/auth/verify?token=${token}&app=source`
     : `${SITE_URL}/api/auth/verify?token=${token}`;
-  await sendMagicLink(normalized, verifyUrl, client === "source" ? "source" : undefined);
-  res.json({ ok: true });
+  await sendMagicLink(normalized, verifyUrl, client === "source" ? "source" : undefined, code);
+  res.json({ ok: true, code: client === "source" });
+});
+
+// Exchange the emailed 6-digit code for a session. Same JSON shape as
+// /api/auth/verify?format=json. Failure messages are deliberately generic
+// (wrong / expired / no such email all read the same).
+app.post("/api/auth/verify-code", async (req, res) => {
+  const { email, code } = req.body || {};
+  const normalized = (email || "").trim().toLowerCase();
+  const submitted = String(code || "").replace(/\s+/g, "");
+  if (!normalized || !/^\d{6}$/.test(submitted)) {
+    return res.status(400).json({ error: "Enter the 6-digit code from the email." });
+  }
+  const ip = authClientIp(req);
+  const ipHits = recentHits(authIpVerifies, ip, AUTH_IP_WINDOW_MS);
+  if (ipHits.length >= AUTH_IP_VERIFY_MAX) {
+    return res.status(429).json({ error: "Too many attempts. Try again in a few minutes." });
+  }
+  ipHits.push(Date.now()); authIpVerifies.set(ip, ipHits);
+
+  const GENERIC = "That code didn't work. Check it, or request a new one.";
+  const row = await dbGet(
+    `SELECT * FROM login_tokens WHERE email = ? AND used = 0 AND code_hash IS NOT NULL
+       AND code_expires_at > ? ORDER BY id DESC LIMIT 1`,
+    [normalized, new Date().toISOString()]
+  );
+  if (!row) return res.status(400).json({ error: GENERIC });
+  if (row.attempts >= CODE_MAX_ATTEMPTS) {
+    return res.status(400).json({ error: "Too many wrong tries on that code. Request a new one." });
+  }
+  // Count the attempt BEFORE comparing, so parallel guesses can't beat the cap.
+  await dbRun(`UPDATE login_tokens SET attempts = attempts + 1 WHERE id = ?`, [row.id]);
+
+  const a = Buffer.from(hashCode(normalized, submitted));
+  const b = Buffer.from(row.code_hash);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return res.status(400).json({ error: GENERIC });
+  }
+  // Single use: burn the row (this also kills its magic link) and the code.
+  const burned = await dbRun(`UPDATE login_tokens SET used = 1, code_hash = NULL WHERE id = ? AND used = 0`, [row.id]);
+  if (burned.changes === 0) return res.status(400).json({ error: GENERIC });
+
+  const { user, sessionToken } = await completeSignIn(res, normalized);
+  res.json({ ok: true, token: sessionToken, user: { email: user.email } });
 });
 
 app.get("/api/auth/verify", async (req, res) => {
@@ -1532,52 +1673,21 @@ app.get("/api/auth/verify", async (req, res) => {
     [token]
   );
   if (!row) return res.status(400).send("This sign-in link is invalid or has expired. Go back and request a new one.");
-  await dbRun(`UPDATE login_tokens SET used = 1 WHERE id = ?`, [row.id]);
+  await dbRun(`UPDATE login_tokens SET used = 1, code_hash = NULL WHERE id = ?`, [row.id]);
 
-  let user = await dbGet(`SELECT * FROM users WHERE email = ?`, [row.email]);
-  if (!user) {
-    const info = await dbRun(`INSERT INTO users (email) VALUES (?)`, [row.email]);
-    user = { id: info.lastInsertRowid, email: row.email };
-  }
-  // Stamp activity right at sign-in — don't wait for getCurrentUser()'s
-  // throttled lazy touch on a later request, since a fresh sign-in after
-  // a long absence is exactly the case that should reset the 90-day
-  // inactivity clock immediately.
-  await dbRun(`UPDATE users SET last_active_at = datetime('now') WHERE id = ?`, [user.id]);
+  const { user, sessionToken } = await completeSignIn(res, row.email);
 
-  const sessionToken = newToken();
-  const sessionExpires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  await dbRun(`INSERT INTO sessions (token, user_id, expires_at) VALUES (?, ?, ?)`, [sessionToken, user.id, sessionExpires]);
-
-  setSessionCookie(res, sessionToken);
-
-  // Mobile/app-shell clients ask for JSON explicitly via ?format=json (more
-  // robust than relying on an Accept header, which some webviews mangle).
-  // The cookie above is still set either way (harmless for a bearer client),
-  // but a JSON caller gets the raw token back to store and send as
-  // `Authorization: Bearer <token>` on subsequent requests.
+  // Mobile/app-shell clients ask for JSON explicitly via ?format=json.
   const wantsJson = req.query.format === "json" || (req.headers.accept || "").includes("application/json");
   if (wantsJson) {
     return res.json({ ok: true, token: sessionToken, user: { email: user.email } });
   }
-
-  // A real click on the magic-link EMAIL is a browser navigation, not a
-  // fetch — `format=json` above only serves a client calling verify
-  // programmatically (e.g. a future Capacitor deep-link handler). For an
-  // actual emailed link, `app=source` (set by request-link when the
-  // request originated from SOURCE!'s own sign-in form) redirects back
-  // into the app with the session token riding in the URL instead of the
-  // default site redirect — the cookie above still gets set too (harmless
-  // if the click happens in the same browser as the installed app), but
-  // the token in the URL is what actually makes sign-in reliable if the
-  // email client opens the link in a DIFFERENT browser/webview context
-  // than the one the app itself runs in, which cookies alone can't
-  // survive. SOURCE!'s own frontend picks this up on load, stores it as
-  // its bearer token, and strips it from the URL bar.
+  // A real click on the emailed link is a browser navigation; `app=source`
+  // redirects back into the app with the session token in the URL (cookies
+  // alone don't survive the email client opening a different browser).
   if (req.query.app === "source") {
     return res.redirect(302, `/source/?auth_token=${sessionToken}`);
   }
-
   res.redirect(302, "/");
 });
 
