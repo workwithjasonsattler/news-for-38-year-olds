@@ -1363,6 +1363,18 @@ const app = express();
 // skips already-compressed content types) is used as-is, no need to
 // override it.
 app.use(compression());
+// Browser-cache headers (bandwidth). Conditional requests (ETag) already work
+// for every JSON/XML response; these add short freshness windows to the
+// public, reader-independent endpoints so repeat loads and polling RSS
+// readers don't re-download. Personalized endpoints (/api/dispatches,
+// /api/me, /api/my/*) are deliberately left alone.
+app.use((req, res, next) => {
+  if (req.method !== "GET") return next();
+  const p = req.path;
+  if (/^\/api\/(mixes|saves)\/[^/]+\/rss$/.test(p)) res.set("Cache-Control", "public, max-age=300");
+  else if (p === "/api/sources" || p === "/api/mixes/official" || p === "/api/topics") res.set("Cache-Control", "public, max-age=60");
+  next();
+});
 app.use(express.json());
 // sw.js must never be cached by the browser — service workers only
 // self-update when the browser fetches a byte-different sw.js, and if
@@ -1447,7 +1459,15 @@ app.get("/.well-known/assetlinks.json", (req, res) => {
 // Nerve Center page retired (Oct 2026) — Buzz in SOURCE! replaces it. Keep the
 // old URL alive for already-posted bot links and shared links.
 app.get("/nerve-center.html", (req, res) => res.redirect(301, "/source/"));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(express.static(path.join(__dirname, "public"), {
+  // Images and video get a 1-day freshness window (promo.mp4 is 2.4 MB and
+  // the biggest single file we serve). HTML/JS/CSS keep the default
+  // revalidate-every-time behavior so deploys and the service-worker cache
+  // bump stay immediate.
+  setHeaders(res, filePath) {
+    if (/\.(mp4|png|jpe?g|webp|gif|woff2?)$/i.test(filePath)) res.set("Cache-Control", "public, max-age=86400");
+  },
+}));
 
 function requireAdmin(req, res, next) {
   const token = req.headers["x-admin-token"];
@@ -2657,7 +2677,7 @@ app.post("/api/mixes", async (req, res) => {
 
   const name = String(req.body?.name || "").trim();
   const locationLabel = req.body?.location_label ? String(req.body.location_label).trim().slice(0, 100) : null;
-  const isPublic = req.body?.is_public === false ? 0 : 1; // default public
+  const isPublic = req.body?.is_public === true ? 1 : 0; // default PRIVATE (opt-in sharing)
   const sources = Array.isArray(req.body?.sources) ? req.body.sources : [];
 
   if (!name) return res.status(400).json({ error: "name is required" });

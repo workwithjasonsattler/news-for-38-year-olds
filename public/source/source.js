@@ -1970,7 +1970,7 @@
   // location field on an RSS Pack instead of a topic tag at all.
   function newCreateFlowState() {
     return {
-      name: "", picked: [], suggestions: [], loadingSuggestions: false, addToBar: true, isPublic: true,
+      name: "", picked: [], suggestions: [], loadingSuggestions: false, addToBar: true, isPublic: false,
       topicIds: [], topicLabels: {}, // id -> display name, for chip rendering without a lookup
       location: "",
       openBranch: null, // 'news' | 'fun' | 'work' | 'local' | null
@@ -3388,7 +3388,7 @@
       </div>
       <div class="create-flow-checkbox-row">
         <input type="checkbox" id="cfPublic" ${state.isPublic ? "checked" : ""}>
-        <label for="cfPublic">Public — visible in the RSS Pack directory</label>
+        <label for="cfPublic">Share publicly in the RSS Pack directory (optional)</label>
       </div>
 
       <button class="btn primary" id="cfSave" style="width:100%; margin-top:6px;">Save RSS Pack</button>
