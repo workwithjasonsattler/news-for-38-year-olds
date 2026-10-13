@@ -1230,7 +1230,7 @@
       // silently overwriting whatever they're looking at now.
       renderReadBody(shown, new Map());
 
-      const needsLiveThumb = getReadDisplay() === "headlines"
+      const needsLiveThumb = (getReadDisplay() === "headlines" || (getReadDisplay() === "classic" && getLayoutMode() !== "desktop")) // mobile Classic fetches lazily on open
         ? []
         : shown.filter(d => !d.image_url && typeof d.id === "number").map(d => d.id);
       loadThumbnails(needsLiveThumb);
@@ -1737,15 +1737,16 @@
       const id = escapeHtml(String(d.id));
       const title = escapeHtml(d.title || d.headline || "");
       const outlet = escapeHtml(d.outlet || d.source || "");
-      const excerpt = (d.excerpt || "").trim().slice(0, 420);
+      const excerpt = (d.excerpt || "").trim().slice(0, 600);
       const support = tipSubscribeInfo(d);
       return `
         <div class="mc-row${mobileClassicSeen.has(String(d.id)) ? " seen" : ""}" data-id="${id}">
           <button type="button" class="mc-head" aria-expanded="false">
             <span class="mc-meta"><span class="mc-source">${outlet}</span><span class="mc-time">${relTime(d.date)}</span></span>
-            <span class="mc-title">${title}</span>
+            <span class="mc-title">${newDotHtml(d)}${title}</span>
           </button>
           <div class="mc-body" hidden>
+            ${d.link ? `<a class="mc-img-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener"><img class="mc-img${d.image_url ? "" : ""}" id="thumb-${id}" alt="" loading="lazy" ${d.image_url ? `src="${escapeHtml(d.image_url)}" onload="this.classList.add('loaded')"` : ""} onerror="this.remove()"></a>` : ""}
             ${excerpt ? `<p class="mc-excerpt">${escapeHtml(excerpt)}</p>` : ""}
             <div class="mc-actions">
               ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
@@ -1763,7 +1764,16 @@
         body.hidden = !open;
         row.classList.toggle("open", open);
         head.setAttribute("aria-expanded", open ? "true" : "false");
-        if (open) { mobileClassicSeen.add(row.dataset.id); row.classList.add("seen"); }
+        if (open) {
+          mobileClassicSeen.add(row.dataset.id); row.classList.add("seen");
+          row.querySelector(".new-dot")?.remove(); // opened = no longer new, like Reader
+          // Rows without a stored image fetch one lazily, only when opened.
+          const img = row.querySelector(".mc-img");
+          if (img && !img.getAttribute("src") && !row.dataset.thumbTried) {
+            row.dataset.thumbTried = "1";
+            loadThumbnails([row.dataset.id]);
+          }
+        }
       });
       row.querySelector(".mc-open")?.addEventListener("click", () => { mobileClassicSeen.add(row.dataset.id); row.classList.add("seen"); });
     });

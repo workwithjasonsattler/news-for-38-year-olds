@@ -2974,3 +2974,8 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .mc-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .mc-open, .mc-support { font-family: var(--body); font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 999px; border: 1.5px solid var(--line); color: var(--ink); text-decoration: none; background: var(--bg); }
 .mc-open { background: var(--follow); border-color: var(--follow); color: #fff; }
+
+.mc-img-link { display: block; margin: 0 0 10px; }
+.mc-img { display: none; width: 100%; max-height: 240px; object-fit: cover; border-radius: 8px; background: var(--surface); }
+.mc-img.loaded { display: block; }
+.mc-title .new-dot { margin-right: 7px; }
