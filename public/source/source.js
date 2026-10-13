@@ -231,9 +231,16 @@
     // Default by layout: phones open in Headlines Only (the dense,
     // Google-Reader-style RSS list); desktop keeps Classic. An explicit
     // pick in the VIEW menu always wins.
+    // One-time (Oct 2026): phones move to Classic, the Google-Reader-style
+    // list. Overrides an earlier saved pick exactly once; any pick made in
+    // the VIEW menu afterwards is respected.
+    if (!localStorage.getItem("source_display_v2")) {
+      localStorage.setItem("source_display_v2", "1");
+      if (getLayoutMode() !== "desktop") localStorage.setItem(READ_DISPLAY_KEY, "classic");
+    }
     const saved = localStorage.getItem(READ_DISPLAY_KEY);
     if (saved) return saved;
-    return getLayoutMode() === "desktop" ? "classic" : "headlines";
+    return "classic";
   }
 
   function setReadDisplay(mode) {
@@ -281,7 +288,7 @@
         <button class="view-menu-item${mode === "expanded" ? " active" : ""}" data-action="expanded">Expanded</button>
         <button class="view-menu-item${mode === "scroll" ? " active" : ""}" data-action="scroll">Scroll</button>
         ${getLayoutMode() === "desktop" ? `<button class="view-menu-item${mode === "columns" ? " active" : ""}" data-action="columns">Columns</button>` : ""}
-        ${getLayoutMode() === "desktop" ? `<button class="view-menu-item${mode === "classic" ? " active" : ""}" data-action="classic">Classic</button>` : ""}
+        <button class="view-menu-item${mode === "classic" ? " active" : ""}" data-action="classic">Classic</button>
         <div class="view-menu-sep"></div>
         <button class="view-menu-item" data-action="customize">Customize</button>
       </div>`;
@@ -766,7 +773,7 @@
     // stuck (e.g. read-classic's grid-template-columns) breaks any other
     // screen that writes plain linear content into #main afterward, same
     // failure class as the .source-single-col-screen grid-overlap bug.
-    if (main) main.classList.remove("read-layout", "read-scroll-desktop", "read-classic", "read-columns");
+    if (main) main.classList.remove("read-layout", "read-scroll-desktop", "read-classic", "read-columns", "read-mobile-classic");
     // Fullscreen reader is a per-visit toggle, not a saved preference —
     // switching away from Read (or to a different story list) always
     // starts back in the normal split view.
@@ -1245,7 +1252,7 @@
     // while Classic was selected, fall back to Expanded rather than
     // let a phone-width screen get stuck trying to render 3 columns.
     if (getReadDisplay() === "classic" && getLayoutMode() !== "desktop") {
-      setReadDisplay("expanded");
+      renderMobileClassic(shown, trendingLinks);
       return;
     }
     if (getLayoutMode() === "desktop" && getReadDisplay() === "classic") {
@@ -1711,6 +1718,56 @@
       btn.setAttribute("aria-label", label);
     }
     renderDesktopSidePanel();
+  }
+
+
+  // ---------------------------------------------------------------
+  // Mobile Classic — the old Google Reader list view on a phone. Dense
+  // hairline rows (source + time over a two-line headline); tap a row to
+  // expand it in place (excerpt, Read, Save, Support), tap again to fold
+  // it. Rows you've opened dim like read items. Order is untouched:
+  // newest first, same as every other view.
+  // ---------------------------------------------------------------
+  const mobileClassicSeen = new Set();
+  function renderMobileClassic(shown, trendingLinks) {
+    const main = document.getElementById("main");
+    main.classList.remove("read-layout", "read-scroll-desktop");
+    main.classList.add("read-mobile-classic");
+    main.innerHTML = `<div class="mc-list">` + shown.map(d => {
+      const id = escapeHtml(String(d.id));
+      const title = escapeHtml(d.title || d.headline || "");
+      const outlet = escapeHtml(d.outlet || d.source || "");
+      const excerpt = (d.excerpt || "").trim().slice(0, 420);
+      const support = tipSubscribeInfo(d);
+      return `
+        <div class="mc-row${mobileClassicSeen.has(String(d.id)) ? " seen" : ""}" data-id="${id}">
+          <button type="button" class="mc-head" aria-expanded="false">
+            <span class="mc-meta"><span class="mc-source">${outlet}</span><span class="mc-time">${relTime(d.date)}</span></span>
+            <span class="mc-title">${title}</span>
+          </button>
+          <div class="mc-body" hidden>
+            ${excerpt ? `<p class="mc-excerpt">${escapeHtml(excerpt)}</p>` : ""}
+            <div class="mc-actions">
+              ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
+              ${saveButton(d)}
+              ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener">💛 ${escapeHtml(support.label)}</a>` : ""}
+            </div>
+          </div>
+        </div>`;
+    }).join("") + `</div>`;
+    main.querySelectorAll(".mc-row").forEach(row => {
+      const head = row.querySelector(".mc-head");
+      const body = row.querySelector(".mc-body");
+      head.addEventListener("click", () => {
+        const open = body.hidden;
+        body.hidden = !open;
+        row.classList.toggle("open", open);
+        head.setAttribute("aria-expanded", open ? "true" : "false");
+        if (open) { mobileClassicSeen.add(row.dataset.id); row.classList.add("seen"); }
+      });
+      row.querySelector(".mc-open")?.addEventListener("click", () => { mobileClassicSeen.add(row.dataset.id); row.classList.add("seen"); });
+    });
+    wireSaveButtons(main);
   }
 
   function renderReaderFeed(shown, trendingLinks) {
@@ -4315,6 +4372,7 @@
   const SUPPORT_PACK_NAME = "Publications I Support";
   const PUBLIC_MEDIA_SLUG = "public-media-around-the-world";
   const OB_VIEWS = [
+    { key: "classic", label: "Classic", sub: "Old Google Reader. Dense list, tap a row to open it." },
     { key: "headlines", label: "Headlines only", sub: "A tight list. The most stories per screen." },
     { key: "expanded", label: "Expanded", sub: "Headline plus a short excerpt." },
     { key: "scroll", label: "Scroll", sub: "Big images, full excerpts, one story at a time." },
