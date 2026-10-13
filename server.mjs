@@ -1459,6 +1459,64 @@ app.get("/.well-known/assetlinks.json", (req, res) => {
 // Nerve Center page retired (Oct 2026) — Buzz in SOURCE! replaces it. Keep the
 // old URL alive for already-posted bot links and shared links.
 app.get("/nerve-center.html", (req, res) => res.redirect(301, "/source/"));
+// Pack page share cards. /source/?pack=<slug> is rendered client-side, but
+// link-preview crawlers (Bluesky, iMessage, Slack) don't run JS, so inject
+// per-Pack og/twitter tags into index.html here. Private or hidden Packs get
+// generic tags so a share card never leaks a Pack that isn't public.
+function escAttr(str) {
+  return String(str ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+app.get(["/source", "/source/", "/source/index.html"], async (req, res, next) => {
+  const slug = typeof req.query.pack === "string" ? req.query.pack.trim().slice(0, 120) : "";
+  if (!slug) return next();
+  try {
+    let html = await readFile(path.join(__dirname, "public", "source", "index.html"), "utf8");
+    let title = "RSS Pack on SOURCE!";
+    let desc = "Independent outlets in the order they publish. No algorithm.";
+    const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [slug]);
+    if (mix && mix.is_public && !mix.admin_hidden) {
+      title = `${mix.name} — RSS Pack on SOURCE!`;
+      let names = [];
+      let total = 0;
+      if (!mix.auto_sync) {
+        const rows = await dbAll(
+          `SELECT outlet FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'admin_outlet' AND outlet IS NOT NULL ORDER BY sort_order ASC, id ASC`,
+          [mix.id]
+        );
+        total = rows.length;
+        names = rows.slice(0, 4).map((r) => r.outlet);
+      }
+      const by = packCurator(mix);
+      const parts = [];
+      if (by) parts.push(`A Pack from ${by}`);
+      if (names.length) parts.push(`${names.join(", ")}${total > names.length ? ` and ${total - names.length} more` : ""}`);
+      parts.push("Newest first. No algorithm.");
+      desc = parts.join(" · ");
+    }
+    // SITE_URL falls back to localhost when unset, which would break the
+    // share image; derive the public origin from the request in that case.
+    const base = /localhost|127\.0\.0\.1/.test(SITE_URL) && req.get("host") && !/localhost|127\.0\.0\.1/.test(req.get("host"))
+      ? `${req.get("x-forwarded-proto") || "https"}://${req.get("host")}`
+      : SITE_URL;
+    const url = `${base}/source/?pack=${encodeURIComponent(slug)}`;
+    const img = `${base}/home/og.png`;
+    const t = escAttr(title), d = escAttr(desc);
+    html = html
+      .replace(/<title>[^<]*<\/title>/, `<title>${t}</title>`)
+      .replace(/(<meta name="description" content=")[^"]*(")/, `$1${d}$2`)
+      .replace(/(<meta property="og:title" content=")[^"]*(")/, `$1${t}$2`)
+      .replace(/(<meta property="og:description" content=")[^"]*(")/, `$1${d}$2`)
+      .replace(/(<meta property="og:image" content=")[^"]*(")/, `$1${escAttr(img)}$2`)
+      .replace(/(<meta property="og:url" content=")[^"]*(")/, `$1${escAttr(url)}$2`)
+      .replace(/(<meta name="twitter:title" content=")[^"]*(")/, `$1${t}$2`)
+      .replace(/(<meta name="twitter:description" content=")[^"]*(")/, `$1${d}$2`)
+      .replace(/(<meta name="twitter:image" content=")[^"]*(")/, `$1${escAttr(img)}$2`);
+    res.set("Cache-Control", "no-cache");
+    res.type("html").send(html);
+  } catch (e) {
+    next();
+  }
+});
 app.use(express.static(path.join(__dirname, "public"), {
   // Images and video get a 1-day freshness window (promo.mp4 is 2.4 MB and
   // the biggest single file we serve). HTML/JS/CSS keep the default
@@ -2840,6 +2898,14 @@ app.get("/api/mixes/official", async (req, res) => {
   res.json(rows.map((r) => ({ ...r, auto_sync: !!r.auto_sync })));
 });
 
+// Byline for a Pack. Every house Pack (official, featured seeds, the
+// Headlines flagship) is stored with creator_user_id = 0, the system
+// sentinel, and is authored by "SOURCE!". Reader-made Packs have no public
+// byline yet (curator name/handle/anonymous is still undecided).
+function packCurator(mix) {
+  return mix.is_official || Number(mix.creator_user_id) === 0 ? "SOURCE!" : null;
+}
+
 app.get("/api/mixes/:slug", async (req, res) => {
   const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
   if (!mix) return res.status(404).json({ error: "mix not found" });
@@ -2861,6 +2927,7 @@ app.get("/api/mixes/:slug", async (req, res) => {
     is_public: !!mix.is_public,
     is_owner: isOwner,
     is_official: !!mix.is_official,
+    curator: packCurator(mix),
     auto_sync: !!mix.auto_sync,
     admin_hidden: !!mix.admin_hidden,
     created_at: mix.created_at,
@@ -2900,7 +2967,7 @@ function toRfc822(dateLike) {
 
 function buildMixRssXml(mix, items) {
   const channelTitle = mix.is_official ? `${mix.name} — News for 38 Year Olds` : `${mix.name} — an RSS Pack on News for 38 Year Olds`;
-  const channelLink = `${SITE_URL}/spray.html?spray=${encodeURIComponent(mix.slug)}`;
+  const channelLink = `${SITE_URL}/source/?pack=${encodeURIComponent(mix.slug)}`;
   const channelDesc = mix.is_official
     ? "The official flagship RSS Pack — every outlet currently powering the unfiltered Wire, auto-synced in real time."
     : `A reader-created RSS Pack${mix.location_label ? ` (${mix.location_label})` : ""} on News for 38 Year Olds.`;

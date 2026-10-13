@@ -1746,7 +1746,7 @@
             <span class="mc-title">${newDotHtml(d)}${title}</span>
           </button>
           <div class="mc-body" hidden>
-            ${d.link ? `<a class="mc-img-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener"><img class="mc-img${d.image_url ? "" : ""}" id="thumb-${id}" alt="" loading="lazy" ${d.image_url ? `src="${escapeHtml(d.image_url)}" onload="this.classList.add('loaded')"` : ""} onerror="this.remove()"></a>` : ""}
+            ${d.link ? `<a class="mc-img-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener"><img class="mc-img" id="thumb-${id}" alt="" ${d.image_url ? `data-src="${escapeHtml(d.image_url)}"` : ""} onload="this.classList.add('loaded')" onerror="this.remove()"></a>` : ""}
             ${excerpt ? `<p class="mc-excerpt">${escapeHtml(excerpt)}</p>` : ""}
             <div class="mc-actions">
               ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
@@ -1767,11 +1767,16 @@
         if (open) {
           mobileClassicSeen.add(row.dataset.id); row.classList.add("seen");
           row.querySelector(".new-dot")?.remove(); // opened = no longer new, like Reader
-          // Rows without a stored image fetch one lazily, only when opened.
+          // The picture loads only when a row is opened. It can't be
+          // loading="lazy" or sit in a display:none box up front: browsers
+          // never fetch those, so the image would never appear. A stored
+          // image goes in via data-src; otherwise ask the server to look
+          // up the article's own preview image.
           const img = row.querySelector(".mc-img");
           if (img && !img.getAttribute("src") && !row.dataset.thumbTried) {
             row.dataset.thumbTried = "1";
-            loadThumbnails([row.dataset.id]);
+            if (img.dataset.src) img.src = img.dataset.src;
+            else loadThumbnails([row.dataset.id]);
           }
         }
       });
@@ -2258,7 +2263,8 @@
           <button class="tile-sheet-switch${following ? " on" : ""}" id="mgFollowToggle" role="switch" aria-checked="${following}" aria-label="Follow ${escapeHtml(mix.name)}"></button>
         </div>
         <button class="btn" id="mgCopyBtn" style="width:100%; margin-top:14px;">Copy and customize</button>
-        <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>`;
+        <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
+        ${packShareButtonHtml(mix)}`;
     } else if (manageState.view === "view") {
       // Read-only: an official (but non-auto-sync) Pack, or any public Pack
       // made by another reader. No edit controls — Follow (add to your own
@@ -2269,7 +2275,7 @@
         <span class="tile-sheet-chip">${escapeHtml(s.outlet || s.name || "Custom source")}${s.is_corporate ? `<span class="source-corporate-mark" title="${escapeHtml(s.parent_company || "Corporate/conglomerate-owned")}">*</span>` : ""}</span>`).join("");
       body = `
         <div class="manage-screen-head">
-          ${mix.is_official ? `<div class="tile-sheet-badge">Official</div>` : ""}
+          ${mix.curator ? `<div class="tile-sheet-badge">By ${escapeHtml(mix.curator)}</div>` : mix.is_official ? `<div class="tile-sheet-badge">Official</div>` : ""}
           <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
           <div class="manage-screen-stat">${mix.sources.length} source${mix.sources.length === 1 ? "" : "s"} · ${mix.clone_count || 0} follower${mix.clone_count === 1 ? "" : "s"}${mix.location_label ? " · " + escapeHtml(mix.location_label) : ""}</div>
         </div>
@@ -2282,7 +2288,8 @@
           <button class="tile-sheet-switch${following ? " on" : ""}" id="mgFollowToggle" role="switch" aria-checked="${following}" aria-label="Follow ${escapeHtml(mix.name)}"></button>
         </div>
         <button class="btn" id="mgCopyBtn" style="width:100%; margin-top:14px;">Copy and customize</button>
-        <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>`;
+        <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
+        ${packShareButtonHtml(mix)}`;
     } else {
       const sourcesHtml = (mix.sources || []).map(s => `
         <span class="tile-sheet-chip">
@@ -2315,11 +2322,13 @@
         </div>
         <button class="btn primary" id="mgSaveBtn" style="width:100%; margin-top:14px;">Save</button>
         <a href="${rssUrl}" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
+        ${packShareButtonHtml(mix)}
         <button class="tile-sheet-delete" id="mgDeleteBtn">Delete this RSS Pack</button>`;
     }
 
     main.innerHTML = `<div class="source-single-col-screen"><button class="btn" id="mgBack" style="margin-bottom:14px;">‹ Back</button>` + body + `</div>`;
     document.getElementById("mgBack").addEventListener("click", closeManageScreen);
+    wirePackShareButton(main, mix);
 
     if (manageState.view === "headlines" || manageState.view === "view") {
       document.getElementById("mgFollowToggle").addEventListener("click", () => toggleFollowPack(mix.slug));
@@ -4524,6 +4533,87 @@
   // ---------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------
+  // ----- Pack share link + public Pack page (?pack=<slug>) -----
+  // The shareable address for an RSS Pack. The server fills in og/twitter
+  // tags for this URL so a pasted link shows a real card.
+  function packShareUrl(slug) {
+    return `${location.origin}/source/?pack=${encodeURIComponent(slug)}`;
+  }
+  function packShareButtonHtml(mix) {
+    if (!mix.is_public) return "";
+    return `<button class="btn" id="packShareBtn" style="width:100%; margin-top:10px;">Share this RSS Pack ↗</button>`;
+  }
+  function wirePackShareButton(root, mix) {
+    const btn = root.querySelector("#packShareBtn");
+    if (!btn) return;
+    btn.addEventListener("click", () => doShare(packShareUrl(mix.slug), `${mix.name} — RSS Pack on SOURCE!`));
+  }
+
+  async function renderPublicPack(slug, sessionPromise) {
+    const main = document.getElementById("main");
+    main.classList.remove("read-layout", "read-scroll-desktop", "read-mobile-classic");
+    main.innerHTML = `<div class="source-single-col-screen"><div class="card"><div class="card-meta">Loading RSS Pack…</div></div></div>`;
+    let mix;
+    try {
+      [mix] = await Promise.all([api(`/api/mixes/${encodeURIComponent(slug)}`), sessionPromise]);
+    } catch (e) {
+      main.innerHTML = `<div class="source-single-col-screen"><div class="card"><div class="card-meta">This RSS Pack isn't public (or doesn't exist).</div></div><a href="/source/" class="ob-whats-this" style="display:block; margin-top:16px;">← Back to SOURCE!</a></div>`;
+      return;
+    }
+    await loadSprayBar(true);
+    const CHIP_CAP = 24;
+    const sources = mix.sources || [];
+    const chips = sources.slice(0, CHIP_CAP).map(s => `
+      <span class="tile-sheet-chip">${escapeHtml(s.outlet || s.name || "Custom source")}${s.is_corporate ? `<span class="source-corporate-mark" title="${escapeHtml(s.parent_company || "Corporate/conglomerate-owned")}">*</span>` : ""}</span>`).join("");
+    const more = sources.length > CHIP_CAP ? `<div class="manage-screen-stat" style="margin-top:8px;">+ ${sources.length - CHIP_CAP} more</div>` : "";
+    const latest = (mix.items || []).slice(0, 5).map(it => `
+      <div class="card">
+        <a class="card-link" href="${escapeHtml(it.link || "#")}" target="_blank" rel="noopener">
+          <div class="card-meta">${outletChip(it.outlet || it.source || "")}<span>${relTime(it.date || it.created_at)}</span></div>
+          <div class="card-title">${escapeHtml(it.title || it.headline || "")}</div>
+        </a>
+      </div>`).join("");
+    const following = (sprayBarData?.sprays || []).some(x => x.slug === mix.slug);
+    const followLabel = !currentUser ? "Sign in to follow" : following ? "In your Read toggle ✓" : "Follow this RSS Pack";
+    main.innerHTML = `
+      <div class="source-single-col-screen">
+        <div class="manage-screen-head">
+          ${mix.curator ? `<div class="tile-sheet-badge">Curated by ${escapeHtml(mix.curator)}</div>` : ""}
+          <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
+          <div class="manage-screen-stat">${sources.length} source${sources.length === 1 ? "" : "s"}${mix.auto_sync ? " right now" : ""}${mix.location_label ? " · " + escapeHtml(mix.location_label) : ""}</div>
+        </div>
+        ${mix.is_public ? "" : `<div class="manage-screen-hidden-notice"><span>🔒</span><span><strong>Private.</strong> Only you can see this page. Make the Pack public in Sources to share it.</span></div>`}
+        <div class="manage-screen-field">
+          <div class="create-flow-label">Sources</div>
+          <div class="tile-sheet-sources">${chips}</div>${more}
+        </div>
+        <button class="btn primary" id="packFollowBtn" style="width:100%; margin-top:14px;">${followLabel}</button>
+        ${packShareButtonHtml(mix)}
+        <a href="${location.origin}/api/mixes/${encodeURIComponent(mix.slug)}/rss" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
+        ${latest ? `<div class="section-label" style="margin-top:22px;">LATEST</div>${latest}` : ""}
+        <a href="/source/" class="ob-whats-this" style="display:block; margin-top:16px;">← Back to SOURCE!</a>
+      </div>`;
+    wirePackShareButton(main, mix);
+    document.getElementById("packFollowBtn").addEventListener("click", async (ev) => {
+      if (!currentUser) {
+        toast("Sign in to follow this RSS Pack.");
+        switchTab("you");
+        return;
+      }
+      const btn = ev.currentTarget;
+      btn.disabled = true;
+      try {
+        if (following) await api(`/api/my/spray-bar/${encodeURIComponent(mix.slug)}`, { method: "DELETE" });
+        else await api("/api/my/spray-bar/add", { method: "POST", body: JSON.stringify({ slug: mix.slug }) });
+        toast(following ? "Removed from your Read toggle." : "Added to your Read toggle.");
+        renderPublicPack(slug, Promise.resolve());
+      } catch (e) {
+        toast(e.message || "Couldn't update that.");
+        btn.disabled = false;
+      }
+    });
+  }
+
   // ----- Public "shared saves" view (?saves=<slug>) -----
   // A visitor opening a shared save-list link doesn't sign in or land on
   // a normal tab — this renders read-only, straight into #main, same
@@ -4873,9 +4963,13 @@
     // correctly sync a signed-in reader's account-level panel prefs.
     const sessionPromise = refreshSession();
 
-    const sharedSavesSlug = new URLSearchParams(location.search).get("saves");
+    const bootParams = new URLSearchParams(location.search);
+    const sharedSavesSlug = bootParams.get("saves");
+    const sharedPackSlug = bootParams.get("pack");
     if (sharedSavesSlug) {
       renderPublicSaves(sharedSavesSlug);
+    } else if (sharedPackSlug) {
+      renderPublicPack(sharedPackSlug, sessionPromise);
     } else {
       renderActiveTab();
     }
