@@ -68,7 +68,23 @@ a{color:#111}a:hover{color:#FF3E1D}
 </div>
 
 <div style="padding:0 0 80px">
-<video controls preload="metadata" playsinline poster="/home/poster.jpg" aria-label="SOURCE! promo video" style="width:100%;display:block;background:#111111;aspect-ratio:16/9"><source src="/home/promo.mp4" type="video/mp4"></video>
+<div id="promo" style="position:relative;width:100%;aspect-ratio:16/9;background:#111111">
+<button id="promoPlay" type="button" aria-label="Play the SOURCE! promo video" style="position:absolute;inset:0;width:100%;height:100%;border:0;padding:0;cursor:pointer;background:#111111 url('/home/poster.jpg') center/cover no-repeat">
+<span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:84px;height:84px;border-radius:50%;background:#FF3E1D;display:flex;align-items:center;justify-content:center"><span style="margin-left:6px;border-style:solid;border-width:16px 0 16px 28px;border-color:transparent transparent transparent #ffffff"></span></span>
+</button>
+</div>
+<p style="margin:10px 0 0;font-size:14px;color:#6b6b6b">The video plays from YouTube. Nothing loads from YouTube until you press play.</p>
+<script>
+document.getElementById("promoPlay").addEventListener("click",function(){
+  var f=document.createElement("iframe");
+  f.src="https://www.youtube-nocookie.com/embed/bEeeTbmO6xI?autoplay=1&rel=0";
+  f.title="SOURCE! promo video";
+  f.allow="autoplay; encrypted-media; picture-in-picture; fullscreen";
+  f.allowFullscreen=true;
+  f.style.cssText="position:absolute;inset:0;width:100%;height:100%;border:0";
+  document.getElementById("promo").replaceChildren(f);
+});
+</script>
 </div>
 
 <div id="how" style="padding:72px 0;border-top:1px solid #111111">
