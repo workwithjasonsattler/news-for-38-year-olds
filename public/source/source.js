@@ -951,7 +951,9 @@
     // list (see renderClassicSidebar) — the horizontal pill bar would
     // just be a redundant second copy of the same control while it's
     // active, so it hides itself rather than double up.
-    if (activeTab !== "read" || getReadDisplay() === "classic") { el.hidden = true; return; }
+    // Only the DESKTOP 3-pane Classic has that sidebar. Mobile Classic is a
+    // plain list with no sidebar, so the bar must stay visible there.
+    if (activeTab !== "read" || (getReadDisplay() === "classic" && getLayoutMode() === "desktop")) { el.hidden = true; return; }
     const pills = await getSprayBarPills();
     el.hidden = false;
     el.innerHTML = pills.map(p => {
