@@ -1167,6 +1167,8 @@ body[data-layout="desktop"] #main .source-single-col-screen {
    boxes) with an intentional two-column design instead of just
    forcing everything back to one column. */
 .sources-two-col { display: block; }
+.sources-back-row { margin-bottom: 14px; }
+body[data-layout="desktop"] #main .sources-two-col .sources-back-row { grid-column: 1 / -1; margin-bottom: 0; }
 body[data-layout="desktop"] #main .sources-two-col {
   grid-column: 1 / -1;
   display: grid;
@@ -2979,3 +2981,6 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .mc-img { display: none; width: 100%; max-height: 240px; object-fit: cover; border-radius: 8px; background: var(--surface); }
 .mc-img.loaded { display: block; }
 .mc-title .new-dot { margin-right: 7px; }
+
+/* You tab: "Sources & RSS Packs" entry row is a <button class="card"> */
+.you-sources-row { display: block; font: inherit; color: inherit; }

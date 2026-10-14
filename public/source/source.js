@@ -630,13 +630,10 @@
   // ---------------------------------------------------------------
   // Tab shell
   // ---------------------------------------------------------------
-  // Read | Videos | Buzz | More — Videos promoted out of Read's toggle
-  // bar into its own top-level tab; Sources and You moved off the bar
-  // entirely into the More sheet (see openMoreSheet below) rather than
-  // being dropped. "more" is never a real activeTab value — tapping it
-  // opens the sheet without touching activeTab — so the bar's active-
-  // highlight logic below has to also light up More whenever Sources or
-  // You is actually on screen, or the bar would show nothing selected.
+  // Read | Videos | Buzz | You. Sources is no longer a tab: it is a
+  // sub-screen reached from the You tab (activeTab "sources" still exists
+  // internally so every existing switchTab("sources") jump keeps working),
+  // and the bar lights up You whenever Sources is on screen.
   // Keyboard fix (Android WebView): when the soft keyboard opens, a focused
   // field could end up hidden behind it or scrolled off screen, so readers
   // couldn't see what they typed (sign-in email box). Scroll the focused
@@ -678,16 +675,18 @@
     { key: "read", label: "READ", prompt: ">" },
     { key: "videos", label: "VIDEOS", prompt: ">" },
     { key: "buzz", label: "BUZZ", prompt: ">" },
-    { key: "more", label: "MORE", prompt: ">" },
+    { key: "you", label: "YOU", prompt: ">" },
   ];
-  const MORE_SHEET_TABS = ["sources", "you"];
+  // Sources lives under You now (a sub-screen reached from the You tab),
+  // so the You tab stays highlighted while a reader is inside it.
+  const YOU_TAB_SCREENS = ["you", "sources"];
 
   let activeTab = "read";
 
   function renderTabBar() {
     const bar = document.getElementById("tabBar");
     bar.innerHTML = TABS.map(t => {
-      const isActive = t.key === activeTab || (t.key === "more" && MORE_SHEET_TABS.includes(activeTab));
+      const isActive = t.key === activeTab || (t.key === "you" && YOU_TAB_SCREENS.includes(activeTab));
       return `
       <button class="tab-btn${isActive ? " active" : ""}" data-tab="${t.key}">
         <span class="tab-prompt">${t.prompt}</span>${t.label}
@@ -695,47 +694,10 @@
     }).join("");
     bar.querySelectorAll(".tab-btn").forEach(btn => {
       btn.addEventListener("click", () => {
-        if (btn.dataset.tab === "more") { openMoreSheet(); return; }
+        // Tapping You from inside Sources goes back up to the You page.
         switchTab(btn.dataset.tab);
       });
     });
-  }
-
-  // More sheet — reuses the exact .spray-picker-overlay/.spray-picker-card
-  // shell already built for openPublicPackPicker(), same reasoning as
-  // every other reuse of it: a second bottom-sheet component would just
-  // be a copy of this one. Two static rows (Sources, You), tap closes the
-  // sheet and switches tabs the same way the old top-level buttons did.
-  function openMoreSheet() {
-    let el = document.getElementById("moreSheetOverlay");
-    if (!el) {
-      el = document.createElement("div");
-      el.id = "moreSheetOverlay";
-      el.className = "spray-picker-overlay";
-      document.body.appendChild(el);
-      el.addEventListener("click", (e) => { if (e.target === el) closeMoreSheet(); });
-    }
-    el.innerHTML = `
-      <div class="spray-picker-card">
-        <div class="spray-picker-head">
-          <span>More</span>
-          <button class="spray-picker-close" id="moreSheetClose" aria-label="Close">×</button>
-        </div>
-        <div class="spray-picker-list">
-          <button class="spray-picker-row" data-tab="sources">Sources</button>
-          <button class="spray-picker-row" data-tab="you">You</button>
-          <a class="spray-picker-row" href="/source/support.html" target="_blank" rel="noopener">Contact / Support</a>
-        </div>
-      </div>`;
-    document.getElementById("moreSheetClose").addEventListener("click", closeMoreSheet);
-    el.querySelectorAll("[data-tab]").forEach(btn => {
-      btn.addEventListener("click", () => { closeMoreSheet(); switchTab(btn.dataset.tab); });
-    });
-  }
-
-  function closeMoreSheet() {
-    const el = document.getElementById("moreSheetOverlay");
-    if (el) el.remove();
   }
 
   function switchTab(key) {
@@ -2619,10 +2581,12 @@
 
       main.innerHTML = `
         <div class="sources-two-col">
+          <div class="sources-back-row"><button class="btn" id="sourcesBackToYou" type="button">‹ You</button></div>
           <div class="sources-col-left">${leftHtml}</div>
           <div class="sources-col-right">${rightHtml}</div>
         </div>`;
 
+      document.getElementById("sourcesBackToYou")?.addEventListener("click", () => switchTab("you"));
       wireSpraysShelf();
       wireQuickAddFeed();
       wireYourSpraysSection();
@@ -4019,12 +3983,37 @@
   // YOU — account + shareable reading list. Maps to Account +
   // RSS Packs/custom-sources management.
   // ---------------------------------------------------------------
+  // The You tab is the hub: Sources & RSS Packs is a sub-screen reached from
+  // here (activeTab "sources", with a "‹ You" back button), and Contact /
+  // Support + Privacy live in the footer. Shared by the signed-in and
+  // signed-out versions so both reach Sources and Support.
+  function youSourcesRowHtml() {
+    return `
+      <button class="card you-sources-row" id="youSourcesRow" type="button" style="width:100%; text-align:left; cursor:pointer; margin-bottom:18px;">
+        <div class="card-meta"><span>SOURCES &amp; RSS PACKS</span></div>
+        <div class="card-title" style="margin-bottom:4px;">Choose what you read ›</div>
+        <div class="section-sub" style="margin:0; font-size:13px;">Browse and follow RSS Packs, add a feed, build your own. No account needed to browse.</div>
+      </button>`;
+  }
+  function youFooterHtml() {
+    return `
+      <div class="you-footer" style="margin-top:28px; padding-top:16px; border-top:1px solid var(--line);">
+        <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; font-size:15px; font-weight:600; color: var(--ink);">Contact / Support</a>
+        <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:8px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>
+      </div>`;
+  }
+  function wireYouSourcesRow(root) {
+    const row = root.querySelector("#youSourcesRow");
+    if (row) row.addEventListener("click", () => switchTab("sources"));
+  }
+
   async function renderYou() {
     const main = document.getElementById("main");
     await refreshSession();
     if (!currentUser) {
       main.innerHTML = `
         <div class="source-single-col-screen">
+        ${youSourcesRowHtml()}
         <div class="section-label" style="margin-top:2px;">WHY SIGN IN</div>
         <div class="section-sub" style="font-size:13.5px; line-height:1.5; margin:0 2px 20px;">
           An account is free and just keeps your stuff with you: saved articles, the RSS Packs
@@ -4039,9 +4028,9 @@
           <button class="btn primary" id="youSendLink">SEND ME A SIGN-IN CODE</button>
           ${isStandaloneApp() ? `<p style="font-size:12.5px; color: var(--ink-muted); margin-top:10px;">Heads up: on an installed/Home-Screen app, the sign-in link opens in your regular browser, not this app — you'll need to sign in there for now. We're working on fixing this for the installed app.</p>` : ""}
         </div>
-        <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:14px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>
-        <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; margin-top:6px; font-size:13px; color: var(--ink-muted);">Support</a>
+        ${youFooterHtml()}
         </div>`;
+      wireYouSourcesRow(main);
       const sendBtn = document.getElementById("youSendLink");
       const emailInput = document.getElementById("youEmail");
       // Step 1: request. Step 2 (showCodeStep): type the emailed 6-digit
@@ -4189,10 +4178,10 @@
       <div class="section-label" style="margin-top:22px; color: var(--alert);">DELETE MY ACCOUNT</div>
       <div class="section-sub">Permanently erases your saves, RSS Packs, custom sources, and preferences. This can't be undone.</div>
       <button class="btn" id="youDeleteAccount" style="margin-top:8px; border-color: var(--alert); color: var(--alert);">Delete my account</button>
-      <a href="/source/privacy.html" target="_blank" rel="noopener" style="display:block; margin-top:22px; font-size:13px; color: var(--ink-muted);">Privacy Policy</a>
-      <a href="/source/support.html" target="_blank" rel="noopener" style="display:block; margin-top:6px; font-size:13px; color: var(--ink-muted);">Support</a>
+      ${youFooterHtml()}
       </div>
     `;
+    wireYouSourcesRow(main);
     document.getElementById("youSignOut").addEventListener("click", async () => {
       try { await api("/api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
       setToken("");
