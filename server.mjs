@@ -11,6 +11,14 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes, randomInt, createHash, timingSafeEqual } from "node:crypto";
+
+// Stable per-article id suffix for items that have no database row (custom-source
+// items). Hash the WHOLE link: the old base64 prefix only covered the first 12
+// bytes of the URL ("https://www."), so every article from one site got the same
+// id and the reader pane always opened that feed's first headline.
+function linkIdHash(link) {
+  return createHash("sha1").update(String(link)).digest("hex").slice(0, 16);
+}
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import sanitizeHtml from "sanitize-html";
@@ -2693,7 +2701,7 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
       customRows.map(async (cs) => {
         const items = await fetchCustomSourceItems(cs.custom_feed_url);
         return items.map((it) => ({
-          id: `mix-custom-${cs.custom_source_id}-${Buffer.from(it.link).toString("base64url").slice(0, 16)}`,
+          id: `mix-custom-${cs.custom_source_id}-${linkIdHash(it.link)}`,
           name: cs.custom_name,
           outlet: cs.custom_name,
           beat: "Custom",
@@ -4511,7 +4519,7 @@ app.get("/api/dispatches", async (req, res) => {
         customSources.map(async (cs) => {
           const items = await fetchCustomSourceItems(cs.feed_url);
           return items.map((it) => ({
-            id: `custom-${cs.id}-${Buffer.from(it.link).toString("base64url").slice(0, 16)}`,
+            id: `custom-${cs.id}-${linkIdHash(it.link)}`,
             name: cs.name,
             outlet: cs.name,
             beat: "My Sources",
