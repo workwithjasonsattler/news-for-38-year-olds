@@ -2985,3 +2985,8 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 
 /* You tab: "Sources & RSS Packs" entry row is a <button class="card"> */
 .you-sources-row { display: block; font: inherit; color: inherit; }
+
+/* Sign-in sheet: sits near the top of the screen so the soft keyboard
+   (which covers the bottom) never hides the email/code box. */
+.signin-sheet-overlay { align-items: flex-start; padding-top: max(10vh, 24px); }
+.signin-sheet-overlay .spray-picker-card { border-radius: 14px; max-height: 80vh; }

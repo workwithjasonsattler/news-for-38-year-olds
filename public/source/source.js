@@ -494,7 +494,7 @@
   function wireSaveButtons(root) {
     root.querySelectorAll(".save-btn").forEach(btn => {
       btn.addEventListener("click", async () => {
-        if (!currentUser) { toast("Sign in to save this — it'll be there whenever you come back."); switchTab("you"); return; }
+        if (!requireSignIn("Sign in to save this.", () => btn.click())) return;
         btn.disabled = true;
         try {
           const payload = JSON.parse(btn.dataset.savePayload);
@@ -2950,7 +2950,7 @@
   }
 
   async function openSprayPicker(source) {
-    if (!currentUser) { toast("Sign in on the You tab to add this to an RSS Pack."); return; }
+    if (!requireSignIn("Sign in to add this to an RSS Pack.", () => openSprayPicker(source))) return;
     if (!source) { toast("Can't add this to an RSS Pack."); return; }
     sprayPickerSource = source;
     sprayPickerMixes = null;
@@ -3114,7 +3114,7 @@
   }
 
   async function togglePublicPackFollow(slug, btnEl) {
-    if (!currentUser) { toast("Sign in on the You tab to follow RSS Packs."); return; }
+    if (!requireSignIn("Sign in to follow this RSS Pack.", () => togglePublicPackFollow(slug, btnEl))) return;
     const followedSlugs = new Set((sprayBarData && sprayBarData.sprays || []).map(s => s.slug));
     const alreadyFollowing = followedSlugs.has(slug);
     btnEl.disabled = true;
@@ -3182,7 +3182,7 @@
   // ----- Guided Create flow: name -> add one -> suggest 5 -> repeat -----
 
   function openCreateFlow() {
-    if (!currentUser) { toast("Sign in on the You tab to create an RSS Pack."); return; }
+    if (!requireSignIn("Sign in to create an RSS Pack.", openCreateFlow)) return;
     createFlowState = newCreateFlowState();
     renderSources();
   }
@@ -3983,6 +3983,190 @@
   // YOU — account + shareable reading list. Maps to Account +
   // RSS Packs/custom-sources management.
   // ---------------------------------------------------------------
+  // The emailed-code sign-in form, mountable anywhere: the You tab's card
+  // and the sign-in sheet that opens at the moment of a gated action.
+  // `card` is the container element; opts.title is the prompt line;
+  // opts.onSignedIn runs after the session is established.
+  function mountSignInForm(card, opts) {
+    opts = opts || {};
+    card.innerHTML = `
+      <div class="card-meta"><span>ACCESS</span></div>
+      <div class="card-title" style="margin-bottom:10px;">${escapeHtml(opts.title || "Sign in to continue.")}</div>
+      <input id="youEmail" type="email" placeholder="you@domain.com" enterkeyhint="send" autocomplete="email" autocapitalize="none" autocorrect="off" data-reveal-next="youSendLink"
+        style="width:100%; padding:9px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--body); margin-bottom:8px; border-radius:8px;">
+      <button class="btn primary" id="youSendLink">SEND ME A SIGN-IN CODE</button>
+      ${isStandaloneApp() ? `<p style="font-size:12.5px; color: var(--ink-muted); margin-top:10px;">Heads up: on an installed/Home-Screen app, the sign-in link opens in your regular browser, not this app — you'll need to sign in there for now. We're working on fixing this for the installed app.</p>` : ""}`;
+    const sendBtn = card.querySelector("#youSendLink");
+    const emailInput = card.querySelector("#youEmail");
+    // Step 1: request. Step 2 (showCodeStep): type the emailed 6-digit
+    // code. The emailed link still works as the fallback, so the second
+    // step also says so.
+    async function requestCode(email) {
+      const data = await api("/api/auth/request-link", { method: "POST", body: JSON.stringify({ email, client: "source" }) });
+      return data;
+    }
+    function showCodeStep(email) {
+              card.innerHTML = `
+        <div class="card-meta"><span>CHECK YOUR EMAIL</span></div>
+        <div class="card-title" style="margin-bottom:6px;">Enter the 6-digit code we sent to ${escapeHtml(email)}.</div>
+        <input id="youCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
+          autocomplete="one-time-code" enterkeyhint="go" data-reveal-next="youVerifyCode" placeholder="123456" aria-label="6-digit sign-in code"
+          style="width:100%; padding:10px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--display); font-size:24px; letter-spacing:6px; text-align:center; margin:8px 0; border-radius:8px;">
+        <button class="btn primary" id="youVerifyCode" disabled>SIGN IN</button>
+        <p id="youCodeMsg" style="font-size:13px; color: var(--ink-muted); margin:10px 0 0;" aria-live="polite">
+          Or tap the link in the same email. It can take a minute, and it may land in spam.
+        </p>
+        <div style="display:flex; gap:14px; margin-top:12px; font-size:13px;">
+          <button class="btn" id="youResend" style="padding:6px 10px;" disabled>Resend code</button>
+          <button class="btn" id="youChangeEmail" style="padding:6px 10px;">Use a different email</button>
+        </div>`;
+      const codeInput = card.querySelector("#youCode");
+      const verifyBtn = card.querySelector("#youVerifyCode");
+      const resendBtn = card.querySelector("#youResend");
+      const msg = card.querySelector("#youCodeMsg");
+      let verifying = false;
+
+      let cooldown = 30;
+      const tick = setInterval(() => {
+        if (!document.body.contains(resendBtn)) { clearInterval(tick); return; }
+        cooldown -= 1;
+        if (cooldown <= 0) { resendBtn.disabled = false; resendBtn.textContent = "Resend code"; clearInterval(tick); }
+        else resendBtn.textContent = `Resend code (${cooldown}s)`;
+      }, 1000);
+      resendBtn.textContent = "Resend code (30s)";
+
+      async function submitCode() {
+        if (verifying) return;
+        const code = codeInput.value.replace(/\D/g, "");
+        if (code.length !== 6) return;
+        verifying = true;
+        verifyBtn.disabled = true;
+        verifyBtn.textContent = "CHECKING...";
+        try {
+          const data = await api("/api/auth/verify-code", { method: "POST", body: JSON.stringify({ email, code }) });
+          if (data && data.token) setToken(data.token);
+          await refreshSession();
+          await opts.onSignedIn();
+        } catch (e) {
+          verifying = false;
+          verifyBtn.textContent = "SIGN IN";
+          verifyBtn.disabled = codeInput.value.replace(/\D/g, "").length !== 6;
+          msg.style.color = "var(--alert)";
+          msg.textContent = e.message || "That code didn't work.";
+          codeInput.select();
+        }
+      }
+      codeInput.addEventListener("input", () => {
+        codeInput.value = codeInput.value.replace(/\D/g, "").slice(0, 6);
+        verifyBtn.disabled = codeInput.value.length !== 6;
+        // Autofill from the keyboard's one-time-code suggestion lands all
+        // six digits at once: submit without another tap.
+        if (codeInput.value.length === 6) submitCode();
+      });
+      codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submitCode(); });
+      verifyBtn.addEventListener("click", submitCode);
+      resendBtn.addEventListener("click", async () => {
+        resendBtn.disabled = true;
+        try {
+          await requestCode(email);
+          msg.style.color = "var(--ink-muted)";
+          msg.textContent = "New code sent. Only the newest one works.";
+          cooldown = 30; resendBtn.textContent = "Resend code (30s)";
+          const t2 = setInterval(() => {
+            if (!document.body.contains(resendBtn)) { clearInterval(t2); return; }
+            cooldown -= 1;
+            if (cooldown <= 0) { resendBtn.disabled = false; resendBtn.textContent = "Resend code"; clearInterval(t2); }
+            else resendBtn.textContent = `Resend code (${cooldown}s)`;
+          }, 1000);
+        } catch (e) {
+          msg.style.color = "var(--alert)";
+          msg.textContent = e.message || "Couldn't resend. Try again in a moment.";
+          resendBtn.disabled = false;
+        }
+      });
+      card.querySelector("#youChangeEmail").addEventListener("click", () => mountSignInForm(card, opts));
+      codeInput.focus();
+    }
+    emailInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendBtn.click(); } });
+    sendBtn.addEventListener("click", async () => {
+      const email = emailInput.value.trim();
+      if (!email) return;
+      try {
+        sendBtn.disabled = true;
+        sendBtn.textContent = "SENDING...";
+        const data = await requestCode(email);
+        if (data && data.code) { showCodeStep(email); return; }
+        // Fallback (server without code support): the old link-only confirmation.
+        toast("Access link sent!");
+        emailInput.disabled = true;
+        sendBtn.textContent = "LINK SENT ✓";
+        const confirmMsg = document.createElement("p");
+        confirmMsg.style.cssText = "font-size:13px; color: var(--ink-muted); margin-top:10px;";
+        confirmMsg.textContent = `Check ${email} for a sign-in link (and your spam folder — it can take a minute or two).`;
+        sendBtn.insertAdjacentElement("afterend", confirmMsg);
+      } catch (e) {
+        sendBtn.disabled = false;
+        sendBtn.textContent = "SEND ME A SIGN-IN CODE";
+        toast(e.message || "Could not send link.");
+      }
+    });
+  }
+
+  // ----- Sign-in sheet: "delay the wall" -----
+  // A gated action (Save, Follow, add to an RSS Pack, Create) used to toast
+  // and bounce the reader to the You tab, losing their place. Now it opens
+  // this sheet over whatever they're doing; after a successful sign-in the
+  // sheet closes and the action they tapped runs, in place. The resume
+  // closure only survives the emailed CODE path (same page); a tapped
+  // magic link reloads the app and drops it, same as before.
+  function requireSignIn(reason, resume) {
+    if (currentUser) return true;
+    openSignInSheet(reason, resume);
+    return false;
+  }
+  function openSignInSheet(reason, resume) {
+    closeSignInSheet();
+    const el = document.createElement("div");
+    el.id = "signInSheetOverlay";
+    el.className = "spray-picker-overlay signin-sheet-overlay";
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span>Sign in</span>
+          <button class="spray-picker-close" id="signInSheetClose" aria-label="Close">×</button>
+        </div>
+        <div class="spray-picker-sub">${escapeHtml(reason)} An account is free and keeps your saves and RSS Packs with you.</div>
+        <div class="card" id="signInSheetCard" style="margin-bottom:0;"></div>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) closeSignInSheet(); });
+    el.querySelector("#signInSheetClose").addEventListener("click", closeSignInSheet);
+    mountSignInForm(el.querySelector("#signInSheetCard"), {
+      title: "We'll email you a 6-digit code.",
+      onSignedIn: async () => {
+        closeSignInSheet();
+        // Pick up everything that depends on being signed in without
+        // re-rendering the whole tab (that would lose scroll position and
+        // the very row the reader was on).
+        myMixesCache = null;
+        try { await loadSprayBar(true); } catch (e) { /* non-fatal */ }
+        renderDesktopSidePanel();
+        renderSprayToggle();
+        renderClassicSidebar();
+        toast(currentUser ? `Signed in as ${currentUser.email}` : "Signed in.");
+        if (typeof resume === "function") {
+          try { await resume(); } catch (e) { toast(e.message || "Signed in, but that didn't go through. Try again."); }
+        }
+      },
+    });
+    const first = el.querySelector("#youEmail");
+    if (first) first.focus();
+  }
+  function closeSignInSheet() {
+    const el = document.getElementById("signInSheetOverlay");
+    if (el) el.remove();
+  }
+
   // The You tab is the hub: Sources & RSS Packs is a sub-screen reached from
   // here (activeTab "sources", with a "‹ You" back button), and Contact /
   // Support + Privacy live in the footer. Shared by the signed-in and
@@ -4020,133 +4204,17 @@
           and custom sources you build, and your reading setup — all synced across your devices,
           nothing lost if you switch phones or clear your browser.
         </div>
-        <div class="card">
-          <div class="card-meta"><span>ACCESS</span></div>
-          <div class="card-title" style="margin-bottom:10px;">Sign in to save your RSS Packs across devices.</div>
-          <input id="youEmail" type="email" placeholder="you@domain.com" enterkeyhint="send" autocomplete="email" autocapitalize="none" autocorrect="off" data-reveal-next="youSendLink"
-            style="width:100%; padding:9px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--body); margin-bottom:8px; border-radius:8px;">
-          <button class="btn primary" id="youSendLink">SEND ME A SIGN-IN CODE</button>
-          ${isStandaloneApp() ? `<p style="font-size:12.5px; color: var(--ink-muted); margin-top:10px;">Heads up: on an installed/Home-Screen app, the sign-in link opens in your regular browser, not this app — you'll need to sign in there for now. We're working on fixing this for the installed app.</p>` : ""}
-        </div>
+        <div class="card" id="youSignInCard"></div>
         ${youFooterHtml()}
         </div>`;
       wireYouSourcesRow(main);
-      const sendBtn = document.getElementById("youSendLink");
-      const emailInput = document.getElementById("youEmail");
-      // Step 1: request. Step 2 (showCodeStep): type the emailed 6-digit
-      // code. The emailed link still works as the fallback, so the second
-      // step also says so.
-      async function requestCode(email) {
-        const data = await api("/api/auth/request-link", { method: "POST", body: JSON.stringify({ email, client: "source" }) });
-        return data;
-      }
-      function showCodeStep(email) {
-        const card = sendBtn.closest(".card");
-        card.innerHTML = `
-          <div class="card-meta"><span>CHECK YOUR EMAIL</span></div>
-          <div class="card-title" style="margin-bottom:6px;">Enter the 6-digit code we sent to ${escapeHtml(email)}.</div>
-          <input id="youCode" type="text" inputmode="numeric" pattern="[0-9]*" maxlength="6"
-            autocomplete="one-time-code" enterkeyhint="go" data-reveal-next="youVerifyCode" placeholder="123456" aria-label="6-digit sign-in code"
-            style="width:100%; padding:10px; background:var(--bg); border:1px solid var(--line); color:var(--ink); font-family:var(--display); font-size:24px; letter-spacing:6px; text-align:center; margin:8px 0; border-radius:8px;">
-          <button class="btn primary" id="youVerifyCode" disabled>SIGN IN</button>
-          <p id="youCodeMsg" style="font-size:13px; color: var(--ink-muted); margin:10px 0 0;" aria-live="polite">
-            Or tap the link in the same email. It can take a minute, and it may land in spam.
-          </p>
-          <div style="display:flex; gap:14px; margin-top:12px; font-size:13px;">
-            <button class="btn" id="youResend" style="padding:6px 10px;" disabled>Resend code</button>
-            <button class="btn" id="youChangeEmail" style="padding:6px 10px;">Use a different email</button>
-          </div>`;
-        const codeInput = document.getElementById("youCode");
-        const verifyBtn = document.getElementById("youVerifyCode");
-        const resendBtn = document.getElementById("youResend");
-        const msg = document.getElementById("youCodeMsg");
-        let verifying = false;
-
-        let cooldown = 30;
-        const tick = setInterval(() => {
-          if (!document.body.contains(resendBtn)) { clearInterval(tick); return; }
-          cooldown -= 1;
-          if (cooldown <= 0) { resendBtn.disabled = false; resendBtn.textContent = "Resend code"; clearInterval(tick); }
-          else resendBtn.textContent = `Resend code (${cooldown}s)`;
-        }, 1000);
-        resendBtn.textContent = "Resend code (30s)";
-
-        async function submitCode() {
-          if (verifying) return;
-          const code = codeInput.value.replace(/\D/g, "");
-          if (code.length !== 6) return;
-          verifying = true;
-          verifyBtn.disabled = true;
-          verifyBtn.textContent = "CHECKING...";
-          try {
-            const data = await api("/api/auth/verify-code", { method: "POST", body: JSON.stringify({ email, code }) });
-            if (data && data.token) setToken(data.token);
-            await refreshSession();
-            renderActiveTab();
-            renderDesktopSidePanel();
-            toast(currentUser ? `Signed in as ${currentUser.email}` : "Signed in.");
-          } catch (e) {
-            verifying = false;
-            verifyBtn.textContent = "SIGN IN";
-            verifyBtn.disabled = codeInput.value.replace(/\D/g, "").length !== 6;
-            msg.style.color = "var(--alert)";
-            msg.textContent = e.message || "That code didn't work.";
-            codeInput.select();
-          }
-        }
-        codeInput.addEventListener("input", () => {
-          codeInput.value = codeInput.value.replace(/\D/g, "").slice(0, 6);
-          verifyBtn.disabled = codeInput.value.length !== 6;
-          // Autofill from the keyboard's one-time-code suggestion lands all
-          // six digits at once: submit without another tap.
-          if (codeInput.value.length === 6) submitCode();
-        });
-        codeInput.addEventListener("keydown", (e) => { if (e.key === "Enter") submitCode(); });
-        verifyBtn.addEventListener("click", submitCode);
-        resendBtn.addEventListener("click", async () => {
-          resendBtn.disabled = true;
-          try {
-            await requestCode(email);
-            msg.style.color = "var(--ink-muted)";
-            msg.textContent = "New code sent. Only the newest one works.";
-            cooldown = 30; resendBtn.textContent = "Resend code (30s)";
-            const t2 = setInterval(() => {
-              if (!document.body.contains(resendBtn)) { clearInterval(t2); return; }
-              cooldown -= 1;
-              if (cooldown <= 0) { resendBtn.disabled = false; resendBtn.textContent = "Resend code"; clearInterval(t2); }
-              else resendBtn.textContent = `Resend code (${cooldown}s)`;
-            }, 1000);
-          } catch (e) {
-            msg.style.color = "var(--alert)";
-            msg.textContent = e.message || "Couldn't resend. Try again in a moment.";
-            resendBtn.disabled = false;
-          }
-        });
-        document.getElementById("youChangeEmail").addEventListener("click", () => renderYou());
-        codeInput.focus();
-      }
-      emailInput.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); sendBtn.click(); } });
-      sendBtn.addEventListener("click", async () => {
-        const email = emailInput.value.trim();
-        if (!email) return;
-        try {
-          sendBtn.disabled = true;
-          sendBtn.textContent = "SENDING...";
-          const data = await requestCode(email);
-          if (data && data.code) { showCodeStep(email); return; }
-          // Fallback (server without code support): the old link-only confirmation.
-          toast("Access link sent!");
-          emailInput.disabled = true;
-          sendBtn.textContent = "LINK SENT ✓";
-          const confirmMsg = document.createElement("p");
-          confirmMsg.style.cssText = "font-size:13px; color: var(--ink-muted); margin-top:10px;";
-          confirmMsg.textContent = `Check ${email} for a sign-in link (and your spam folder — it can take a minute or two).`;
-          sendBtn.insertAdjacentElement("afterend", confirmMsg);
-        } catch (e) {
-          sendBtn.disabled = false;
-          sendBtn.textContent = "SEND ME A SIGN-IN CODE";
-          toast(e.message || "Could not send link.");
-        }
+      mountSignInForm(document.getElementById("youSignInCard"), {
+        title: "Sign in to save your RSS Packs across devices.",
+        onSignedIn: async () => {
+          renderActiveTab();
+          renderDesktopSidePanel();
+          toast(currentUser ? `Signed in as ${currentUser.email}` : "Signed in.");
+        },
       });
       return;
     }
@@ -4585,12 +4653,8 @@
       </div>`;
     wirePackShareButton(main, mix);
     document.getElementById("packFollowBtn").addEventListener("click", async (ev) => {
-      if (!currentUser) {
-        toast("Sign in to follow this RSS Pack.");
-        switchTab("you");
-        return;
-      }
       const btn = ev.currentTarget;
+      if (!requireSignIn("Sign in to follow this RSS Pack.", () => btn.click())) return;
       btn.disabled = true;
       try {
         if (following) await api(`/api/my/spray-bar/${encodeURIComponent(mix.slug)}`, { method: "DELETE" });
