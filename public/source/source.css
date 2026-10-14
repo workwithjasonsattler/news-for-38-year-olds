@@ -1167,7 +1167,8 @@ body[data-layout="desktop"] #main .source-single-col-screen {
    boxes) with an intentional two-column design instead of just
    forcing everything back to one column. */
 .sources-two-col { display: block; }
-.sources-back-row { margin-bottom: 14px; }
+.sources-back-row { margin-bottom: 14px; display: flex; align-items: center; gap: 12px; }
+.sources-back-title { font-family: var(--display); font-weight: 700; font-size: 20px; letter-spacing: -0.01em; }
 body[data-layout="desktop"] #main .sources-two-col .sources-back-row { grid-column: 1 / -1; margin-bottom: 0; }
 body[data-layout="desktop"] #main .sources-two-col {
   grid-column: 1 / -1;

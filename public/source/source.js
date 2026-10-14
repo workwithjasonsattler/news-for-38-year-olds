@@ -2548,10 +2548,10 @@
       // inline, unchanged. -----
       rightHtml += `<div class="sources-area-head" style="margin-top:28px;">
           <div class="sources-area-rule"></div>
-          <div class="sources-area-title">Your Sources</div>
+          <div class="sources-area-title">Your Feeds</div>
           <div class="sources-area-sub">Everything you can build an RSS Pack from. Tap one to see where it already lives. <span class="source-corporate-mark">*</span> = corporate/conglomerate-owned — hover for the parent company.</div>
         </div>`;
-      rightHtml += `<div class="section-label" style="margin-top:8px;">All sources (${orgSources.length})</div>`;
+      rightHtml += `<div class="section-label" style="margin-top:8px;">All feeds (${orgSources.length})</div>`;
       rightHtml += `<input class="create-flow-input" id="sourcesBrowseSearch" placeholder="Search sources..." value="${escapeHtml(sourcesBrowseFilter)}" style="margin:8px 0 10px;">`;
 
       const filtered = sourcesBrowseFilter
@@ -2581,7 +2581,7 @@
 
       main.innerHTML = `
         <div class="sources-two-col">
-          <div class="sources-back-row"><button class="btn" id="sourcesBackToYou" type="button">‹ You</button></div>
+          <div class="sources-back-row"><button class="btn" id="sourcesBackToYou" type="button">‹ You</button><span class="sources-back-title">Feeds</span></div>
           <div class="sources-col-left">${leftHtml}</div>
           <div class="sources-col-right">${rightHtml}</div>
         </div>`;
@@ -3990,9 +3990,9 @@
   function youSourcesRowHtml() {
     return `
       <button class="card you-sources-row" id="youSourcesRow" type="button" style="width:100%; text-align:left; cursor:pointer; margin-bottom:18px;">
-        <div class="card-meta"><span>SOURCES &amp; RSS PACKS</span></div>
+        <div class="card-meta"><span>FEEDS</span></div>
         <div class="card-title" style="margin-bottom:4px;">Choose what you read ›</div>
-        <div class="section-sub" style="margin:0; font-size:13px;">Browse and follow RSS Packs, add a feed, build your own. No account needed to browse.</div>
+        <div class="section-sub" style="margin:0; font-size:13px;">RSS Packs to follow, feeds to add, and your own to build. No account needed to browse.</div>
       </button>`;
   }
   function youFooterHtml() {
@@ -4164,6 +4164,7 @@
 
     main.innerHTML = `
       <div class="source-single-col-screen">
+      ${youSourcesRowHtml()}
       <div class="card">
         <div class="card-meta"><span>SIGNED IN</span><span class="stamp">VERIFIED</span></div>
         <div class="you-account-email">${escapeHtml(currentUser.email)}</div>
@@ -4336,7 +4337,7 @@
       <h1>Take Back Your Morning</h1>
       <button class="ob-btn" id="obStart">Just dig in</button>
       <button class="ob-btn secondary" id="obCustom">Customize a bit<span class="ob-btn-sub">Pick a few packs and a view. Under a minute.</span></button>
-      <button class="ob-btn secondary" id="obOwn">Nerd out<span class="ob-btn-sub">Go straight to Sources and build it yourself.</span></button>
+      <button class="ob-btn secondary" id="obOwn">Nerd out<span class="ob-btn-sub">Go straight to Feeds and build it yourself.</span></button>
       <a href="#" class="ob-whats-this" id="obWhatsThis">What's this?</a>
     `;
     document.body.appendChild(el);
@@ -4571,7 +4572,7 @@
           <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
           <div class="manage-screen-stat">${sources.length} source${sources.length === 1 ? "" : "s"}${mix.auto_sync ? " right now" : ""}${mix.location_label ? " · " + escapeHtml(mix.location_label) : ""}</div>
         </div>
-        ${mix.is_public ? "" : `<div class="manage-screen-hidden-notice"><span>🔒</span><span><strong>Private.</strong> Only you can see this page. Make the Pack public in Sources to share it.</span></div>`}
+        ${mix.is_public ? "" : `<div class="manage-screen-hidden-notice"><span>🔒</span><span><strong>Private.</strong> Only you can see this page. Make the Pack public in Feeds to share it.</span></div>`}
         <div class="manage-screen-field">
           <div class="create-flow-label">Sources</div>
           <div class="tile-sheet-sources">${chips}</div>${more}
