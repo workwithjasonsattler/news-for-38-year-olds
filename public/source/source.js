@@ -4632,9 +4632,9 @@
   const SUPPORT_PACK_NAME = "Publications I Support";
   const PUBLIC_MEDIA_SLUG = "public-media-around-the-world";
   const OB_VIEWS = [
-    { key: "classic", label: "Classic", sub: "Old Google Reader. Dense list, tap a row to open it." },
-    { key: "headlines", label: "Headlines only", sub: "A tight list. The most stories per screen." },
-    { key: "expanded", label: "Expanded", sub: "Headline plus a short excerpt." },
+    { key: "classic", label: "Classic", sub: "Dense list, newest first. Tap a headline to read it. The most stories per screen." },
+    { key: "headlines", label: "Headlines only", sub: "Headlines in cards, with Save and Follow on each. Roomier than Classic." },
+    { key: "expanded", label: "Expanded", sub: "Headline, a short excerpt and a thumbnail." },
     { key: "scroll", label: "Scroll", sub: "Big images, full excerpts, one story at a time." },
   ];
 
@@ -5167,6 +5167,8 @@
     initSearch();
     initGetAppStrip();
 
+    const feedsBtn = document.getElementById("feedsBtn");
+    if (feedsBtn) feedsBtn.addEventListener("click", () => switchTab("sources"));
     const refreshBtn = document.getElementById("refreshBtn");
     if (refreshBtn) {
       refreshBtn.addEventListener("click", async () => {
