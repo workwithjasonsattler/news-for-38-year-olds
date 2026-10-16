@@ -423,6 +423,10 @@ async function initSchema() {
     // Packs in Top RSS Packs). Null = falls back to created_at order.
     // Set via the Pack Builder's up/down arrows or "Suggest order".
     `ALTER TABLE feed_mixes ADD COLUMN official_order INTEGER`,
+    // byline: optional public curator name a reader can put on their own
+    // PUBLIC Pack (null = anonymous, the default). Shown on the Pack page and
+    // share card only while the Pack is public.
+    `ALTER TABLE feed_mixes ADD COLUMN byline TEXT`,
     // wire_eligible: gates whether a feed's imported items can appear in
     // the SHARED, unfiltered wire (N38YO's main feed, GET /api/dispatches
     // with no outlet filter, and "Headlines: Best in the World"'s
@@ -2729,6 +2733,7 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
         source_type: s.source_type,
         outlet,
         pending: s.source_type === "custom" && s.custom_status !== "approved",
+        custom_source_id: includePending && s.source_type === "custom" ? s.custom_source_id : undefined,
         is_corporate: marker?.is_corporate || false,
         parent_company: marker?.parent_company || null,
       };
@@ -2745,6 +2750,8 @@ app.post("/api/mixes", async (req, res) => {
   const locationLabel = req.body?.location_label ? String(req.body.location_label).trim().slice(0, 100) : null;
   const isPublic = req.body?.is_public === true ? 1 : 0; // default PRIVATE (opt-in sharing)
   const sources = Array.isArray(req.body?.sources) ? req.body.sources : [];
+  const bl = cleanByline(req.body?.byline);
+  if (bl.error) return res.status(400).json({ error: bl.error });
 
   if (!name) return res.status(400).json({ error: "name is required" });
   if (sources.length === 0) return res.status(400).json({ error: "a mix needs at least one source" });
@@ -2780,8 +2787,8 @@ app.post("/api/mixes", async (req, res) => {
 
   const slug = await generateUniqueMixSlug(name);
   const info = await dbRun(
-    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public) VALUES (?, ?, ?, ?, ?)`,
-    [slug, name, user.id, locationLabel, isPublic]
+    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, byline) VALUES (?, ?, ?, ?, ?, ?)`,
+    [slug, name, user.id, locationLabel, isPublic, bl.value]
   );
   for (let i = 0; i < validated.length; i++) {
     const v = validated[i];
@@ -2810,10 +2817,16 @@ app.put("/api/mixes/:slug", async (req, res) => {
     : mix.location_label;
   const isPublic = req.body?.is_public !== undefined ? (req.body.is_public ? 1 : 0) : mix.is_public;
   if (!name) return res.status(400).json({ error: "name is required" });
+  let byline = mix.byline ?? null;
+  if (req.body?.byline !== undefined) {
+    const bl = cleanByline(req.body.byline);
+    if (bl.error) return res.status(400).json({ error: bl.error });
+    byline = bl.value;
+  }
 
   await dbRun(
-    `UPDATE feed_mixes SET name = ?, location_label = ?, is_public = ?, updated_at = datetime('now') WHERE id = ?`,
-    [name, locationLabel, isPublic, mix.id]
+    `UPDATE feed_mixes SET name = ?, location_label = ?, is_public = ?, byline = ?, updated_at = datetime('now') WHERE id = ?`,
+    [name, locationLabel, isPublic, byline, mix.id]
   );
 
   // Topics are optional on edit — only replace them if the caller sent a
@@ -2908,10 +2921,26 @@ app.get("/api/mixes/official", async (req, res) => {
 
 // Byline for a Pack. Every house Pack (official, featured seeds, the
 // Headlines flagship) is stored with creator_user_id = 0, the system
-// sentinel, and is authored by "SOURCE!". Reader-made Packs have no public
-// byline yet (curator name/handle/anonymous is still undecided).
+// sentinel, and is authored by "SOURCE!". A reader-made Pack shows the
+// byline its owner chose, but only while the Pack is public; blank means
+// anonymous (the default).
 function packCurator(mix) {
-  return mix.is_official || Number(mix.creator_user_id) === 0 ? "SOURCE!" : null;
+  if (mix.is_official || Number(mix.creator_user_id) === 0) return "SOURCE!";
+  if (mix.is_public && mix.byline) return mix.byline;
+  return null;
+}
+
+// Clean a reader-supplied byline. Returns { value } (null = anonymous) or
+// { error }. Names that would pass as the house byline are refused so a
+// reader Pack can't pose as "Curated by SOURCE!".
+function cleanByline(raw) {
+  const v = String(raw ?? "").replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
+  if (!v) return { value: null };
+  const squashed = v.toLowerCase().replace(/[^a-z0-9]/g, "");
+  if (["source", "sourceteam", "sourceapp", "sourcenews", "sourcestaff", "sourceofficial", "official"].includes(squashed)) {
+    return { error: "That name is reserved for house Packs. Pick a different byline or leave it blank." };
+  }
+  return { value: v };
 }
 
 app.get("/api/mixes/:slug", async (req, res) => {
@@ -2936,6 +2965,7 @@ app.get("/api/mixes/:slug", async (req, res) => {
     is_owner: isOwner,
     is_official: !!mix.is_official,
     curator: packCurator(mix),
+    byline: isOwner ? (mix.byline || null) : undefined,
     auto_sync: !!mix.auto_sync,
     admin_hidden: !!mix.admin_hidden,
     created_at: mix.created_at,

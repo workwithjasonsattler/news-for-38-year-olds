@@ -2990,3 +2990,15 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
    (which covers the bottom) never hides the email/code box. */
 .signin-sheet-overlay { align-items: flex-start; padding-top: max(10vh, 24px); }
 .signin-sheet-overlay .spray-picker-card { border-radius: 14px; max-height: 80vh; }
+
+/* Publications I support card (You tab) */
+.support-chip-x{background:none;border:0;color:inherit;font:inherit;font-size:16px;line-height:1;margin-left:6px;padding:0 2px;cursor:pointer;opacity:.7;min-width:24px;min-height:24px}
+.support-pick-list{max-height:260px;overflow-y:auto;margin-top:8px;border:1px solid var(--border,#ddd);border-radius:8px}
+.support-pick-row{display:block;width:100%;text-align:left;background:none;border:0;border-bottom:1px solid var(--border,#ddd);padding:12px;font:inherit;color:inherit;cursor:pointer;min-height:44px}
+.support-pick-row:last-child{border-bottom:0}
+.support-pick-row.on{font-weight:600}
+.support-pick-row.on::after{content:" ✓";color:var(--accent)}
+
+/* Onboarding first screen: plain-language statement + start label */
+.onboarding p.ob-lede { font-size: 17px; line-height: 1.45; font-weight: 500; color: var(--ink); margin: 0 0 30px; }
+.onboarding .ob-label { font-family: var(--body); font-size: 15px; font-weight: 600; margin: 0 0 10px; }

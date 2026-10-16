@@ -42,6 +42,9 @@
     if (currentUser && localStorage.getItem("source_onboarding_pending")) {
       setTimeout(() => { applyPendingOnboarding(); }, 0);
     }
+    if (currentUser && localStorage.getItem("source_support_local")) {
+      setTimeout(() => { applySupportLocal(); }, 0);
+    }
     return currentUser;
   }
 
@@ -2279,6 +2282,11 @@
           <button class="tile-sheet-switch${mix.is_public ? " on" : ""}" id="mgVisibilityToggle" role="switch" aria-checked="${mix.is_public}" aria-label="Make this RSS Pack public"></button>
         </div>
         <div class="manage-screen-field">
+          <div class="create-flow-label">Byline (optional)</div>
+          <input class="create-flow-input" id="mgBylineInput" value="${escapeHtml(mix.byline || "")}" maxlength="40" placeholder="Anonymous">
+          <div class="manage-screen-stat" style="margin-top:6px;">Shown as "Curated by …" on your Pack page and share card while the Pack is public. Leave it blank to stay anonymous.</div>
+        </div>
+        <div class="manage-screen-field">
           <div class="create-flow-label">Sources</div>
           <div class="tile-sheet-sources">${sourcesHtml}</div>
           <input class="create-flow-input" id="mgAddSourceInput" placeholder="Search sources to add…" style="margin-top:10px;">
@@ -2393,7 +2401,7 @@
       try {
         await api(`/api/mixes/${encodeURIComponent(mix.slug)}`, {
           method: "PUT",
-          body: JSON.stringify({ name, is_public: isPublic }),
+          body: JSON.stringify({ name, is_public: isPublic, byline: (document.getElementById("mgBylineInput")?.value || "").trim() }),
         });
         await loadMyMixes(true);
         toast("Saved.");
@@ -4193,6 +4201,173 @@
     if (row) row.addEventListener("click", () => switchTab("sources"));
   }
 
+  // ----- "Publications I support" card (You tab, top) -----
+  // The reader's list of outlets they pay for or want to back. It is an
+  // ordinary RSS Pack named SUPPORT_PACK_NAME (private unless shared), so
+  // editing it here edits the same Pack Manage shows. Signed out, the list
+  // is held on the device (SUPPORT_LOCAL_KEY) and merged in at sign-in.
+  const SUPPORT_LOCAL_KEY = "source_support_local";
+  const SUPPORT_SLUG_KEY = "source_support_pack_slug";
+  const SUPPORT_CAP = 25;
+  function readSupportLocal() {
+    try {
+      const v = JSON.parse(localStorage.getItem(SUPPORT_LOCAL_KEY) || "null");
+      if (v && Array.isArray(v.outlets)) return { outlets: v.outlets.map(String), isPublic: !!v.isPublic };
+    } catch (e) { /* fall through */ }
+    return { outlets: [], isPublic: false };
+  }
+  function writeSupportLocal(outlets, isPublic) {
+    if (!outlets.length) localStorage.removeItem(SUPPORT_LOCAL_KEY);
+    else localStorage.setItem(SUPPORT_LOCAL_KEY, JSON.stringify({ outlets, isPublic: !!isPublic }));
+  }
+  async function loadSupportState() {
+    if (!currentUser) {
+      const l = readSupportLocal();
+      return { signedIn: false, slug: null, outlets: l.outlets, customs: [], isPublic: l.isPublic };
+    }
+    const mixes = await loadMyMixes(true);
+    const remembered = localStorage.getItem(SUPPORT_SLUG_KEY);
+    const mine = (mixes || []).filter(m => !m.is_official);
+    const found = mine.find(m => m.slug === remembered)
+      || mine.find(m => (m.name || "").trim().toLowerCase() === SUPPORT_PACK_NAME.toLowerCase());
+    if (!found) return { signedIn: true, slug: null, outlets: [], customs: [], isPublic: false };
+    const full = await api(`/api/mixes/${encodeURIComponent(found.slug)}`);
+    const srcs = full.sources || [];
+    return {
+      signedIn: true,
+      slug: found.slug,
+      outlets: srcs.filter(x => x.source_type === "admin_outlet").map(x => x.outlet),
+      customs: srcs.filter(x => x.source_type === "custom" && x.custom_source_id).map(x => ({ source_type: "custom", custom_source_id: x.custom_source_id })),
+      isPublic: !!full.is_public,
+    };
+  }
+  // Writes the list to the account (signed in) or the device (signed out).
+  // Returns the new state. Removing the last outlet retires the Pack.
+  async function saveSupportState(st, outlets, isPublic) {
+    if (outlets.length > SUPPORT_CAP) throw new Error(`A Pack holds up to ${SUPPORT_CAP} publications.`);
+    if (!st.signedIn) {
+      writeSupportLocal(outlets, isPublic);
+      return { ...st, outlets, isPublic };
+    }
+    const sources = [...outlets.map(o => ({ source_type: "admin_outlet", outlet: o })), ...st.customs];
+    let slug = st.slug;
+    if (!sources.length) {
+      if (slug) await api(`/api/mixes/${encodeURIComponent(slug)}`, { method: "DELETE" });
+      localStorage.removeItem(SUPPORT_SLUG_KEY);
+      slug = null;
+      isPublic = false;
+    } else if (slug) {
+      await api(`/api/mixes/${encodeURIComponent(slug)}`, { method: "PUT", body: JSON.stringify({ sources, is_public: !!isPublic }) });
+    } else {
+      const mix = await api("/api/mixes", { method: "POST", body: JSON.stringify({ name: SUPPORT_PACK_NAME, is_public: !!isPublic, sources }) });
+      slug = mix.slug;
+      localStorage.setItem(SUPPORT_SLUG_KEY, slug);
+    }
+    try { await loadMyMixes(true); await loadSprayBar(true); } catch (e) { /* fail soft */ }
+    return { ...st, slug, outlets, isPublic };
+  }
+  async function applySupportLocal() {
+    const l = readSupportLocal();
+    if (!currentUser || !l.outlets.length) return;
+    localStorage.removeItem(SUPPORT_LOCAL_KEY); // clear first so a failure can't double-apply
+    try {
+      const st = await loadSupportState();
+      const merged = [...new Set([...st.outlets, ...l.outlets])].slice(0, SUPPORT_CAP);
+      await saveSupportState(st, merged, st.slug ? st.isPublic : l.isPublic);
+      toast("Your supported publications are saved.");
+    } catch (e) {
+      toast("Couldn't save your supported publications. Add them again from the You tab.");
+    }
+    const el = document.getElementById("youSupportCard");
+    if (el) mountSupportCard(el);
+  }
+  async function mountSupportCard(el) {
+    el.innerHTML = `<div class="section-label" style="margin-top:2px;">PUBLICATIONS I SUPPORT</div><div class="card"><div class="card-meta">Loading…</div></div>`;
+    let st;
+    try { st = await loadSupportState(); }
+    catch (e) { st = { signedIn: !!currentUser, slug: null, outlets: [], customs: [], isPublic: false }; }
+    if (!sourcesRegistryCache) {
+      try {
+        const reg = await api("/api/sources");
+        sourcesRegistryCache = (Array.isArray(reg) ? reg : []).filter(r => r.feed_type !== "journalist");
+      } catch (e) { sourcesRegistryCache = []; }
+    }
+    const registry = [...sourcesRegistryCache].sort((a, b) => (a.outlet || "").localeCompare(b.outlet || ""));
+    let picking = false, filter = "", busy = false;
+
+    async function persist(outlets, isPublic) {
+      if (busy) return;
+      busy = true;
+      try { st = await saveSupportState(st, outlets, isPublic); }
+      catch (e) { toast(e.message || "Couldn't save that. Try again."); }
+      busy = false;
+      draw();
+    }
+    function pickRows() {
+      const f = filter.trim().toLowerCase();
+      return registry.filter(r => !f || (r.outlet || "").toLowerCase().includes(f)).slice(0, 60)
+        .map(r => `<button type="button" class="support-pick-row${st.outlets.includes(r.outlet) ? " on" : ""}" data-outlet="${escapeHtml(r.outlet)}" aria-pressed="${st.outlets.includes(r.outlet)}">${escapeHtml(r.outlet)}</button>`).join("")
+        || `<div class="manage-screen-stat">No matches.</div>`;
+    }
+    function draw() {
+      const has = st.outlets.length > 0;
+      const chips = st.outlets.map(o => `<span class="tile-sheet-chip">${escapeHtml(o)}<button type="button" class="support-chip-x" data-remove="${escapeHtml(o)}" aria-label="Remove ${escapeHtml(o)}">×</button></span>`).join("");
+      el.innerHTML = `
+        <div class="section-label" style="margin-top:2px;">PUBLICATIONS I SUPPORT</div>
+        <div class="card" style="padding:12px;">
+          ${has ? `<div class="manage-screen-stat">${st.outlets.length} publication${st.outlets.length === 1 ? "" : "s"}${st.signedIn ? "" : " · saved on this device until you sign in"}</div>
+            <div class="tile-sheet-sources" style="margin-top:8px;">${chips}</div>`
+            : `<div class="section-sub" style="margin:0 0 10px;">The outlets you pay for or want to back. Private unless you share it.${st.signedIn ? "" : " Saved on this device until you sign in."}</div>`}
+          ${picking ? `
+            <input type="search" class="create-flow-input" id="supportFilter" placeholder="Search publications" value="${escapeHtml(filter)}" autocomplete="off" style="margin-top:10px;">
+            <div class="support-pick-list" id="supportPickList">${pickRows()}</div>
+            <button class="btn primary" id="supportDone" style="width:100%; margin-top:10px;">Done</button>`
+          : `<button class="btn" id="supportAdd" style="width:100%; margin-top:10px;">${has ? "Add more" : "Add publications"}</button>`}
+          ${has ? `
+            <div class="tile-sheet-toggle-row" style="margin-top:12px;">
+              <span>Share this list</span>
+              <button class="tile-sheet-switch${st.isPublic ? " on" : ""}" id="supportShareToggle" role="switch" aria-checked="${st.isPublic}" aria-label="Share this list publicly"></button>
+            </div>
+            ${st.isPublic && st.signedIn && st.slug ? `<button class="btn" id="supportShareBtn" style="width:100%; margin-top:8px;">Share this list ↗</button>` : ""}` : ""}
+        </div>`;
+      const add = el.querySelector("#supportAdd");
+      if (add) add.addEventListener("click", () => { picking = true; draw(); });
+      const done = el.querySelector("#supportDone");
+      if (done) done.addEventListener("click", () => { picking = false; filter = ""; draw(); });
+      const flt = el.querySelector("#supportFilter");
+      if (flt) flt.addEventListener("input", () => {
+        filter = flt.value;
+        const list = el.querySelector("#supportPickList");
+        list.innerHTML = pickRows();
+        wirePickRows(list);
+      });
+      const list = el.querySelector("#supportPickList");
+      if (list) wirePickRows(list);
+      el.querySelectorAll("[data-remove]").forEach(b => b.addEventListener("click", () => {
+        const o = b.getAttribute("data-remove");
+        persist(st.outlets.filter(x => x !== o), st.isPublic);
+      }));
+      const sw = el.querySelector("#supportShareToggle");
+      if (sw) sw.addEventListener("click", () => persist(st.outlets, !st.isPublic));
+      const shareBtn = el.querySelector("#supportShareBtn");
+      if (shareBtn) shareBtn.addEventListener("click", () => doShare(packShareUrl(st.slug), `${SUPPORT_PACK_NAME} on SOURCE!`));
+    }
+    function wirePickRows(list) {
+      list.querySelectorAll("[data-outlet]").forEach(b => b.addEventListener("click", async () => {
+        const o = b.getAttribute("data-outlet");
+        const next = st.outlets.includes(o) ? st.outlets.filter(x => x !== o) : [...st.outlets, o];
+        if (next.length > SUPPORT_CAP) { toast(`A Pack holds up to ${SUPPORT_CAP} publications.`); return; }
+        try { st = await saveSupportState(st, next, st.isPublic); }
+        catch (e) { toast(e.message || "Couldn't save that. Try again."); return; }
+        b.classList.toggle("on", st.outlets.includes(o));
+        b.setAttribute("aria-pressed", st.outlets.includes(o));
+        const stat = el.querySelector(".manage-screen-stat");
+        if (stat && /publication/.test(stat.textContent)) stat.textContent = `${st.outlets.length} publication${st.outlets.length === 1 ? "" : "s"}${st.signedIn ? "" : " · saved on this device until you sign in"}`;
+      }));
+    }
+    draw();
+  }
+
   async function renderYou() {
     const main = document.getElementById("main");
     await refreshSession();
@@ -4200,6 +4375,7 @@
       main.innerHTML = `
         <div class="source-single-col-screen">
         ${youSourcesRowHtml()}
+        <div id="youSupportCard" style="margin-bottom:20px;"></div>
         <div class="section-label" style="margin-top:2px;">WHY SIGN IN</div>
         <div class="section-sub" style="font-size:13.5px; line-height:1.5; margin:0 2px 20px;">
           An account is free and just keeps your stuff with you: saved articles, the RSS Packs
@@ -4210,6 +4386,7 @@
         ${youFooterHtml()}
         </div>`;
       wireYouSourcesRow(main);
+      mountSupportCard(document.getElementById("youSupportCard"));
       mountSignInForm(document.getElementById("youSignInCard"), {
         title: "Sign in to save your RSS Packs across devices.",
         onSignedIn: async () => {
@@ -4235,6 +4412,7 @@
     main.innerHTML = `
       <div class="source-single-col-screen">
       ${youSourcesRowHtml()}
+      <div id="youSupportCard" style="margin-bottom:18px;"></div>
       <div class="card">
         <div class="card-meta"><span>SIGNED IN</span><span class="stamp">VERIFIED</span></div>
         <div class="you-account-email">${escapeHtml(currentUser.email)}</div>
@@ -4253,6 +4431,7 @@
       </div>
     `;
     wireYouSourcesRow(main);
+    mountSupportCard(document.getElementById("youSupportCard"));
     document.getElementById("youSignOut").addEventListener("click", async () => {
       try { await api("/api/auth/logout", { method: "POST" }); } catch (e) { /* ignore */ }
       setToken("");
@@ -4405,9 +4584,11 @@
       <div class="ob-wordmark">SOURCE!</div>
       <div class="ob-rule"></div>
       <h1>Take Back Your Morning</h1>
-      <button class="ob-btn" id="obStart">Just dig in</button>
-      <button class="ob-btn secondary" id="obCustom">Customize a bit<span class="ob-btn-sub">Pick a few packs and a view. Under a minute.</span></button>
-      <button class="ob-btn secondary" id="obOwn">Nerd out<span class="ob-btn-sub">Go straight to Feeds and build it yourself.</span></button>
+      <p class="ob-lede">This is the news app you check first.</p>
+      <div class="ob-label">Let’s get started</div>
+      <button class="ob-btn" id="obStart">Just dig in<span class="ob-btn-sub">Start reading, edit later</span></button>
+      <button class="ob-btn secondary" id="obCustom">Customize a bit<span class="ob-btn-sub">Build a feed just for you</span></button>
+      <button class="ob-btn secondary" id="obOwn">Nerd out<span class="ob-btn-sub">Customize everything</span></button>
       <a href="#" class="ob-whats-this" id="obWhatsThis">What's this?</a>
     `;
     document.body.appendChild(el);
@@ -4440,9 +4621,9 @@
 
 
   // ---------------------------------------------------------------
-  // "Customize a bit" onboarding. Four short steps: packs -> view ->
-  // publications you support (optional, private unless the reader opts
-  // in) -> save. Choices are HELD ON THE DEVICE (ONBOARD_PENDING_KEY)
+  // "Customize a bit" onboarding. Three short steps: packs -> view ->
+  // save. (The supported-publications list now lives in a card at the top
+  // of the You tab.) Choices are HELD ON THE DEVICE (ONBOARD_PENDING_KEY)
   // until the reader is signed in, then applied once by
   // applyPendingOnboarding() (called from refreshSession). The view is
   // purely local so it applies immediately.
@@ -4509,7 +4690,7 @@
   function renderObStep(st) {
     const el = document.getElementById("onboarding");
     if (!el) return;
-    const head = `<div class="ob-wordmark">SOURCE!</div><div class="ob-rule"></div><div class="ob-step">Step ${st.step} of 4</div>`;
+    const head = `<div class="ob-wordmark">SOURCE!</div><div class="ob-rule"></div><div class="ob-step">Step ${st.step} of 3</div>`;
     let body = "";
     if (st.step === 1) {
       body = `<h1>Pick a few packs to start</h1>
@@ -4521,15 +4702,6 @@
         <p>Every view is sorted by time, newest first.</p>
         ${OB_VIEWS.map(v => obChoice(v.label, v.sub, st.view === v.key, `data-view="${v.key}"`)).join("")}
         <button class="ob-btn" id="obNext">Next</button>`;
-    } else if (st.step === 3) {
-      const f = st.filter.trim().toLowerCase();
-      const rows = st.registry.filter(r => !f || (r.outlet || "").toLowerCase().includes(f)).slice(0, 60);
-      body = `<h1>Which publications do you support?</h1>
-        <p>Optional. Pick the outlets you pay for or want to back. We'll turn them into your first pack. It stays private unless you choose to share it.</p>
-        <input type="search" class="ob-search" id="obFilter" placeholder="Search outlets" value="${escapeHtml(st.filter)}" autocomplete="off">
-        <div class="ob-list">${rows.map(r => obChoice(r.outlet, "", st.supported.has(r.outlet), `data-outlet="${escapeHtml(r.outlet)}"`)).join("") || `<p>No matches.</p>`}</div>
-        <label class="ob-share"><input type="checkbox" id="obPublic" ${st.supportPublic ? "checked" : ""}> Share this list publicly so friends can follow it. Off by default.</label>
-        <button class="ob-btn" id="obNext">${st.supported.size ? "Next" : "Skip for now"}</button>`;
     } else {
       body = `<h1>${currentUser ? "All set" : "Save your setup"}</h1>
         <p>${currentUser ? "Your picks will be applied now." : "Sign in with your email and we'll apply your picks. Until then they stay on this device."}</p>
@@ -4538,7 +4710,12 @@
     }
     el.innerHTML = head + body;
     const next = document.getElementById("obNext");
-    if (next) next.addEventListener("click", () => { st.step++; renderObStep(st); el.scrollTop = 0; });
+    if (next && st.step === 2 && currentUser) next.textContent = "Start reading";
+    if (next) next.addEventListener("click", () => {
+      // Signed-in readers have nothing left to confirm after the view step.
+      if (st.step === 2 && currentUser) { finish(false); return; }
+      st.step++; renderObStep(st); el.scrollTop = 0;
+    });
     el.querySelectorAll("[data-pack]").forEach(b => b.addEventListener("click", () => {
       const slug = b.getAttribute("data-pack");
       st.packs.has(slug) ? st.packs.delete(slug) : st.packs.add(slug);
