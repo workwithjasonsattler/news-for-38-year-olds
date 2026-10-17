@@ -3699,14 +3699,28 @@ async function ensureMyFeed(user) {
     [slug, user.id]
   );
   const mixId = info.lastInsertRowid;
-  const outlets = await dbAll(WIRE_OUTLETS_SQL);
-  const customs = await dbAll(`SELECT id FROM user_custom_sources WHERE user_id = ? ORDER BY id ASC`, [user.id]);
-  let order = 0;
-  for (const o of outlets) {
-    await dbRun(`INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order, mode) VALUES (?, 'admin_outlet', ?, NULL, ?, 'on')`, [mixId, o.outlet, order++]);
-  }
-  for (const c of customs) {
-    await dbRun(`INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order, mode) VALUES (?, 'custom', NULL, ?, ?, 'on')`, [mixId, c.id, order++]);
+  try {
+    const outlets = await dbAll(WIRE_OUTLETS_SQL);
+    const customs = await dbAll(`SELECT id FROM user_custom_sources WHERE user_id = ? ORDER BY id ASC`, [user.id]);
+    const rows = [
+      ...outlets.map((o) => ["admin_outlet", o.outlet, null]),
+      ...customs.map((c) => ["custom", null, c.id]),
+    ];
+    // Multi-row inserts, ~150 per statement: one or two round trips to Turso
+    // instead of one per outlet. (Rows written are the same either way.)
+    for (let i = 0; i < rows.length; i += 150) {
+      const chunk = rows.slice(i, i + 150);
+      await dbRun(
+        `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order, mode) VALUES ${chunk.map(() => "(?, ?, ?, ?, ?, 'on')").join(", ")}`,
+        chunk.flatMap((r, j) => [mixId, r[0], r[1], r[2], i + j])
+      );
+    }
+  } catch (e) {
+    // Never leave a half-built My Feed behind: the next edit would find it
+    // and treat it as the reader's real feed.
+    await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id = ?`, [mixId]);
+    await dbRun(`DELETE FROM feed_mixes WHERE id = ?`, [mixId]);
+    throw e;
   }
   await dbRun(
     `INSERT INTO user_news_pref (user_id, mix_slug) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET mix_slug = excluded.mix_slug`,
