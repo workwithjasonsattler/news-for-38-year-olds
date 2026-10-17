@@ -1242,22 +1242,25 @@
     }
     return Object.entries(readHeldFeedEdits()).map(([outlet, mode]) => ({ outlet, mode, src: { source_type: "admin_outlet", outlet, label: outlet } }));
   }
-  function openFeedReviewSheet() {
+  async function openFeedReviewSheet() {
     closeTuneSheet();
+    await ensureMyFeedLoaded();
     const items = feedEditList();
     const el = document.createElement("div");
     el.id = "tuneOverlay";
     el.className = "spray-picker-overlay";
     el.innerHTML = `
       <div class="spray-picker-card">
-        <div class="spray-picker-head"><span>Your edits</span><button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button></div>
-        <p class="spray-picker-sub">Everything you've hidden or turned down in your feed. Nothing else is hidden.${currentUser && myFeed && myFeed.started ? " Your feed started from Headlines on " + escapeHtml(new Date(myFeed.started.replace(" ", "T") + "Z").toLocaleDateString(undefined, { month: "short", day: "numeric" })) + "." : ""}</p>
+        <div class="spray-picker-head"><span>Customize my feed</span><button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button></div>
+        <p class="spray-picker-sub">Tap Tune on any story to hide a source or show less from it. Everything you've changed is listed here, and nothing else is hidden.${currentUser && myFeed && myFeed.started ? " Your feed started from Headlines on " + escapeHtml(new Date(myFeed.started.replace(" ", "T") + "Z").toLocaleDateString(undefined, { month: "short", day: "numeric" })) + "." : ""}</p>
         ${items.length ? `<div class="spray-picker-list">${items.map((it, i) => `
-          <div class="spray-picker-row"><span>${escapeHtml(it.outlet)} <em class="tune-mode-tag">${FEED_MODE_LABEL[it.mode] || it.mode}</em></span><button type="button" class="btn tune-restore" data-i="${i}">Restore</button></div>`).join("")}</div>` : `<div class="spray-picker-empty">Nothing hidden or turned down.</div>`}
+          <div class="spray-picker-row"><span>${escapeHtml(it.outlet)} <em class="tune-mode-tag">${FEED_MODE_LABEL[it.mode] || it.mode}</em></span><button type="button" class="btn tune-restore" data-i="${i}">Restore</button></div>`).join("")}</div>` : `<div class="spray-picker-empty">You haven't changed your feed yet.</div>`}
+        <button type="button" class="btn" id="tuneOpenFeeds" style="width:100%; margin-top:12px;">Feeds and RSS Packs \u2192</button>
       </div>`;
     document.body.appendChild(el);
     el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
     el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
+    el.querySelector("#tuneOpenFeeds").addEventListener("click", () => { closeTuneSheet(); switchTab("sources"); });
     el.querySelectorAll(".tune-restore").forEach(b => b.addEventListener("click", async () => {
       const it = items[Number(b.dataset.i)];
       await setFeedMode(it.src, it.outlet, "on");
@@ -5497,7 +5500,7 @@
     initGetAppStrip();
 
     const feedsBtn = document.getElementById("feedsBtn");
-    if (feedsBtn) feedsBtn.addEventListener("click", () => switchTab("sources"));
+    if (feedsBtn) feedsBtn.addEventListener("click", () => openFeedReviewSheet());
     const refreshBtn = document.getElementById("refreshBtn");
     if (refreshBtn) {
       refreshBtn.addEventListener("click", async () => {
