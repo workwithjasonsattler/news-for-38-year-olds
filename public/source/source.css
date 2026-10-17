@@ -3002,3 +3002,21 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 /* Onboarding first screen: plain-language statement + start label */
 .onboarding p.ob-lede { font-size: 17px; line-height: 1.45; font-weight: 500; color: var(--ink); margin: 0 0 30px; }
 .onboarding .ob-label { font-family: var(--body); font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+
+/* My Feed: Tune button, fold row, Tune sheet, caption link, toast action */
+.tune-btn { font-family: var(--body); font-size: 12.5px; font-weight: 600; padding: 6px 11px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--bg); color: var(--ink-muted); cursor: pointer; min-height: 30px; }
+.tune-btn.btn { font-size: 13px; }
+.mc-tune { font-size: 13px; padding: 7px 12px; }
+.fold-item[hidden] { display: none; }
+.fold-toggle-row { border-bottom: 1px solid var(--line); background: var(--surface); }
+.fold-toggle { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; text-align: left; background: transparent; border: 0; padding: 9px 16px 9px 31px; font-family: var(--body); font-size: 13px; color: var(--ink-muted); cursor: pointer; min-height: 38px; }
+.fold-toggle-act { font-weight: 600; color: var(--follow); }
+.fold-item .mc-row, .fold-item .feed-item-classic { background: var(--surface); }
+.tune-opt { display: block; width: 100%; text-align: left; background: var(--bg); border: 1.5px solid var(--line); border-radius: 10px; padding: 12px 14px; margin-top: 8px; font-family: inherit; color: var(--ink); cursor: pointer; }
+.tune-opt.on { border-color: var(--ink); }
+.tune-opt-title { display: block; font-family: var(--body); font-size: 15px; font-weight: 600; }
+.tune-opt-sub { display: block; font-size: 12.5px; color: var(--ink-muted); margin-top: 2px; }
+.tune-mode-tag { font-style: normal; font-size: 11px; color: var(--ink-muted); margin-left: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+.caption-link { background: none; border: 0; padding: 0; font: inherit; color: var(--follow); text-decoration: underline; cursor: pointer; }
+#toast.has-action { pointer-events: auto; }
+.toast-action { background: none; border: 0; padding: 0 0 0 6px; font: inherit; font-weight: 700; color: var(--bg); text-decoration: underline; cursor: pointer; }

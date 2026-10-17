@@ -42,6 +42,10 @@
     if (currentUser && localStorage.getItem("source_onboarding_pending")) {
       setTimeout(() => { applyPendingOnboarding(); }, 0);
     }
+    myFeedPromise = null; // re-read My Feed state for whoever is signed in now
+    if (currentUser && localStorage.getItem(FEED_EDITS_KEY)) {
+      setTimeout(() => { applyHeldFeedEdits(); }, 0);
+    }
     if (currentUser && localStorage.getItem("source_support_local")) {
       setTimeout(() => { applySupportLocal(); }, 0);
     }
@@ -404,7 +408,7 @@
   // Bottom action row for every card shape. Videos get Save/Support in the
   // top band instead, so only the Follow control stays down here.
   function cardActionsHtml(d) {
-    return d.is_video ? sprayAddButton(d) : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}`;
+    return d.is_video ? sprayAddButton(d) : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}${tuneButton(d)}`;
   }
 
   // Block-style badge for card lists (mobile cards, matches the visual
@@ -753,6 +757,7 @@
     // display mode, so its visibility is keyed on the tab alone.
     const promiseCaption = document.getElementById("readPromiseCaption");
     if (promiseCaption) promiseCaption.hidden = activeTab !== "read";
+    refreshFeedCaption();
     renderDesktopSidePanel();
     if (activeTab === "read") return renderRead();
     if (activeTab === "videos") return renderVideos();
@@ -997,7 +1002,316 @@
   // decide whether the single active RSS Pack qualifies for quick-remove.
   const mixMetaCache = new Map();
 
+  // ---------------------------------------------------------------
+  // My Feed: Tune sheet, Show less (fold) and Hide.
+  // The reader's main feed is a real Pack they own (see GET /api/my/feed).
+  // Hide never shows a source; Show less shows a source's newest story of
+  // the day and folds the day's older ones into one tappable row under it.
+  // Both apply ONLY to items that arrive through My Feed. Signed out, edits
+  // are held on the device (FEED_EDITS_KEY) and filter the default Headlines
+  // view, then move into the account at sign-in. Nothing here infers or
+  // learns: every change is one the reader made, shown in the caption, and
+  // undoable.
+  // ---------------------------------------------------------------
+  const FEED_EDITS_KEY = "source_feed_edits";
+  let myFeed = null; // signed in: { slug, total, hidden, fold, started, modes: Map, list: [] }
+  let myFeedPromise = null;
+
+  function readHeldFeedEdits() {
+    try {
+      const v = JSON.parse(localStorage.getItem(FEED_EDITS_KEY) || "null");
+      return v && typeof v === "object" && !Array.isArray(v) ? v : {};
+    } catch (e) { return {}; }
+  }
+  function writeHeldFeedEdits(o) {
+    if (!Object.keys(o).length) localStorage.removeItem(FEED_EDITS_KEY);
+    else localStorage.setItem(FEED_EDITS_KEY, JSON.stringify(o));
+  }
+  function feedModeFor(outlet) {
+    if (currentUser) return (myFeed && myFeed.modes.get(outlet)) || "on";
+    return readHeldFeedEdits()[outlet] || "on";
+  }
+  // Does an RSS Pack key in view carry the reader's feed edits?
+  function feedApplies(key) {
+    if (currentUser) return !!(myFeed && key === myFeed.slug);
+    return key === "all" || key === OFFICIAL_NEWS_SLUG;
+  }
+  function feedEditsActiveInView() {
+    return Array.from(activeSprayKeys).some(feedApplies);
+  }
+  function setMyFeedFromSummary(sm) {
+    if (!sm || !sm.exists) { myFeed = null; return; }
+    myFeed = {
+      slug: sm.slug, total: sm.total, hidden: sm.hidden, fold: sm.fold,
+      started: sm.started_from_headlines_at || null,
+      list: sm.modes || [],
+      modes: new Map((sm.modes || []).map(m => [m.outlet, m.mode])),
+    };
+  }
+  async function loadMyFeed() {
+    if (!currentUser) { myFeed = null; return; }
+    try { setMyFeedFromSummary(await api("/api/my/feed")); } catch (e) { /* fail soft: no edits applied */ }
+  }
+  function ensureMyFeedLoaded() {
+    if (!currentUser) return Promise.resolve();
+    if (!myFeedPromise) myFeedPromise = loadMyFeed();
+    return myFeedPromise;
+  }
+  // Marks items that arrived through a Pack that carries the edits; drops
+  // hidden sources for the signed-out (device-held) case. Signed-in Hide is
+  // already applied server-side.
+  function tagFeedItems(key, items) {
+    if (!Array.isArray(items) || !feedApplies(key)) return items;
+    const out = currentUser ? items : items.filter(d => feedModeFor((d.outlet || d.source || "").trim()) !== "hidden");
+    out.forEach(d => { d._mf = true; });
+    return out;
+  }
+
+  // Splits a newest-first list into entries for renderers that support the
+  // fold row: normal items, a "head" (newest item of a folded source today,
+  // followed by its toggle) and its "folded" items (hidden until expanded).
+  function foldEntriesFor(shown, enabled) {
+    if (!enabled) return shown.map(d => ({ d, role: "normal" }));
+    const firstOfDay = new Map();
+    const groups = new Map();
+    const folded = new Set();
+    for (const d of shown) {
+      const outlet = (d.outlet || d.source || "").trim();
+      if (!d._mf || !outlet || feedModeFor(outlet) !== "fold") continue;
+      const k = outlet + "|" + new Date(d.date || 0).toDateString();
+      if (!firstOfDay.has(k)) { firstOfDay.set(k, d); continue; }
+      const head = firstOfDay.get(k);
+      if (!groups.has(head)) groups.set(head, []);
+      groups.get(head).push(d);
+      folded.add(d);
+    }
+    const entries = [];
+    for (const d of shown) {
+      if (folded.has(d)) continue;
+      const g = groups.get(d);
+      entries.push({ d, role: g ? "head" : "normal", count: g ? g.length : 0, headKey: String(d.id) });
+      if (g) g.forEach(f => entries.push({ d: f, role: "folded", headKey: String(d.id) }));
+    }
+    return entries;
+  }
+  function foldItemHtml(e, html) {
+    return e.role === "folded" ? `<div class="fold-item" data-fold-of="${escapeHtml(e.headKey)}" hidden>${html}</div>` : html;
+  }
+  function foldToggleHtml(e) {
+    const o = escapeHtml((e.d.outlet || e.d.source || "").trim());
+    return `<div class="fold-toggle-row"><button type="button" class="fold-toggle" data-fold-head="${escapeHtml(e.headKey)}" aria-expanded="false">${e.count} more from ${o} today <span class="fold-toggle-act">Show</span></button></div>`;
+  }
+
+  function tuneButton(d, cls) {
+    const src = sprayableSource(d);
+    if (!src) return "";
+    return `<button type="button" class="tune-btn${cls ? " " + cls : ""}" data-tune='${escapeHtml(JSON.stringify(src))}' title="Tune how ${escapeHtml(src.label || "this source")} shows up in your feed">Tune</button>`;
+  }
+
+  // Toast with one action (Undo). Uses the same #toast element.
+  let toastActionTimer;
+  function toastAction(msg, label, fn) {
+    const el = document.getElementById("toast");
+    if (!el) return;
+    el.textContent = "";
+    const span = document.createElement("span");
+    span.textContent = msg + " ";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "toast-action";
+    btn.textContent = label;
+    btn.addEventListener("click", () => { el.classList.remove("show", "has-action"); clearTimeout(toastActionTimer); fn(); });
+    el.append(span, btn);
+    el.classList.add("show", "has-action");
+    clearTimeout(toastTimer);
+    clearTimeout(toastActionTimer);
+    toastActionTimer = setTimeout(() => el.classList.remove("show", "has-action"), 6000);
+  }
+
+  const FEED_MODE_LABEL = { on: "In your feed", fold: "Show less", hidden: "Hidden" };
+
+  async function setFeedMode(src, outlet, mode) {
+    if (!currentUser) {
+      const e = readHeldFeedEdits();
+      if (mode === "on") delete e[outlet]; else e[outlet] = mode;
+      writeHeldFeedEdits(e);
+    } else {
+      try {
+        const body = src.source_type === "custom" ? { custom_source_id: src.custom_source_id, mode } : { outlet: src.outlet, mode };
+        const hadFeed = !!myFeed;
+        const sm = await api("/api/my/feed/source-mode", { method: "POST", body: JSON.stringify(body) });
+        setMyFeedFromSummary(sm);
+        if (!hadFeed) await adoptMyFeed(sm.slug);
+      } catch (e) {
+        toast(e.message || "Couldn't save that. Try again.");
+        return false;
+      }
+    }
+    selectedDispatch = null;
+    if (activeTab === "read") renderRead();
+    refreshFeedCaption();
+    return true;
+  }
+  // First edit: News now points at My Feed (server did that). Move a reader who
+  // was looking at the plain wire onto it so the edit shows up right away.
+  async function adoptMyFeed(slug) {
+    await loadSprayBar(true);
+    const onlyDefault = activeSprayKeys.has("all") || (activeSprayKeys.size === 1 && activeSprayKeys.has(OFFICIAL_NEWS_SLUG));
+    if (onlyDefault) {
+      activeSprayKeys = new Set([slug]);
+      persistActiveSprayKeys();
+    }
+  }
+  async function applyFeedMode(src, mode) {
+    const outlet = src.source_type === "custom" ? (src.label || "") : src.outlet;
+    const prev = feedModeFor(outlet);
+    closeTuneSheet();
+    if (prev === mode) return;
+    const ok = await setFeedMode(src, outlet, mode);
+    if (!ok) return;
+    const inView = feedEditsActiveInView();
+    let msg;
+    if (mode === "hidden") {
+      const left = currentUser && myFeed ? myFeed.total - myFeed.hidden : null;
+      msg = currentUser
+        ? (inView ? `Hidden. Your feed is now ${left} sources.` : "Hidden from your feed.")
+        : "Hidden. Sign in to keep this on every device.";
+    } else if (mode === "fold") {
+      msg = `Showing less from ${outlet}.`;
+    } else {
+      msg = "Back to normal.";
+    }
+    toastAction(msg, "Undo", () => { setFeedMode(src, outlet, prev); });
+  }
+
+  function closeTuneSheet() {
+    const el = document.getElementById("tuneOverlay");
+    if (el) el.remove();
+  }
+  function openTuneSheet(src) {
+    closeTuneSheet();
+    const outlet = src.source_type === "custom" ? (src.label || "this source") : src.outlet;
+    const cur = feedModeFor(outlet);
+    const el = document.createElement("div");
+    el.id = "tuneOverlay";
+    el.className = "spray-picker-overlay";
+    const opt = (mode, title, sub) => `<button type="button" class="tune-opt${cur === mode ? " on" : ""}" data-mode="${mode}"><span class="tune-opt-title">${title}${cur === mode ? " \u2713" : ""}</span><span class="tune-opt-sub">${sub}</span></button>`;
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span>Tune <strong>${escapeHtml(outlet)}</strong></span>
+          <button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button>
+        </div>
+        <p class="spray-picker-sub">${currentUser ? "This changes your own feed only." : "This changes your own feed only. Saved on this device until you sign in."}</p>
+        ${opt("on", "In your feed", "Everything they post, newest first.")}
+        ${opt("fold", "Show less", "Their newest story each day shows. The rest fold into one row.")}
+        ${opt("hidden", "Hide", "Never shown. You can bring it back anytime.")}
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
+    el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
+    el.querySelectorAll(".tune-opt").forEach(b => b.addEventListener("click", () => applyFeedMode(src, b.dataset.mode)));
+  }
+
+  // The caption keeps the promise honest: it only ever says something is
+  // hidden when the reader hid it, and one tap shows what and restores it.
+  function feedEditCounts() {
+    if (currentUser) return myFeed ? { hidden: myFeed.hidden, fold: myFeed.fold } : { hidden: 0, fold: 0 };
+    const v = Object.values(readHeldFeedEdits());
+    return { hidden: v.filter(m => m === "hidden").length, fold: v.filter(m => m === "fold").length };
+  }
+  function refreshFeedCaption() {
+    const el = document.getElementById("readPromiseCaption");
+    if (!el) return;
+    const c = feedEditCounts();
+    if (!feedEditsActiveInView() || (c.hidden === 0 && c.fold === 0)) {
+      el.textContent = "Sorted by time. Nothing hidden.";
+      return;
+    }
+    const parts = [];
+    if (c.hidden) parts.push(`Hidden by you: ${c.hidden} source${c.hidden === 1 ? "" : "s"}`);
+    if (c.fold) parts.push(`Showing less from ${c.fold}`);
+    el.innerHTML = `Sorted by time. <button type="button" class="caption-link" id="feedReviewLink">${escapeHtml(parts.join(". "))}</button>`;
+  }
+  function feedEditList() {
+    if (currentUser) {
+      return (myFeed ? myFeed.list : []).map(m => ({
+        outlet: m.outlet, mode: m.mode,
+        src: m.custom_source_id ? { source_type: "custom", custom_source_id: m.custom_source_id, label: m.outlet } : { source_type: "admin_outlet", outlet: m.outlet, label: m.outlet },
+      }));
+    }
+    return Object.entries(readHeldFeedEdits()).map(([outlet, mode]) => ({ outlet, mode, src: { source_type: "admin_outlet", outlet, label: outlet } }));
+  }
+  function openFeedReviewSheet() {
+    closeTuneSheet();
+    const items = feedEditList();
+    const el = document.createElement("div");
+    el.id = "tuneOverlay";
+    el.className = "spray-picker-overlay";
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head"><span>Your edits</span><button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button></div>
+        <p class="spray-picker-sub">Everything you've hidden or turned down in your feed. Nothing else is hidden.${currentUser && myFeed && myFeed.started ? " Your feed started from Headlines on " + escapeHtml(new Date(myFeed.started.replace(" ", "T") + "Z").toLocaleDateString(undefined, { month: "short", day: "numeric" })) + "." : ""}</p>
+        ${items.length ? `<div class="spray-picker-list">${items.map((it, i) => `
+          <div class="spray-picker-row"><span>${escapeHtml(it.outlet)} <em class="tune-mode-tag">${FEED_MODE_LABEL[it.mode] || it.mode}</em></span><button type="button" class="btn tune-restore" data-i="${i}">Restore</button></div>`).join("")}</div>` : `<div class="spray-picker-empty">Nothing hidden or turned down.</div>`}
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
+    el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
+    el.querySelectorAll(".tune-restore").forEach(b => b.addEventListener("click", async () => {
+      const it = items[Number(b.dataset.i)];
+      await setFeedMode(it.src, it.outlet, "on");
+      openFeedReviewSheet();
+    }));
+  }
+
+  // Edits made while signed out move into the account at sign-in.
+  async function applyHeldFeedEdits() {
+    const held = readHeldFeedEdits();
+    const edits = Object.entries(held).map(([outlet, mode]) => ({ outlet, mode }));
+    if (!currentUser || edits.length === 0) return;
+    localStorage.removeItem(FEED_EDITS_KEY); // clear first so a failure can't double-apply
+    try {
+      const sm = await api("/api/my/feed/ensure", { method: "POST", body: JSON.stringify({ edits }) });
+      const hadFeed = !!myFeed;
+      setMyFeedFromSummary(sm);
+      await adoptMyFeed(sm.slug);
+      toast("Your feed edits are saved to your account.");
+      if (activeTab === "read") renderRead();
+      refreshFeedCaption();
+    } catch (e) {
+      writeHeldFeedEdits(held);
+      toast("Couldn't save your feed edits yet. We'll try again next time.");
+    }
+  }
+
+  document.addEventListener("click", (e) => {
+    const t = e.target && e.target.closest ? e.target : null;
+    if (!t) return;
+    const tune = t.closest(".tune-btn");
+    if (tune) {
+      e.preventDefault(); e.stopPropagation();
+      try { openTuneSheet(JSON.parse(tune.dataset.tune)); } catch (err) { /* ignore malformed */ }
+      return;
+    }
+    const fold = t.closest(".fold-toggle");
+    if (fold) {
+      const id = fold.dataset.foldHead;
+      const open = fold.getAttribute("aria-expanded") !== "true";
+      document.querySelectorAll(".fold-item").forEach(n => { if (n.dataset.foldOf === id) n.hidden = !open; });
+      fold.setAttribute("aria-expanded", open ? "true" : "false");
+      const act = fold.querySelector(".fold-toggle-act");
+      if (act) act.textContent = open ? "Hide" : "Show";
+      return;
+    }
+    if (t.closest("#feedReviewLink")) openFeedReviewSheet();
+  });
+
   async function fetchItemsForSprayKey(key) {
+    return tagFeedItems(key, await fetchItemsForSprayKeyRaw(key));
+  }
+
+  async function fetchItemsForSprayKeyRaw(key) {
     if (key === "__youtube") {
       const videos = await api("/api/video-feed");
       return (Array.isArray(videos) ? videos : []).map((v, i) => ({
@@ -1027,7 +1341,7 @@
     }
     try {
       const mix = await api(`/api/mixes/${encodeURIComponent(key)}`);
-      mixMetaCache.set(key, { name: mix.name, is_owner: !!mix.is_owner, is_official: !!mix.is_official });
+      mixMetaCache.set(key, { name: mix.name, is_owner: !!mix.is_owner, is_official: !!mix.is_official, is_my_feed: !!mix.is_my_feed });
       return Array.isArray(mix.items) ? mix.items : [];
     } catch (err) {
       if (key === OFFICIAL_NEWS_SLUG) {
@@ -1054,7 +1368,7 @@
   // dropped from the selection rather than breaking the whole view; if
   // every key fails, falls back to "all".
   async function fetchReadItems() {
-    if (activeSprayKeys.has("all")) { quickRemoveContext = null; return api("/api/dispatches"); }
+    if (activeSprayKeys.has("all")) { quickRemoveContext = null; return tagFeedItems("all", await api("/api/dispatches")); }
     const keys = Array.from(activeSprayKeys);
     const results = await Promise.allSettled(keys.map(fetchItemsForSprayKey));
 
@@ -1092,17 +1406,22 @@
     quickRemoveContext = null;
     if (survivingKeys.length === 1) {
       const meta = mixMetaCache.get(survivingKeys[0]);
-      if (meta && meta.is_owner && !meta.is_official) {
+      if (meta && meta.is_owner && !meta.is_official && !meta.is_my_feed) {
         quickRemoveContext = { slug: survivingKeys[0], name: meta.name };
       }
     }
 
-    const seen = new Set();
+    const seen = new Map();
     const deduped = [];
     for (const d of combined) {
       const dedupeKey = d.link || d.id;
-      if (seen.has(dedupeKey)) continue;
-      seen.add(dedupeKey);
+      if (seen.has(dedupeKey)) {
+        // The same story also arrived through a Pack that doesn't carry the
+        // reader's feed edits: it shows normally, never folded.
+        if (!d._mf) seen.get(dedupeKey)._mf = false;
+        continue;
+      }
+      seen.set(dedupeKey, d);
       deduped.push(d);
     }
     deduped.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
@@ -1161,6 +1480,8 @@
     }
     main.innerHTML = stateBlock({ title: "Loading Fresh RSS Feeds", body: "Just posted", spin: true });
     try {
+      await ensureMyFeedLoaded();
+      refreshFeedCaption();
       const items = await fetchReadItems();
       if (!Array.isArray(items) || items.length === 0) {
         main.innerHTML = stateBlock({ glyph: "∅", title: "NO SIGNAL", body: "No dispatches available right now." });
@@ -1240,7 +1561,9 @@
     main.classList.remove("read-layout");
     main.classList.toggle("read-scroll-desktop", getLayoutMode() === "desktop" && getReadDisplay() === "scroll");
     {
-      main.innerHTML = shown.map((d, i) => renderDispatchCard(d, trendingLinks.has(d.link), i === 0, trendingLinks.get(d.link))).join("");
+      main.innerHTML = foldEntriesFor(shown, getReadDisplay() === "headlines").map((e, i) =>
+        foldItemHtml(e, renderDispatchCard(e.d, trendingLinks.has(e.d.link), i === 0, trendingLinks.get(e.d.link))) + (e.role === "head" ? foldToggleHtml(e) : "")
+      ).join("");
       main.querySelectorAll(".buzz-badge").forEach(btn => {
         btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
       });
@@ -1608,6 +1931,7 @@
           ${tipSubscribeButton(d)}
           ${sprayAddButton(d)}
           ${saveButton(d)}
+          ${tuneButton(d, "btn")}
           ${shareButton(d)}
           <button class="btn reader-fullscreen-btn" id="readerFullscreenBtn" title="${readerFullscreen ? "Exit full screen" : "Full screen"}" aria-label="${readerFullscreen ? "Exit full screen" : "Full screen"}">${readerFullscreen ? "⤡" : "⛶"}</button>
         </div>
@@ -1700,13 +2024,14 @@
     const main = document.getElementById("main");
     main.classList.remove("read-layout", "read-scroll-desktop");
     main.classList.add("read-mobile-classic");
-    main.innerHTML = `<div class="mc-list">` + shown.map(d => {
+    main.innerHTML = `<div class="mc-list">` + foldEntriesFor(shown, true).map(e => {
+      const d = e.d;
       const id = escapeHtml(String(d.id));
       const title = escapeHtml(d.title || d.headline || "");
       const outlet = escapeHtml(d.outlet || d.source || "");
       const excerpt = (d.excerpt || "").trim().slice(0, 600);
       const support = tipSubscribeInfo(d);
-      return `
+      const rowHtml = `
         <div class="mc-row${mobileClassicSeen.has(String(d.id)) ? " seen" : ""}" data-id="${id}">
           <button type="button" class="mc-head" aria-expanded="false">
             <span class="mc-meta"><span class="mc-source">${outlet}</span><span class="mc-time">${relTime(d.date)}</span></span>
@@ -1718,10 +2043,12 @@
             <div class="mc-actions">
               ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
               ${saveButton(d)}
+              ${tuneButton(d, "mc-tune")}
               ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener">💛 ${escapeHtml(support.label)}</a>` : ""}
             </div>
           </div>
         </div>`;
+      return foldItemHtml(e, rowHtml) + (e.role === "head" ? foldToggleHtml(e) : "");
     }).join("") + `</div>`;
     main.querySelectorAll(".mc-row").forEach(row => {
       const head = row.querySelector(".mc-head");
@@ -1763,9 +2090,10 @@
     // to one line so a screenful shows many items at once. Denser than
     // Headlines Only's own boxed-card treatment on purpose.
     if (classicMode) {
-      feed.innerHTML = shown.map(d => {
+      feed.innerHTML = foldEntriesFor(shown, true).map(e => {
+        const d = e.d;
         const active = selectedDispatch && d.id === selectedDispatch.id;
-        return `
+        const rowHtml = `
           <button class="feed-item-classic${active ? " active" : ""}" data-id="${escapeHtml(String(d.id))}">
             <span class="feed-item-classic-title">${escapeHtml(d.title || d.headline || "")}</span>
             <span class="feed-item-classic-meta">
@@ -1773,6 +2101,7 @@
               <span class="feed-item-classic-time">${relTime(d.date)}</span>
             </span>
           </button>`;
+        return foldItemHtml(e, rowHtml) + (e.role === "head" ? foldToggleHtml(e) : "");
       }).join("");
       feed.querySelectorAll(".feed-item-classic").forEach(btn => {
         btn.addEventListener("click", () => {

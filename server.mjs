@@ -3015,6 +3015,7 @@ app.get("/api/mixes/:slug", async (req, res) => {
     is_public: !!mix.is_public,
     is_owner: isOwner,
     is_official: !!mix.is_official,
+    is_my_feed: !!mix.is_my_feed,
     curator: packCurator(mix),
     byline: isOwner ? (mix.byline || null) : undefined,
     auto_sync: !!mix.auto_sync,
