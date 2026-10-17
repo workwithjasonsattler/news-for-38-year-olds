@@ -427,6 +427,14 @@ async function initSchema() {
     // PUBLIC Pack (null = anonymous, the default). Shown on the Pack page and
     // share card only while the Pack is public.
     `ALTER TABLE feed_mixes ADD COLUMN byline TEXT`,
+    // My Feed: the reader's own editable main feed (see SCOPING-feed-editing).
+    // is_my_feed marks the one Pack per reader that is it; it is private and
+    // exempt from the per-Pack source cap. mode is per source: 'on' (normal),
+    // 'fold' (Show less: a day's older items from that source fold into one
+    // row) or 'hidden' (never shown, still listed so it can be restored).
+    `ALTER TABLE feed_mixes ADD COLUMN is_my_feed INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE feed_mixes ADD COLUMN started_from_headlines_at TEXT`,
+    `ALTER TABLE feed_mix_sources ADD COLUMN mode TEXT NOT NULL DEFAULT 'on'`,
     // wire_eligible: gates whether a feed's imported items can appear in
     // the SHARED, unfiltered wire (N38YO's main feed, GET /api/dispatches
     // with no outlet filter, and "Headlines: Best in the World"'s
@@ -2190,7 +2198,7 @@ app.post("/api/my/news-pref", async (req, res) => {
     await dbRun(`DELETE FROM user_news_pref WHERE user_id = ?`, [user.id]);
     return res.json({ ok: true, slug: OFFICIAL_HEADLINES_SPRAY_SLUG });
   }
-  const mix = await dbGet(`SELECT slug FROM feed_mixes WHERE slug = ? AND is_public = 1`, [slug]);
+  const mix = await dbGet(`SELECT slug FROM feed_mixes WHERE slug = ? AND (is_public = 1 OR creator_user_id = ?)`, [slug, user.id]);
   if (!mix) return res.status(400).json({ error: "Unknown or private RSS Pack" });
   await dbRun(
     `INSERT INTO user_news_pref (user_id, mix_slug) VALUES (?, ?)
@@ -2584,6 +2592,9 @@ app.post("/api/feed-discovery", async (req, res) => {
 // directory browsing (GET /api/mixes?location=) is Session 3 — this session
 // covers save / view / clone only, per the locked scoping doc.
 const MIX_SOURCE_CAP = 25; // per mix, Jason's call
+const MY_FEED_SOURCE_CAP = 500; // My Feed snapshots every Headlines outlet, so it is exempt from MIX_SOURCE_CAP
+const capFor = (mix) => (mix && mix.is_my_feed ? MY_FEED_SOURCE_CAP : MIX_SOURCE_CAP);
+const FEED_MODES = new Set(["on", "fold", "hidden"]);
 const MIX_TOPIC_CAP = 6; // per mix — an RSS Pack can carry several tags, but capped so tags stay meaningful, not spammed
 // The four RSS Pack-building branches, plus "other" as the escape hatch for
 // anything that doesn't cleanly fit one. A branch is never itself a
@@ -2648,6 +2659,21 @@ async function corporateMarkersFor(outlets) {
   return new Map(rows.map((r) => [r.outlet, { is_corporate: !!r.is_corporate, parent_company: r.parent_company || null }]));
 }
 
+const MY_FEED_ITEM_CAP = 150; // a little deeper than the 60-item Pack view, so folds still leave a full screen
+async function getWireBaseRows() {
+  // Same rows and cache as GET /api/dispatches (key "all").
+  const hit = dispatchesBaseCache.get("all");
+  if (hit && Date.now() - hit.ts < DISPATCHES_CACHE_TTL_MS) return hit.rows;
+  const rows = await dbAll(
+    `SELECT d.* FROM dispatches d
+     WHERE ${WIRE_OK_SQL}
+     ORDER BY d.pinned DESC, d.date DESC, d.id DESC LIMIT ${WIRE_MAX_ROWS}`
+  );
+  if (dispatchesBaseCache.size > 50) dispatchesBaseCache.clear();
+  dispatchesBaseCache.set("all", { ts: Date.now(), rows });
+  return rows;
+}
+
 async function resolveMixSources(mix, { includePending = false } = {}) {
   // mix may be passed as either the full row (preferred) or a bare id for
   // backward compatibility with any caller that hasn't been updated.
@@ -2686,12 +2712,31 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
     [mixId]
   );
 
-  const outletNames = sourceRows.filter((s) => s.source_type === "admin_outlet").map((s) => s.outlet);
-  const customRows = sourceRows.filter((s) => s.source_type === "custom" && s.custom_feed_url &&
+  // Hidden sources (My Feed's Hide) stay listed below so they can be restored,
+  // but never contribute items.
+  const outletNames = sourceRows.filter((s) => s.source_type === "admin_outlet" && s.mode !== "hidden").map((s) => s.outlet);
+  const customRows = sourceRows.filter((s) => s.source_type === "custom" && s.mode !== "hidden" && s.custom_feed_url &&
     (includePending || s.custom_status === "approved"));
+  const isMyFeed = typeof mix === "object" && !!mix.is_my_feed;
 
   let dispatchItems = [];
-  if (outletNames.length > 0) {
+  if (outletNames.length > 0 && isMyFeed) {
+    // A My Feed can hold 100+ outlets. Filter the 45s-cached wire base in
+    // memory instead of running a 100-outlet IN query per view; outlets kept
+    // off the shared wire (wire_eligible = 0) still need a direct query.
+    const set = new Set(outletNames);
+    const offWire = new Set((await dbAll(`SELECT outlet FROM feeds WHERE COALESCE(wire_eligible, 1) = 0 AND outlet IS NOT NULL`)).map((r) => r.outlet));
+    const base = (await getWireBaseRows()).filter((r) => set.has(r.outlet));
+    const direct = outletNames.filter((o) => offWire.has(o));
+    let extra = [];
+    if (direct.length > 0) {
+      const ph = direct.map(() => "?").join(",");
+      extra = await dbAll(`SELECT * FROM dispatches WHERE outlet IN (${ph}) ORDER BY pinned DESC, date DESC, id DESC LIMIT 60`, direct);
+    }
+    dispatchItems = [...base, ...extra]
+      .sort((a, b) => (b.pinned || 0) - (a.pinned || 0) || String(b.date).localeCompare(String(a.date)) || b.id - a.id)
+      .slice(0, MY_FEED_ITEM_CAP);
+  } else if (outletNames.length > 0) {
     const placeholders = outletNames.map(() => "?").join(",");
     dispatchItems = await dbAll(
       `SELECT * FROM dispatches WHERE outlet IN (${placeholders}) ORDER BY pinned DESC, date DESC, id DESC LIMIT 60`,
@@ -2734,6 +2779,7 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
         outlet,
         pending: s.source_type === "custom" && s.custom_status !== "approved",
         custom_source_id: includePending && s.source_type === "custom" ? s.custom_source_id : undefined,
+        mode: includePending ? (s.mode || "on") : undefined,
         is_corporate: marker?.is_corporate || false,
         parent_company: marker?.parent_company || null,
       };
@@ -2817,6 +2863,7 @@ app.put("/api/mixes/:slug", async (req, res) => {
     : mix.location_label;
   const isPublic = req.body?.is_public !== undefined ? (req.body.is_public ? 1 : 0) : mix.is_public;
   if (!name) return res.status(400).json({ error: "name is required" });
+  if (mix.is_my_feed && isPublic) return res.status(400).json({ error: "My Feed stays private. Copy it into a new Pack if you want to share it." });
   let byline = mix.byline ?? null;
   if (req.body?.byline !== undefined) {
     const bl = cleanByline(req.body.byline);
@@ -2848,7 +2895,7 @@ app.put("/api/mixes/:slug", async (req, res) => {
   if (Array.isArray(req.body?.sources)) {
     const sources = req.body.sources;
     if (sources.length === 0) return res.status(400).json({ error: "a mix needs at least one source" });
-    if (sources.length > MIX_SOURCE_CAP) return res.status(400).json({ error: `mixes are capped at ${MIX_SOURCE_CAP} sources` });
+    if (sources.length > capFor(mix)) return res.status(400).json({ error: `mixes are capped at ${capFor(mix)} sources` });
     const validated = [];
     for (const s of sources) {
       if (s.source_type === "admin_outlet") {
@@ -2865,12 +2912,16 @@ app.put("/api/mixes/:slug", async (req, res) => {
         return res.status(400).json({ error: `unknown source_type: ${s.source_type}` });
       }
     }
+    // Keep each source's My Feed mode (Show less / Hide) across a re-save.
+    const oldModes = new Map((await dbAll(`SELECT source_type, outlet, custom_source_id, mode FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]))
+      .map((r) => [r.source_type === "custom" ? `c:${r.custom_source_id}` : `o:${r.outlet}`, r.mode]));
     await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
     for (let i = 0; i < validated.length; i++) {
       const v = validated[i];
+      const mode = oldModes.get(v.source_type === "custom" ? `c:${v.custom_source_id}` : `o:${v.outlet}`) || "on";
       await dbRun(
-        `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, ?, ?, ?, ?)`,
-        [mix.id, v.source_type, v.outlet, v.custom_source_id, i]
+        `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order, mode) VALUES (?, ?, ?, ?, ?, ?)`,
+        [mix.id, v.source_type, v.outlet, v.custom_source_id, i, mode]
       );
     }
   }
@@ -3625,10 +3676,138 @@ app.get("/api/my/mixes", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
   const rows = await dbAll(
-    `SELECT slug, name, location_label, is_public, is_official, created_at FROM feed_mixes WHERE creator_user_id = ? ORDER BY created_at DESC`,
+    `SELECT slug, name, location_label, is_public, is_official, is_my_feed, created_at FROM feed_mixes WHERE creator_user_id = ? ORDER BY created_at DESC`,
     [user.id]
   );
-  res.json(rows.map(r => ({ ...r, is_official: !!r.is_official })));
+  res.json(rows.map(r => ({ ...r, is_official: !!r.is_official, is_my_feed: !!r.is_my_feed })));
+});
+
+// ---------- My Feed (the reader's own editable main feed) ----------
+// One private Pack per reader, created lazily on their first edit by copying
+// the outlets currently feeding the Headlines wire plus their own custom
+// sources, then repointing "News" at it. After that it no longer follows new
+// Headlines outlets (started_from_headlines_at says when it forked). Show
+// less / Hide are per-source modes stored on feed_mix_sources.mode and apply
+// only inside this Pack; other Packs the reader follows are untouched.
+async function ensureMyFeed(user) {
+  let mix = await dbGet(`SELECT * FROM feed_mixes WHERE creator_user_id = ? AND is_my_feed = 1 ORDER BY id ASC LIMIT 1`, [user.id]);
+  if (mix) return mix;
+  const slug = await generateUniqueMixSlug("My Feed");
+  const info = await dbRun(
+    `INSERT INTO feed_mixes (slug, name, creator_user_id, is_public, is_my_feed, started_from_headlines_at) VALUES (?, 'My Feed', ?, 0, 1, datetime('now'))`,
+    [slug, user.id]
+  );
+  const mixId = info.lastInsertRowid;
+  const outlets = await dbAll(WIRE_OUTLETS_SQL);
+  const customs = await dbAll(`SELECT id FROM user_custom_sources WHERE user_id = ? ORDER BY id ASC`, [user.id]);
+  let order = 0;
+  for (const o of outlets) {
+    await dbRun(`INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order, mode) VALUES (?, 'admin_outlet', ?, NULL, ?, 'on')`, [mixId, o.outlet, order++]);
+  }
+  for (const c of customs) {
+    await dbRun(`INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order, mode) VALUES (?, 'custom', NULL, ?, ?, 'on')`, [mixId, c.id, order++]);
+  }
+  await dbRun(
+    `INSERT INTO user_news_pref (user_id, mix_slug) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET mix_slug = excluded.mix_slug`,
+    [user.id, slug]
+  );
+  return await dbGet(`SELECT * FROM feed_mixes WHERE id = ?`, [mixId]);
+}
+
+// Sets one source's mode inside My Feed. A source the Pack doesn't hold yet
+// (e.g. an outlet that reached the reader through another Pack) is added.
+// Returns null on success or an error string.
+async function applyMyFeedMode(user, mix, edit) {
+  const mode = String(edit?.mode || "");
+  if (!FEED_MODES.has(mode)) return "mode must be on, fold or hidden";
+  const outlet = edit?.outlet ? String(edit.outlet).trim() : null;
+  const csId = edit?.custom_source_id ? Number(edit.custom_source_id) : null;
+  if (!outlet && !csId) return "outlet or custom_source_id is required";
+  const existing = outlet
+    ? await dbGet(`SELECT id FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'admin_outlet' AND outlet = ?`, [mix.id, outlet])
+    : await dbGet(`SELECT id FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'custom' AND custom_source_id = ?`, [mix.id, csId]);
+  if (existing) {
+    await dbRun(`UPDATE feed_mix_sources SET mode = ? WHERE id = ?`, [mode, existing.id]);
+    return null;
+  }
+  const n = (await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [mix.id])).n;
+  if (n >= MY_FEED_SOURCE_CAP) return "My Feed is full";
+  if (outlet) {
+    const ok = await dbGet(`SELECT id FROM feeds WHERE outlet = ? AND submission_status = 'approved'`, [outlet]);
+    if (!ok) return `Unknown source: ${outlet}`;
+    await dbRun(`INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order, mode) VALUES (?, 'admin_outlet', ?, NULL, ?, ?)`, [mix.id, outlet, n, mode]);
+  } else {
+    const owned = await dbGet(`SELECT id FROM user_custom_sources WHERE id = ? AND user_id = ?`, [csId, user.id]);
+    if (!owned) return "you can only use your own custom sources";
+    await dbRun(`INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order, mode) VALUES (?, 'custom', NULL, ?, ?, ?)`, [mix.id, csId, n, mode]);
+  }
+  return null;
+}
+
+async function myFeedSummary(mix) {
+  const rows = await dbAll(
+    `SELECT fms.source_type, fms.outlet, fms.custom_source_id, fms.mode, ucs.name AS custom_name
+     FROM feed_mix_sources fms LEFT JOIN user_custom_sources ucs ON ucs.id = fms.custom_source_id
+     WHERE fms.mix_id = ? ORDER BY fms.sort_order ASC, fms.id ASC`,
+    [mix.id]
+  );
+  const modes = rows.filter((r) => r.mode && r.mode !== "on").map((r) => ({
+    outlet: r.source_type === "admin_outlet" ? r.outlet : r.custom_name,
+    custom_source_id: r.source_type === "custom" ? r.custom_source_id : undefined,
+    mode: r.mode,
+  }));
+  return {
+    exists: true,
+    slug: mix.slug,
+    name: mix.name,
+    started_from_headlines_at: mix.started_from_headlines_at || null,
+    total: rows.length,
+    hidden: modes.filter((m) => m.mode === "hidden").length,
+    fold: modes.filter((m) => m.mode === "fold").length,
+    modes,
+  };
+}
+
+app.get("/api/my/feed", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const mix = await dbGet(`SELECT * FROM feed_mixes WHERE creator_user_id = ? AND is_my_feed = 1 ORDER BY id ASC LIMIT 1`, [user.id]);
+  if (!mix) return res.json({ exists: false });
+  res.json(await myFeedSummary(mix));
+});
+
+// Create My Feed if it doesn't exist (idempotent). Optionally applies a
+// batch of edits that were held on the device while signed out.
+app.post("/api/my/feed/ensure", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  try {
+    const mix = await ensureMyFeed(user);
+    const edits = Array.isArray(req.body?.edits) ? req.body.edits.slice(0, 500) : [];
+    for (const e of edits) {
+      const err = await applyMyFeedMode(user, mix, e);
+      if (err) console.warn("[my-feed] held edit skipped:", err);
+    }
+    res.json(await myFeedSummary(mix));
+  } catch (e) {
+    console.error("my feed ensure failed:", e?.message || e);
+    res.status(500).json({ error: "Couldn't set up My Feed. Try again." });
+  }
+});
+
+app.post("/api/my/feed/source-mode", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  try {
+    const mix = await ensureMyFeed(user);
+    const err = await applyMyFeedMode(user, mix, req.body || {});
+    if (err) return res.status(400).json({ error: err });
+    await dbRun(`UPDATE feed_mixes SET updated_at = datetime('now') WHERE id = ?`, [mix.id]);
+    res.json(await myFeedSummary(mix));
+  } catch (e) {
+    console.error("my feed source-mode failed:", e?.message || e);
+    res.status(500).json({ error: "Couldn't save that. Try again." });
+  }
 });
 
 // ---------- Quick add/remove: "which of my RSS Packs is this source in?" ----------
@@ -3697,7 +3876,7 @@ app.post("/api/my/mixes/:slug/toggle-source", async (req, res) => {
   }
 
   const countRow = await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
-  if (countRow.n >= MIX_SOURCE_CAP) return res.status(400).json({ error: `mixes are capped at ${MIX_SOURCE_CAP} sources` });
+  if (countRow.n >= capFor(mix)) return res.status(400).json({ error: `mixes are capped at ${capFor(mix)} sources` });
   await dbRun(
     `INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order) VALUES (?, ?, ?, ?, ?)`,
     [mix.id, sourceType, outlet, customSourceId, countRow.n]
