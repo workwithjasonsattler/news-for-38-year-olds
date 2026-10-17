@@ -43,7 +43,7 @@
       setTimeout(() => { applyPendingOnboarding(); }, 0);
     }
     myFeedPromise = null; // re-read My Feed state for whoever is signed in now
-    if (currentUser && localStorage.getItem(FEED_EDITS_KEY)) {
+    if (currentUser && (localStorage.getItem(FEED_EDITS_KEY) || localStorage.getItem(FEED_MUTES_KEY))) {
       setTimeout(() => { applyHeldFeedEdits(); }, 0);
     }
     if (currentUser && localStorage.getItem("source_support_local")) {
@@ -1016,6 +1016,38 @@
   const FEED_EDITS_KEY = "source_feed_edits";
   let myFeed = null; // signed in: { slug, total, hidden, fold, started, modes: Map, list: [] }
   let myFeedPromise = null;
+  const FEED_MUTES_KEY = "source_feed_mutes";
+  let mutes = []; // signed in: the reader's list from the server
+  let mutedCaught = new Map(); // word -> items it left out of the list loaded last
+  let muteRegexCache = { key: "", list: [] };
+
+  function readHeldMutes() {
+    try {
+      const v = JSON.parse(localStorage.getItem(FEED_MUTES_KEY) || "null");
+      return Array.isArray(v) ? v.map(String) : [];
+    } catch (e) { return []; }
+  }
+  function writeHeldMutes(list) {
+    if (!list.length) localStorage.removeItem(FEED_MUTES_KEY);
+    else localStorage.setItem(FEED_MUTES_KEY, JSON.stringify(list));
+  }
+  function currentMutes() { return currentUser ? mutes : readHeldMutes(); }
+  // Whole-word, case-insensitive, Unicode-aware: "ice" never matches "police".
+  function muteRegexes() {
+    const words = currentMutes();
+    const key = words.join("\u0001");
+    if (muteRegexCache.key !== key) {
+      muteRegexCache = {
+        key,
+        list: words.map(w => ({ w, re: new RegExp("(^|[^\\p{L}\\p{N}])" + w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![\\p{L}\\p{N}])", "iu") })),
+      };
+    }
+    return muteRegexCache.list;
+  }
+  function mutedWordsIn(d) {
+    const text = (d.headline || d.title || "") + " " + (d.excerpt || "");
+    return muteRegexes().filter(m => m.re.test(text)).map(m => m.w);
+  }
 
   function readHeldFeedEdits() {
     try {
@@ -1051,6 +1083,7 @@
   async function loadMyFeed() {
     if (!currentUser) { myFeed = null; return; }
     try { setMyFeedFromSummary(await api("/api/my/feed")); } catch (e) { /* fail soft: no edits applied */ }
+    try { mutes = (await api("/api/my/mutes")).words || []; } catch (e) { mutes = []; }
   }
   function ensureMyFeedLoaded() {
     if (!currentUser) return Promise.resolve();
@@ -1062,7 +1095,22 @@
   // already applied server-side.
   function tagFeedItems(key, items) {
     if (!Array.isArray(items) || !feedApplies(key)) return items;
-    const out = currentUser ? items : items.filter(d => feedModeFor((d.outlet || d.source || "").trim()) !== "hidden");
+    const watching = muteRegexes().length > 0;
+    const out = items.filter(d => {
+      if (!currentUser && feedModeFor((d.outlet || d.source || "").trim()) === "hidden") return false;
+      if (watching) {
+        const hit = mutedWordsIn(d);
+        if (hit.length) {
+          hit.forEach(w => {
+            const arr = mutedCaught.get(w) || [];
+            if (!arr.some(x => x.link === d.link)) arr.push(d);
+            mutedCaught.set(w, arr);
+          });
+          return false;
+        }
+      }
+      return true;
+    });
     out.forEach(d => { d._mf = true; });
     return out;
   }
@@ -1184,6 +1232,49 @@
     toastAction(msg, "Undo", () => { setFeedMode(src, outlet, prev); });
   }
 
+  function afterFeedChange() {
+    selectedDispatch = null;
+    if (activeTab === "read") renderRead();
+    refreshFeedCaption();
+  }
+  async function addMute(raw) {
+    const word = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ");
+    if (word.length < 2) { toast("Type a word or two letters or more."); return null; }
+    if (currentUser) {
+      try {
+        const hadFeed = !!myFeed;
+        const r = await api("/api/my/mutes", { method: "POST", body: JSON.stringify({ word }) });
+        mutes = r.words || [];
+        await loadMyFeed();
+        if (!hadFeed) await adoptMyFeed(r.slug);
+      } catch (e) { toast(e.message || "Couldn't save that. Try again."); return null; }
+    } else {
+      const list = readHeldMutes();
+      if (!list.includes(word)) {
+        if (list.length >= 50) { toast("You can mute up to 50 words."); return null; }
+        list.push(word);
+        writeHeldMutes(list);
+      }
+    }
+    afterFeedChange();
+    return word;
+  }
+  async function removeMute(word) {
+    if (currentUser) {
+      try { mutes = (await api(`/api/my/mutes?word=${encodeURIComponent(word)}`, { method: "DELETE" })).words || []; }
+      catch (e) { toast(e.message || "Couldn't save that. Try again."); return; }
+    } else {
+      writeHeldMutes(readHeldMutes().filter(w => w !== word));
+    }
+    afterFeedChange();
+  }
+  async function muteFromInput(input) {
+    const word = await addMute(input.value);
+    if (!word) return;
+    closeTuneSheet();
+    toastAction(feedEditsActiveInView() ? `Muted \u201c${word}\u201d.` : `Muted \u201c${word}\u201d. It applies in My Feed.`, "Undo", () => removeMute(word));
+  }
+
   function closeTuneSheet() {
     const el = document.getElementById("tuneOverlay");
     if (el) el.remove();
@@ -1206,30 +1297,45 @@
         ${opt("on", "In your feed", "Everything they post, newest first.")}
         ${opt("fold", "Show less", "Their newest story each day shows. The rest fold into one row.")}
         ${opt("hidden", "Hide", "Never shown. You can bring it back anytime.")}
+        <div class="tune-mute">
+          <div class="tune-opt-title" style="margin-top:14px;">Mute a word</div>
+          <div class="spray-picker-newrow">
+            <input type="text" id="tuneMuteInput" placeholder="Word or phrase" maxlength="40" autocomplete="off">
+            <button class="btn" id="tuneMuteBtn" type="button">Mute</button>
+          </div>
+          <div class="tune-opt-sub">Leaves out stories with that whole word in the headline or excerpt. Only in your feed.</div>
+        </div>
       </div>`;
     document.body.appendChild(el);
     el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
     el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
     el.querySelectorAll(".tune-opt").forEach(b => b.addEventListener("click", () => applyFeedMode(src, b.dataset.mode)));
+    const mi = el.querySelector("#tuneMuteInput");
+    el.querySelector("#tuneMuteBtn").addEventListener("click", () => muteFromInput(mi));
+    mi.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); muteFromInput(mi); } });
   }
 
   // The caption keeps the promise honest: it only ever says something is
   // hidden when the reader hid it, and one tap shows what and restores it.
   function feedEditCounts() {
-    if (currentUser) return myFeed ? { hidden: myFeed.hidden, fold: myFeed.fold } : { hidden: 0, fold: 0 };
+    const muted = currentMutes().length;
+    if (currentUser) return myFeed ? { hidden: myFeed.hidden, fold: myFeed.fold, muted } : { hidden: 0, fold: 0, muted };
     const v = Object.values(readHeldFeedEdits());
-    return { hidden: v.filter(m => m === "hidden").length, fold: v.filter(m => m === "fold").length };
+    return { hidden: v.filter(m => m === "hidden").length, fold: v.filter(m => m === "fold").length, muted };
   }
   function refreshFeedCaption() {
     const el = document.getElementById("readPromiseCaption");
     if (!el) return;
     const c = feedEditCounts();
-    if (!feedEditsActiveInView() || (c.hidden === 0 && c.fold === 0)) {
+    if (!feedEditsActiveInView() || (c.hidden === 0 && c.fold === 0 && c.muted === 0)) {
       el.textContent = "Sorted by time. Nothing hidden.";
       return;
     }
     const parts = [];
-    if (c.hidden) parts.push(`Hidden by you: ${c.hidden} source${c.hidden === 1 ? "" : "s"}`);
+    const gone = [];
+    if (c.hidden) gone.push(`${c.hidden} source${c.hidden === 1 ? "" : "s"}`);
+    if (c.muted) gone.push(`${c.muted} muted word${c.muted === 1 ? "" : "s"}`);
+    if (gone.length) parts.push(`Hidden by you: ${gone.join(", ")}`);
     if (c.fold) parts.push(`Showing less from ${c.fold}`);
     el.innerHTML = `Sorted by time. <button type="button" class="caption-link" id="feedReviewLink">${escapeHtml(parts.join(". "))}</button>`;
   }
@@ -1253,14 +1359,42 @@
       <div class="spray-picker-card">
         <div class="spray-picker-head"><span>Customize my feed</span><button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button></div>
         <p class="spray-picker-sub">Tap Tune on any story to hide a source or show less from it. Everything you've changed is listed here, and nothing else is hidden.${currentUser && myFeed && myFeed.started ? " Your feed started from Headlines on " + escapeHtml(new Date(myFeed.started.replace(" ", "T") + "Z").toLocaleDateString(undefined, { month: "short", day: "numeric" })) + "." : ""}</p>
+        ${items.length === 0 && currentMutes().length === 0 ? `<div class="spray-picker-empty">You haven't changed your feed yet.</div>` : ""}
         ${items.length ? `<div class="spray-picker-list">${items.map((it, i) => `
-          <div class="spray-picker-row"><span>${escapeHtml(it.outlet)} <em class="tune-mode-tag">${FEED_MODE_LABEL[it.mode] || it.mode}</em></span><button type="button" class="btn tune-restore" data-i="${i}">Restore</button></div>`).join("")}</div>` : `<div class="spray-picker-empty">You haven't changed your feed yet.</div>`}
+          <div class="spray-picker-row"><span>${escapeHtml(it.outlet)} <em class="tune-mode-tag">${FEED_MODE_LABEL[it.mode] || it.mode}</em></span><button type="button" class="btn tune-restore" data-i="${i}">Restore</button></div>`).join("")}</div>` : ""}
+        <div class="tune-opt-title" style="margin-top:14px;">Muted words</div>
+        ${currentMutes().map((w, i) => {
+          const caught = mutedCaught.get(w) || [];
+          const inView = feedEditsActiveInView();
+          return `<div class="spray-picker-row tune-mute-row"><span>${escapeHtml(w)}${inView ? ` <em class="tune-mode-tag">caught ${caught.length}</em>` : ""}</span><span class="tune-mute-actions"><button type="button" class="btn tune-peek" data-i="${i}">Peek</button><button type="button" class="btn tune-unmute" data-i="${i}">Remove</button></span></div>
+          <div class="tune-peek-list" data-peek="${i}" hidden>${caught.length ? caught.slice(0, 20).map(d => `<a href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener"><strong>${escapeHtml(d.outlet || d.source || "")}</strong> ${escapeHtml(d.headline || d.title || "")}</a>`).join("") : `<span class="tune-opt-sub">Nothing caught in what's loaded right now.</span>`}</div>`;
+        }).join("")}
+        <div class="spray-picker-newrow">
+          <input type="text" id="tuneMuteInput" placeholder="Mute a word or phrase" maxlength="40" autocomplete="off">
+          <button class="btn" id="tuneMuteBtn" type="button">Mute</button>
+        </div>
         <button type="button" class="btn" id="tuneOpenFeeds" style="width:100%; margin-top:12px;">Feeds and RSS Packs \u2192</button>
       </div>`;
     document.body.appendChild(el);
     el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
     el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
     el.querySelector("#tuneOpenFeeds").addEventListener("click", () => { closeTuneSheet(); switchTab("sources"); });
+    const words = currentMutes();
+    const addMuteFromReview = async () => {
+      const mi = el.querySelector("#tuneMuteInput");
+      if (await addMute(mi.value)) openFeedReviewSheet();
+    };
+    el.querySelector("#tuneMuteBtn").addEventListener("click", addMuteFromReview);
+    el.querySelector("#tuneMuteInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addMuteFromReview(); } });
+    el.querySelectorAll(".tune-peek").forEach(b => b.addEventListener("click", () => {
+      const box = el.querySelector(`[data-peek="${b.dataset.i}"]`);
+      box.hidden = !box.hidden;
+      b.textContent = box.hidden ? "Peek" : "Close";
+    }));
+    el.querySelectorAll(".tune-unmute").forEach(b => b.addEventListener("click", async () => {
+      await removeMute(words[Number(b.dataset.i)]);
+      openFeedReviewSheet();
+    }));
     el.querySelectorAll(".tune-restore").forEach(b => b.addEventListener("click", async () => {
       const it = items[Number(b.dataset.i)];
       await setFeedMode(it.src, it.outlet, "on");
@@ -1271,19 +1405,25 @@
   // Edits made while signed out move into the account at sign-in.
   async function applyHeldFeedEdits() {
     const held = readHeldFeedEdits();
+    const heldMutes = readHeldMutes();
     const edits = Object.entries(held).map(([outlet, mode]) => ({ outlet, mode }));
-    if (!currentUser || edits.length === 0) return;
+    if (!currentUser || (edits.length === 0 && heldMutes.length === 0)) return;
     localStorage.removeItem(FEED_EDITS_KEY); // clear first so a failure can't double-apply
+    localStorage.removeItem(FEED_MUTES_KEY);
     try {
       const sm = await api("/api/my/feed/ensure", { method: "POST", body: JSON.stringify({ edits }) });
-      const hadFeed = !!myFeed;
       setMyFeedFromSummary(sm);
+      if (heldMutes.length) {
+        const r = await api("/api/my/mutes", { method: "POST", body: JSON.stringify({ words: heldMutes }) });
+        mutes = r.words || [];
+      }
       await adoptMyFeed(sm.slug);
       toast("Your feed edits are saved to your account.");
       if (activeTab === "read") renderRead();
       refreshFeedCaption();
     } catch (e) {
       writeHeldFeedEdits(held);
+      writeHeldMutes(heldMutes);
       toast("Couldn't save your feed edits yet. We'll try again next time.");
     }
   }
@@ -1371,6 +1511,7 @@
   // dropped from the selection rather than breaking the whole view; if
   // every key fails, falls back to "all".
   async function fetchReadItems() {
+    mutedCaught = new Map();
     if (activeSprayKeys.has("all")) { quickRemoveContext = null; return tagFeedItems("all", await api("/api/dispatches")); }
     const keys = Array.from(activeSprayKeys);
     const results = await Promise.allSettled(keys.map(fetchItemsForSprayKey));

@@ -291,6 +291,15 @@ async function initSchema() {
     // when no row exists — a reader can point "News" at any public RSS Pack
     // instead (including one of their own), and can reset back to the
     // default by deleting their row.
+    // Words a reader mutes in My Feed (slice 2). Matching happens on the device;
+    // this table only stores the reader's own list so it follows them.
+    `CREATE TABLE IF NOT EXISTS user_mutes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      word TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, word)
+    )`,
     `CREATE TABLE IF NOT EXISTS user_news_pref (
       user_id INTEGER PRIMARY KEY,
       mix_slug TEXT NOT NULL
@@ -1950,6 +1959,7 @@ app.delete("/api/my/account", async (req, res) => {
     await dbRun(`DELETE FROM user_panel_prefs WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM user_spray_bar WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM user_news_pref WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_mutes WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM feed_thumbs WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM sessions WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM login_tokens WHERE email = ?`, [user.email]);
@@ -3823,6 +3833,50 @@ app.post("/api/my/feed/source-mode", async (req, res) => {
     console.error("my feed source-mode failed:", e?.message || e);
     res.status(500).json({ error: "Couldn't save that. Try again." });
   }
+});
+
+// ---------- Muted words (My Feed, slice 2) ----------
+// The list lives here so it follows the reader across devices; the matching
+// itself is done on the device against headline + excerpt, whole words only.
+// Adding a word makes sure My Feed exists, since mutes only apply to items
+// that arrive through it.
+const MUTE_CAP = 50;
+function cleanMuteWord(raw) {
+  const w = String(raw ?? "").replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim().toLowerCase().slice(0, 40);
+  return w.length >= 2 ? w : null;
+}
+async function mutesFor(userId) {
+  return (await dbAll(`SELECT word FROM user_mutes WHERE user_id = ? ORDER BY id ASC`, [userId])).map((r) => r.word);
+}
+app.get("/api/my/mutes", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  res.json({ words: await mutesFor(user.id) });
+});
+app.post("/api/my/mutes", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const raw = Array.isArray(req.body?.words) ? req.body.words : [req.body?.word];
+  const words = [...new Set(raw.map(cleanMuteWord).filter(Boolean))];
+  if (words.length === 0) return res.status(400).json({ error: "Type a word or two letters or more to mute." });
+  try {
+    const mix = await ensureMyFeed(user);
+    const have = await mutesFor(user.id);
+    const fresh = words.filter((w) => !have.includes(w));
+    if (have.length + fresh.length > MUTE_CAP) return res.status(400).json({ error: `You can mute up to ${MUTE_CAP} words.` });
+    for (const w of fresh) await dbRun(`INSERT OR IGNORE INTO user_mutes (user_id, word) VALUES (?, ?)`, [user.id, w]);
+    res.json({ words: await mutesFor(user.id), slug: mix.slug });
+  } catch (e) {
+    console.error("add mute failed:", e?.message || e);
+    res.status(500).json({ error: "Couldn't save that. Try again." });
+  }
+});
+app.delete("/api/my/mutes", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const w = cleanMuteWord(req.query.word);
+  if (w) await dbRun(`DELETE FROM user_mutes WHERE user_id = ? AND word = ?`, [user.id, w]);
+  res.json({ words: await mutesFor(user.id) });
 });
 
 // ---------- Quick add/remove: "which of my RSS Packs is this source in?" ----------

@@ -3020,3 +3020,11 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .caption-link { background: none; border: 0; padding: 0; font: inherit; color: var(--follow); text-decoration: underline; cursor: pointer; }
 #toast.has-action { pointer-events: auto; }
 .toast-action { background: none; border: 0; padding: 0 0 0 6px; font: inherit; font-weight: 700; color: var(--bg); text-decoration: underline; cursor: pointer; }
+
+/* Muted words */
+.tune-mute-row { align-items: center; }
+.tune-mute-actions { display: inline-flex; gap: 6px; flex: 0 0 auto; }
+.tune-mute-actions .btn { padding: 5px 10px; font-size: 12px; min-height: 30px; }
+.tune-peek-list { display: flex; flex-direction: column; gap: 6px; padding: 8px 12px 10px; border-bottom: 1px solid var(--line); font-size: 12.5px; }
+.tune-peek-list[hidden] { display: none; }
+.tune-peek-list a { color: var(--ink); text-decoration: none; line-height: 1.35; }
