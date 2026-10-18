@@ -3835,6 +3835,88 @@ app.post("/api/my/feed/source-mode", async (req, res) => {
   }
 });
 
+// ---------- New voices (My Feed, slice 4) ----------
+// Outlets that are NOT in the reader's feed yet, offered only when the reader
+// asks. No learning from clicks and no engagement numbers: the order is the
+// number of public Packs an outlet shares with the reader's own explicit picks
+// (ties alphabetical, so it never shuffles between views), and every
+// suggestion carries a plain-language reason. "have" is what the reader's feed
+// already holds: their My Feed if they have one, otherwise the Headlines wire.
+app.get("/api/new-voices", async (req, res) => {
+  const user = await getCurrentUser(req);
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 10);
+  const near = String(req.query.near || "").trim();
+  try {
+    let myFeedMix = user ? await dbGet(`SELECT id FROM feed_mixes WHERE creator_user_id = ? AND is_my_feed = 1 ORDER BY id ASC LIMIT 1`, [user.id]) : null;
+    const have = new Set(
+      myFeedMix
+        ? (await dbAll(`SELECT outlet FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'admin_outlet'`, [myFeedMix.id])).map((r) => r.outlet)
+        : (await dbAll(WIRE_OUTLETS_SQL)).map((r) => r.outlet)
+    );
+    // Anchors: an outlet the reader just hid ("something similar"), else the
+    // outlets in the reader's OWN Packs, which are explicit choices.
+    let anchors = [];
+    if (near) anchors = [near];
+    else if (user) {
+      anchors = (await dbAll(
+        `SELECT DISTINCT fms.outlet FROM feed_mix_sources fms
+         JOIN feed_mixes fm ON fm.id = fms.mix_id
+         WHERE fm.creator_user_id = ? AND fm.is_my_feed = 0 AND fms.source_type = 'admin_outlet' AND fms.outlet IS NOT NULL
+         ORDER BY fms.outlet ASC LIMIT 40`, [user.id]
+      )).map((r) => r.outlet);
+    }
+    const cand = (await dbAll(
+      `SELECT outlet, fallback_beat FROM feeds
+       WHERE submission_status = 'approved' AND outlet IS NOT NULL AND feed_url IS NOT NULL
+         AND COALESCE(feed_type, 'outlet') != 'journalist'
+       ORDER BY outlet ASC`
+    )).filter((r) => !have.has(r.outlet));
+    const candMap = new Map(cand.map((r) => [r.outlet, r.fallback_beat]));
+    for (const a of anchors) candMap.delete(a); // outlets in the reader's own Packs are already their pick
+    const out = [];
+    const taken = new Set();
+    if (anchors.length > 0 && candMap.size > 0) {
+      const ph = anchors.map(() => "?").join(",");
+      const scored = await dbAll(
+        `SELECT fms2.outlet AS outlet, COUNT(DISTINCT fms1.outlet) AS n
+         FROM feed_mix_sources fms1
+         JOIN feed_mixes fm ON fm.id = fms1.mix_id AND fm.is_public = 1
+         JOIN feed_mix_sources fms2 ON fms2.mix_id = fms1.mix_id AND fms2.source_type = 'admin_outlet'
+         WHERE fms1.source_type = 'admin_outlet' AND fms1.outlet IN (${ph}) AND fms2.outlet NOT IN (${ph})
+         GROUP BY fms2.outlet ORDER BY n DESC, fms2.outlet ASC`,
+        [...anchors, ...anchors]
+      );
+      for (const r of scored) {
+        if (out.length >= limit) break;
+        if (!candMap.has(r.outlet) || taken.has(r.outlet)) continue;
+        const names = (await dbAll(
+          `SELECT DISTINCT fms1.outlet FROM feed_mix_sources fms1
+           JOIN feed_mixes fm ON fm.id = fms1.mix_id AND fm.is_public = 1
+           JOIN feed_mix_sources fms2 ON fms2.mix_id = fms1.mix_id AND fms2.source_type = 'admin_outlet' AND fms2.outlet = ?
+           WHERE fms1.source_type = 'admin_outlet' AND fms1.outlet IN (${ph})
+           ORDER BY fms1.outlet ASC LIMIT 2`,
+          [r.outlet, ...anchors]
+        )).map((x) => x.outlet);
+        taken.add(r.outlet);
+        out.push({
+          outlet: r.outlet, section: candMap.get(r.outlet) || null,
+          reason: `Often in the same Packs as ${names.join(" and ")}.`,
+        });
+      }
+    }
+    for (const [outlet, beat] of candMap) {
+      if (out.length >= limit) break;
+      if (taken.has(outlet)) continue;
+      taken.add(outlet);
+      out.push({ outlet, section: beat || null, reason: beat ? `Not in your feed yet. Covers ${beat}.` : "Not in your feed yet." });
+    }
+    res.json(out);
+  } catch (e) {
+    console.error("new voices failed:", e?.message || e);
+    res.status(500).json({ error: "Couldn't load suggestions. Try again." });
+  }
+});
+
 // ---------- Muted words (My Feed, slice 2) ----------
 // The list lives here so it follows the reader across devices; the matching
 // itself is done on the device against headline + excerpt, whole words only.

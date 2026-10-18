@@ -1159,7 +1159,7 @@
 
   // Toast with one action (Undo). Uses the same #toast element.
   let toastActionTimer;
-  function toastAction(msg, label, fn) {
+  function toastAction(msg, label, fn, label2, fn2) {
     const el = document.getElementById("toast");
     if (!el) return;
     el.textContent = "";
@@ -1171,6 +1171,14 @@
     btn.textContent = label;
     btn.addEventListener("click", () => { el.classList.remove("show", "has-action"); clearTimeout(toastActionTimer); fn(); });
     el.append(span, btn);
+    if (label2 && fn2) {
+      const btn2 = document.createElement("button");
+      btn2.type = "button";
+      btn2.className = "toast-action";
+      btn2.textContent = label2;
+      btn2.addEventListener("click", () => { el.classList.remove("show", "has-action"); clearTimeout(toastActionTimer); fn2(); });
+      el.append(btn2);
+    }
     el.classList.add("show", "has-action");
     clearTimeout(toastTimer);
     clearTimeout(toastActionTimer);
@@ -1231,7 +1239,11 @@
     } else {
       msg = "Back to normal.";
     }
-    toastAction(msg, "Undo", () => { setFeedMode(src, outlet, prev); });
+    if (mode === "hidden") {
+      toastAction(msg, "Undo", () => { setFeedMode(src, outlet, prev); }, "Similar?", () => openVoicesSheet(outlet));
+    } else {
+      toastAction(msg, "Undo", () => { setFeedMode(src, outlet, prev); });
+    }
   }
 
   function afterFeedChange() {
@@ -1351,6 +1363,93 @@
     }
     return Object.entries(readHeldFeedEdits()).map(([outlet, mode]) => ({ outlet, mode, src: { source_type: "admin_outlet", outlet, label: outlet } }));
   }
+  // ----- New voices (opt-in suggestions of outlets not in your feed yet) -----
+  // Never mixed into the feed. Shown only when the reader asks (the Your feed
+  // screen, or "Similar?" right after a Hide), each with a plain-language
+  // reason, and nothing is added unless the reader taps Add. "Not now" is
+  // remembered on the device so the same outlet isn't offered again.
+  const VOICES_DISMISSED_KEY = "source_voices_dismissed";
+  function dismissedVoices() {
+    try { const v = JSON.parse(localStorage.getItem(VOICES_DISMISSED_KEY) || "[]"); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+  }
+  function skipVoice(outlet) {
+    const list = dismissedVoices();
+    if (!list.includes(outlet)) { list.push(outlet); localStorage.setItem(VOICES_DISMISSED_KEY, JSON.stringify(list.slice(-200))); }
+  }
+  async function fetchNewVoices(near, limit) {
+    const q = new URLSearchParams({ limit: String(limit || 5) });
+    if (near) q.set("near", near);
+    const gone = new Set(dismissedVoices());
+    const list = await api("/api/new-voices?" + q.toString());
+    return (Array.isArray(list) ? list : []).filter(v => !gone.has(v.outlet));
+  }
+  function voiceRowsHtml(list) {
+    if (!list.length) return `<div class="card-meta">Nothing to suggest right now.</div>`;
+    return list.map((v, i) => `
+      <div class="voice-row">
+        <div class="voice-main"><div class="voice-name">${escapeHtml(v.outlet)}</div><div class="voice-reason">${escapeHtml(v.reason || "")}</div></div>
+        <div class="voice-actions">
+          <button type="button" class="btn voice-add" data-i="${i}">Add to my feed</button>
+          <button type="button" class="btn voice-skip" data-i="${i}">Not now</button>
+        </div>
+      </div>`).join("");
+  }
+  function wireVoiceRows(root, list, onChange) {
+    root.querySelectorAll(".voice-add").forEach(b => b.addEventListener("click", async () => {
+      const v = list[Number(b.dataset.i)];
+      if (await addVoice(v.outlet)) onChange(v.outlet);
+    }));
+    root.querySelectorAll(".voice-skip").forEach(b => b.addEventListener("click", () => {
+      const v = list[Number(b.dataset.i)];
+      skipVoice(v.outlet);
+      onChange(v.outlet);
+    }));
+  }
+  async function addVoice(outlet) {
+    if (!requireSignIn("Sign in to add this source to your feed.", () => addVoice(outlet))) return false;
+    try {
+      const hadFeed = !!myFeed;
+      const sm = await api("/api/my/feed/source-mode", { method: "POST", body: JSON.stringify({ outlet, mode: "on" }) });
+      setMyFeedFromSummary(sm);
+      if (!hadFeed) await adoptMyFeed(sm.slug);
+    } catch (e) { toast(e.message || "Couldn't add that. Try again."); return false; }
+    afterFeedChange();
+    toastAction(`Added ${outlet} to your feed.`, "Undo", () => removeVoice(outlet));
+    return true;
+  }
+  async function removeVoice(outlet) {
+    if (!myFeed) return;
+    try {
+      await api(`/api/my/mixes/${encodeURIComponent(myFeed.slug)}/toggle-source`, { method: "POST", body: JSON.stringify({ source_type: "admin_outlet", outlet }) });
+      await loadMyFeed();
+    } catch (e) { toast(e.message || "Couldn't undo that."); return; }
+    afterFeedChange();
+  }
+  async function openVoicesSheet(near) {
+    closeTuneSheet();
+    const el = document.createElement("div");
+    el.id = "tuneOverlay";
+    el.className = "spray-picker-overlay";
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head"><span>Swap in something similar?</span><button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button></div>
+        <p class="spray-picker-sub">Outlets that aren't in your feed yet. Nothing is added unless you tap Add.</p>
+        <div id="voicesSheetList"><div class="card-meta">Looking...</div></div>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
+    el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
+    let list = [];
+    try { list = await fetchNewVoices(near, 3); } catch (e) { list = []; }
+    const box = el.querySelector("#voicesSheetList");
+    if (!box) return; // closed while loading
+    const draw = () => {
+      box.innerHTML = voiceRowsHtml(list);
+      wireVoiceRows(box, list, (outlet) => { list = list.filter(x => x.outlet !== outlet); if (list.length === 0) closeTuneSheet(); else draw(); });
+    };
+    draw();
+  }
+
   // ----- "Your feed" screen -----
   // Where a reader sees who fills their feed BEFORE they cut, what they've
   // changed, and how much quieter it got. All counts come from the stories
@@ -1471,6 +1570,10 @@
         <div class="section-label">WHO FILLS YOUR FEED</div>
         <div class="card yf-list">${rows || `<div class="card-meta">No stories in the last 7 days.</div>`}</div>
         ${stats.sources.length > 12 ? `<button type="button" class="btn" id="yfShowAll" style="width:100%; margin:8px 0 18px;">${st.showAll ? "Show fewer" : `Show all ${stats.sources.length} sources`}</button>` : ""}
+        <div class="section-label">NEW VOICES</div>
+        <div class="card" id="yfVoices">${st.voices
+          ? voiceRowsHtml(st.voices)
+          : `<div class="card-meta" style="margin-bottom:10px;">Outlets that aren't in your feed yet. Nothing is added unless you tap Add.</div><button type="button" class="btn" id="yfVoicesBtn" style="width:100%;">Show me some</button>`}</div>
         <div class="section-label">WHAT YOU'VE CHANGED</div>
         <div class="card">
           ${edits.length ? edits.map((it, i) => `<div class="spray-picker-row"><span>${escapeHtml(it.outlet)} <em class="tune-mode-tag">${FEED_MODE_LABEL[it.mode] || it.mode}</em></span><button type="button" class="btn yf-restore" data-i="${i}">Restore</button></div>`).join("") : `<div class="card-meta">No sources hidden or turned down.</div>`}
@@ -1509,6 +1612,18 @@
       const it = edits[Number(b.dataset.i)];
       setFeedMode(it.src, it.outlet, "on");
     }));
+    const vb = document.getElementById("yfVoicesBtn");
+    if (vb) vb.addEventListener("click", async () => {
+      vb.disabled = true; vb.textContent = "Looking...";
+      try { st.voices = await fetchNewVoices(null, 5); } catch (e) { st.voices = []; }
+      if (yourFeedState === st) renderYourFeedScreen();
+    });
+    if (st.voices) {
+      wireVoiceRows(document.getElementById("yfVoices"), st.voices, (outlet) => {
+        st.voices = st.voices.filter(x => x.outlet !== outlet);
+        renderYourFeedScreen();
+      });
+    }
     const addFromScreen = async () => { const mi = document.getElementById("yfMuteInput"); await addMute(mi.value); };
     document.getElementById("yfMuteBtn").addEventListener("click", addFromScreen);
     document.getElementById("yfMuteInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addFromScreen(); } });
