@@ -408,7 +408,7 @@
   // Bottom action row for every card shape. Videos get Save/Support in the
   // top band instead, so only the Follow control stays down here.
   function cardActionsHtml(d) {
-    return d.is_video ? sprayAddButton(d) : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}${tuneButton(d)}`;
+    return d.is_video ? sprayAddButton(d) : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}${tuneButton(d)}${hideButton(d)}`;
   }
 
   // Block-style badge for card lists (mobile cards, matches the visual
@@ -709,6 +709,7 @@
 
   function switchTab(key) {
     activeTab = key;
+    if (key !== "read") lastShown = [];
     if (key !== "sources") yourFeedState = null; // leaving the Your feed screen by any other tab closes it
     renderTabBar();
     // Returns the render promise (renderSources/renderRead/etc. are all
@@ -1017,6 +1018,7 @@
   const FEED_EDITS_KEY = "source_feed_edits";
   let myFeed = null; // signed in: { slug, total, hidden, fold, started, modes: Map, list: [] }
   let myFeedPromise = null;
+  let lastShown = []; // the list the Read tab is showing, for press-and-hold lookups
   const FEED_MUTES_KEY = "source_feed_mutes";
   let mutes = []; // signed in: the reader's list from the server
   let mutedCaught = new Map(); // word -> items it left out of the list loaded last
@@ -1155,6 +1157,14 @@
     const src = sprayableSource(d);
     if (!src) return "";
     return `<button type="button" class="tune-btn${cls ? " " + cls : ""}" data-tune='${escapeHtml(JSON.stringify(src))}' title="Tune how ${escapeHtml(src.label || "this source")} shows up in your feed">Tune</button>`;
+  }
+
+  // One-tap Hide for a whole source (Undo toast follows). Same effect as
+  // Tune > Hide, one tap shorter; safe because every Hide is undoable.
+  function hideButton(d, cls) {
+    const src = sprayableSource(d);
+    if (!src) return "";
+    return `<button type="button" class="hide-btn${cls ? " " + cls : ""}" data-hide='${escapeHtml(JSON.stringify(src))}' title="Hide ${escapeHtml(src.label || "this source")} from your feed">Hide</button>`;
   }
 
   // Toast with one action (Undo). Uses the same #toast element.
@@ -1597,7 +1607,7 @@
       <div class="source-single-col-screen yf-screen">
         <button class="btn" id="yfBack" style="margin-bottom:14px;">\u2039 Back</button>
         <h2 class="manage-screen-title">Your feed</h2>
-        <div class="manage-screen-stat" style="margin-bottom:14px;">Tap Tune on any story, or on a source below, to hide it or show less. ${escapeHtml(started)}</div>
+        <div class="manage-screen-stat" style="margin-bottom:14px;">Tap Hide or Tune on any story, press and hold a story, or use the buttons below. ${escapeHtml(started)}</div>
         ${body}
       </div>`;
     document.getElementById("yfBack").addEventListener("click", closeYourFeedScreen);
@@ -1664,6 +1674,12 @@
   document.addEventListener("click", (e) => {
     const t = e.target && e.target.closest ? e.target : null;
     if (!t) return;
+    const hide = t.closest(".hide-btn");
+    if (hide) {
+      e.preventDefault(); e.stopPropagation();
+      try { applyFeedMode(JSON.parse(hide.dataset.hide), "hidden"); } catch (err) { /* ignore malformed */ }
+      return;
+    }
     const tune = t.closest(".tune-btn");
     if (tune) {
       e.preventDefault(); e.stopPropagation();
@@ -1681,6 +1697,63 @@
       return;
     }
     if (t.closest("#feedReviewLink")) openYourFeedScreen();
+  });
+
+  // Press and hold (touch) or right-click (desktop) on any story opens its
+  // Tune sheet directly, so cutting a source takes one gesture. Buttons and
+  // links keep their normal behavior.
+  let holdTimer = null, holdStart = null, holdFired = false, swallowClickUntil = 0;
+  function tuneSrcForElement(el) {
+    if (activeTab !== "read" || !el.closest) return null;
+    const holder = el.closest(".mc-row, .feed-item, .feed-item-classic, .card");
+    if (!holder) return null;
+    const btn = holder.querySelector(".tune-btn[data-tune]");
+    if (btn) { try { return JSON.parse(btn.dataset.tune); } catch (e) { return null; } }
+    const id = holder.dataset && holder.dataset.id;
+    if (id) {
+      const d = lastShown.find(x => String(x.id) === id);
+      if (d) return sprayableSource(d);
+    }
+    return null;
+  }
+  function holdCancel() { clearTimeout(holdTimer); holdTimer = null; }
+  document.addEventListener("touchstart", (e) => {
+    holdFired = false;
+    if (!e.target.closest || e.target.closest("a, input, textarea, select")) return;
+    // Action buttons keep their own press; the row's main tap target (itself a button in some views) is fair game.
+    const pressed = e.target.closest("button");
+    if (pressed && !pressed.matches(".mc-head, .feed-item, .feed-item-classic")) return;
+    const src = tuneSrcForElement(e.target);
+    if (!src) return;
+    const t = e.touches && e.touches[0];
+    holdStart = t ? { x: t.clientX, y: t.clientY } : null;
+    holdCancel();
+    holdTimer = setTimeout(() => {
+      holdTimer = null;
+      if (document.getElementById("tuneOverlay")) return;
+      holdFired = true;
+      try { if (navigator.vibrate) navigator.vibrate(10); } catch (err) { /* not supported */ }
+      openTuneSheet(src);
+    }, 500);
+  }, { passive: true });
+  document.addEventListener("touchmove", (e) => {
+    if (!holdTimer || !holdStart) return;
+    const t = e.touches && e.touches[0];
+    if (t && (Math.abs(t.clientX - holdStart.x) > 10 || Math.abs(t.clientY - holdStart.y) > 10)) holdCancel();
+  }, { passive: true });
+  const holdEnd = () => { holdCancel(); if (holdFired) swallowClickUntil = Date.now() + 350; };
+  document.addEventListener("touchend", holdEnd, { passive: true });
+  document.addEventListener("touchcancel", holdEnd, { passive: true });
+  // The tap that follows a long press must not expand the row or hit the sheet's backdrop.
+  document.addEventListener("click", (e) => {
+    if (Date.now() < swallowClickUntil) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+  document.addEventListener("contextmenu", (e) => {
+    if (!e.target.closest || e.target.closest("a, input, textarea, select")) return;
+    const src = tuneSrcForElement(e.target);
+    if (!src) return;
+    e.preventDefault();
+    if (!document.getElementById("tuneOverlay")) openTuneSheet(src);
   });
 
   async function fetchItemsForSprayKey(key) {
@@ -1910,6 +1983,7 @@
   }
 
   function renderReadBody(shown, trendingLinks) {
+    lastShown = shown;
     const main = document.getElementById("main");
     // Classic (see renderReadClassic) is Desktop-only, same trap-
     // avoidance spirit as getLayoutMode()'s own guard and Columns'
@@ -2309,6 +2383,7 @@
           ${sprayAddButton(d)}
           ${saveButton(d)}
           ${tuneButton(d, "btn")}
+          ${hideButton(d, "btn")}
           ${shareButton(d)}
           <button class="btn reader-fullscreen-btn" id="readerFullscreenBtn" title="${readerFullscreen ? "Exit full screen" : "Full screen"}" aria-label="${readerFullscreen ? "Exit full screen" : "Full screen"}">${readerFullscreen ? "⤡" : "⛶"}</button>
         </div>
@@ -2421,6 +2496,7 @@
               ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
               ${saveButton(d)}
               ${tuneButton(d, "mc-tune")}
+              ${hideButton(d, "mc-tune")}
               ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener">💛 ${escapeHtml(support.label)}</a>` : ""}
             </div>
           </div>
