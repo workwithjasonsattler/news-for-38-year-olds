@@ -709,6 +709,7 @@
 
   function switchTab(key) {
     activeTab = key;
+    if (key !== "sources") yourFeedState = null; // leaving the Your feed screen by any other tab closes it
     renderTabBar();
     // Returns the render promise (renderSources/renderRead/etc. are all
     // async) so a caller that needs to act after the new tab has actually
@@ -1198,6 +1199,7 @@
     selectedDispatch = null;
     if (activeTab === "read") renderRead();
     refreshFeedCaption();
+    refreshYourFeedScreen();
     return true;
   }
   // First edit: News now points at My Feed (server did that). Move a reader who
@@ -1236,6 +1238,7 @@
     selectedDispatch = null;
     if (activeTab === "read") renderRead();
     refreshFeedCaption();
+    refreshYourFeedScreen();
   }
   async function addMute(raw) {
     const word = String(raw || "").trim().toLowerCase().replace(/\s+/g, " ");
@@ -1348,58 +1351,173 @@
     }
     return Object.entries(readHeldFeedEdits()).map(([outlet, mode]) => ({ outlet, mode, src: { source_type: "admin_outlet", outlet, label: outlet } }));
   }
-  async function openFeedReviewSheet() {
-    closeTuneSheet();
-    await ensureMyFeedLoaded();
-    const items = feedEditList();
-    const el = document.createElement("div");
-    el.id = "tuneOverlay";
-    el.className = "spray-picker-overlay";
-    el.innerHTML = `
-      <div class="spray-picker-card">
-        <div class="spray-picker-head"><span>Customize my feed</span><button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button></div>
-        <p class="spray-picker-sub">Tap Tune on any story to hide a source or show less from it. Everything you've changed is listed here, and nothing else is hidden.${currentUser && myFeed && myFeed.started ? " Your feed started from Headlines on " + escapeHtml(new Date(myFeed.started.replace(" ", "T") + "Z").toLocaleDateString(undefined, { month: "short", day: "numeric" })) + "." : ""}</p>
-        ${items.length === 0 && currentMutes().length === 0 ? `<div class="spray-picker-empty">You haven't changed your feed yet.</div>` : ""}
-        ${items.length ? `<div class="spray-picker-list">${items.map((it, i) => `
-          <div class="spray-picker-row"><span>${escapeHtml(it.outlet)} <em class="tune-mode-tag">${FEED_MODE_LABEL[it.mode] || it.mode}</em></span><button type="button" class="btn tune-restore" data-i="${i}">Restore</button></div>`).join("")}</div>` : ""}
-        <div class="tune-opt-title" style="margin-top:14px;">Muted words</div>
-        ${currentMutes().map((w, i) => {
-          const caught = mutedCaught.get(w) || [];
-          const inView = feedEditsActiveInView();
-          return `<div class="spray-picker-row tune-mute-row"><span>${escapeHtml(w)}${inView ? ` <em class="tune-mode-tag">caught ${caught.length}</em>` : ""}</span><span class="tune-mute-actions"><button type="button" class="btn tune-peek" data-i="${i}">Peek</button><button type="button" class="btn tune-unmute" data-i="${i}">Remove</button></span></div>
-          <div class="tune-peek-list" data-peek="${i}" hidden>${caught.length ? caught.slice(0, 20).map(d => `<a href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener"><strong>${escapeHtml(d.outlet || d.source || "")}</strong> ${escapeHtml(d.headline || d.title || "")}</a>`).join("") : `<span class="tune-opt-sub">Nothing caught in what's loaded right now.</span>`}</div>`;
-        }).join("")}
-        <div class="spray-picker-newrow">
-          <input type="text" id="tuneMuteInput" placeholder="Mute a word or phrase" maxlength="40" autocomplete="off">
-          <button class="btn" id="tuneMuteBtn" type="button">Mute</button>
-        </div>
-        <button type="button" class="btn" id="tuneOpenFeeds" style="width:100%; margin-top:12px;">Feeds and RSS Packs \u2192</button>
-      </div>`;
-    document.body.appendChild(el);
-    el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
-    el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
-    el.querySelector("#tuneOpenFeeds").addEventListener("click", () => { closeTuneSheet(); switchTab("sources"); });
-    const words = currentMutes();
-    const addMuteFromReview = async () => {
-      const mi = el.querySelector("#tuneMuteInput");
-      if (await addMute(mi.value)) openFeedReviewSheet();
+  // ----- "Your feed" screen -----
+  // Where a reader sees who fills their feed BEFORE they cut, what they've
+  // changed, and how much quieter it got. All counts come from the stories
+  // already loaded (the last 7 days of the wire) and are computed on the
+  // device. They are counts of stories, never engagement numbers.
+  let yourFeedState = null; // null | { returnTab, loading, error, items, showAll }
+
+  function describeQuieter(f) {
+    if (f < 0.05) return "about the same as before";
+    if (f < 0.15) return "a little quieter";
+    if (f < 0.29) return "about a quarter quieter";
+    if (f < 0.42) return "about a third quieter";
+    if (f < 0.58) return "about half as many stories";
+    return "much quieter";
+  }
+  function computeFeedStats(items) {
+    const cutoff = Date.now() - 7 * 86400000;
+    const week = (items || []).filter(d => new Date(d.date || 0).getTime() >= cutoff)
+      .sort((a, b) => new Date(b.date) - new Date(a.date));
+    const regs = muteRegexes();
+    const bySource = new Map();
+    const caught = new Map(regs.map(m => [m.w, []]));
+    const firstOfDay = new Set();
+    let hidden = 0, muted = 0, folded = 0;
+    for (const d of week) {
+      const outlet = (d.outlet || d.source || "").trim();
+      if (!outlet) continue;
+      const m = String(d.id).match(/^(?:mix-)?custom-(\d+)-/);
+      const row = bySource.get(outlet) || { outlet, count: 0, csId: m ? Number(m[1]) : null };
+      row.count++;
+      bySource.set(outlet, row);
+      const mode = feedModeFor(outlet);
+      if (mode === "hidden") { hidden++; continue; }
+      if (regs.length) {
+        const hit = mutedWordsIn(d);
+        if (hit.length) {
+          muted++;
+          hit.forEach(w => { const a = caught.get(w); if (a && a.length < 20) a.push(d); });
+          continue;
+        }
+      }
+      if (mode === "fold") {
+        const k = outlet + "|" + new Date(d.date).toDateString();
+        if (firstOfDay.has(k)) { folded++; continue; }
+        firstOfDay.add(k);
+      }
+    }
+    const total = week.length;
+    return {
+      total, hidden, muted, folded,
+      shown: total - hidden - muted - folded,
+      caught,
+      sources: [...bySource.values()].map(r => ({ ...r, mode: feedModeFor(r.outlet) })).sort((a, b) => b.count - a.count),
     };
-    el.querySelector("#tuneMuteBtn").addEventListener("click", addMuteFromReview);
-    el.querySelector("#tuneMuteInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addMuteFromReview(); } });
-    el.querySelectorAll(".tune-peek").forEach(b => b.addEventListener("click", () => {
-      const box = el.querySelector(`[data-peek="${b.dataset.i}"]`);
+  }
+
+  async function openYourFeedScreen() {
+    closeTuneSheet();
+    yourFeedState = { returnTab: activeTab === "sources" ? "read" : activeTab, loading: true, error: false, items: null, showAll: false };
+    await ensureMyFeedLoaded();
+    switchTab("sources");
+    try { yourFeedState.items = await api("/api/dispatches"); }
+    catch (e) { if (yourFeedState) yourFeedState.error = true; }
+    if (!yourFeedState) return; // reader already left
+    yourFeedState.loading = false;
+    renderYourFeedScreen();
+  }
+  function closeYourFeedScreen() {
+    const back = yourFeedState ? yourFeedState.returnTab : "read";
+    yourFeedState = null;
+    switchTab(back);
+  }
+  function refreshYourFeedScreen() {
+    if (yourFeedState && !yourFeedState.loading && activeTab === "sources") renderYourFeedScreen();
+  }
+
+  function renderYourFeedScreen() {
+    const main = document.getElementById("main");
+    if (!yourFeedState || !main) return;
+    const st = yourFeedState;
+    const c = feedEditCounts();
+    const tweaks = c.hidden + c.fold + c.muted;
+    const started = currentUser && myFeed && myFeed.started
+      ? "Started from Headlines on " + new Date(myFeed.started.replace(" ", "T") + "Z").toLocaleDateString(undefined, { month: "short", day: "numeric" }) + "."
+      : (currentUser ? "" : "Saved on this device until you sign in.");
+    let body = "";
+    if (st.loading) {
+      body = stateBlock({ title: "LOADING YOUR FEED", body: "Counting the last 7 days...", spin: true });
+    } else if (st.error || !st.items) {
+      body = `<div class="card"><div class="card-meta">Couldn't load your feed's numbers. Try again in a moment.</div></div>`;
+    } else {
+      const stats = computeFeedStats(st.items);
+      const out = stats.hidden + stats.muted;
+      const frac = stats.total ? (stats.hidden + stats.muted + stats.folded) / stats.total : 0;
+      const max = stats.sources.length ? stats.sources[0].count : 1;
+      const rows = (st.showAll ? stats.sources : stats.sources.slice(0, 12)).map((r, i) => {
+        const src = r.csId ? { source_type: "custom", custom_source_id: r.csId, label: r.outlet } : { source_type: "admin_outlet", outlet: r.outlet, label: r.outlet };
+        const tag = r.mode === "on" ? "" : `<em class="tune-mode-tag">${FEED_MODE_LABEL[r.mode]}</em>`;
+        return `<div class="yf-row${r.mode === "hidden" ? " yf-off" : ""}">
+          <div class="yf-row-top"><span class="yf-name">${escapeHtml(r.outlet)} ${tag}</span><span class="yf-count">${r.count} ${r.count === 1 ? "story" : "stories"}</span></div>
+          <div class="yf-bar"><span style="width:${Math.max(3, Math.round((r.count / max) * 100))}%"></span></div>
+          <button type="button" class="tune-btn yf-tune" data-tune='${escapeHtml(JSON.stringify(src))}'>Tune</button>
+        </div>`;
+      }).join("");
+      const edits = feedEditList();
+      const words = currentMutes();
+      body = `
+        <div class="card yf-summary">
+          <div class="yf-headline">${tweaks === 0 ? "You haven't changed your feed yet." : `${tweaks} tweak${tweaks === 1 ? "" : "s"}, ${describeQuieter(frac)}.`}</div>
+          <div class="yf-lines">
+            <div>Last 7 days: <strong>${stats.total}</strong> stories</div>
+            <div>Showing right away: <strong>${stats.shown}</strong></div>
+            ${stats.folded ? `<div>Folded under a row: <strong>${stats.folded}</strong></div>` : ""}
+            ${out ? `<div>Left out by you: <strong>${out}</strong> (${stats.hidden} from hidden sources, ${stats.muted} from muted words)</div>` : ""}
+          </div>
+          <div class="yf-note">Sorted by time. Nothing else is hidden.</div>
+        </div>
+        <div class="section-label">WHO FILLS YOUR FEED</div>
+        <div class="card yf-list">${rows || `<div class="card-meta">No stories in the last 7 days.</div>`}</div>
+        ${stats.sources.length > 12 ? `<button type="button" class="btn" id="yfShowAll" style="width:100%; margin:8px 0 18px;">${st.showAll ? "Show fewer" : `Show all ${stats.sources.length} sources`}</button>` : ""}
+        <div class="section-label">WHAT YOU'VE CHANGED</div>
+        <div class="card">
+          ${edits.length ? edits.map((it, i) => `<div class="spray-picker-row"><span>${escapeHtml(it.outlet)} <em class="tune-mode-tag">${FEED_MODE_LABEL[it.mode] || it.mode}</em></span><button type="button" class="btn yf-restore" data-i="${i}">Restore</button></div>`).join("") : `<div class="card-meta">No sources hidden or turned down.</div>`}
+        </div>
+        <div class="section-label">MUTED WORDS</div>
+        <div class="card">
+          ${words.map((w, i) => {
+            const got = stats.caught.get(w) || [];
+            return `<div class="spray-picker-row tune-mute-row"><span>${escapeHtml(w)} <em class="tune-mode-tag">caught ${got.length}</em></span><span class="tune-mute-actions"><button type="button" class="btn tune-peek" data-i="${i}">Peek</button><button type="button" class="btn tune-unmute" data-i="${i}">Remove</button></span></div>
+            <div class="tune-peek-list" data-peek="${i}" hidden>${got.length ? got.map(d => `<a href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener"><strong>${escapeHtml(d.outlet || d.source || "")}</strong> ${escapeHtml(d.headline || d.title || "")}</a>`).join("") : `<span class="tune-opt-sub">Nothing caught in the last 7 days.</span>`}</div>`;
+          }).join("")}
+          <div class="spray-picker-newrow">
+            <input type="text" id="yfMuteInput" placeholder="Mute a word or phrase" maxlength="40" autocomplete="off">
+            <button class="btn" id="yfMuteBtn" type="button">Mute</button>
+          </div>
+          <div class="tune-opt-sub" style="margin-top:6px;">Whole words only, in headlines and excerpts, and only in your feed.</div>
+        </div>
+        <button type="button" class="btn" id="yfOpenFeeds" style="width:100%; margin-top:16px;">Feeds and RSS Packs \u2192</button>`;
+    }
+    main.innerHTML = `
+      <div class="source-single-col-screen yf-screen">
+        <button class="btn" id="yfBack" style="margin-bottom:14px;">\u2039 Back</button>
+        <h2 class="manage-screen-title">Your feed</h2>
+        <div class="manage-screen-stat" style="margin-bottom:14px;">Tap Tune on any story, or on a source below, to hide it or show less. ${escapeHtml(started)}</div>
+        ${body}
+      </div>`;
+    document.getElementById("yfBack").addEventListener("click", closeYourFeedScreen);
+    const showAll = document.getElementById("yfShowAll");
+    if (showAll) showAll.addEventListener("click", () => { st.showAll = !st.showAll; renderYourFeedScreen(); });
+    const openFeeds = document.getElementById("yfOpenFeeds");
+    if (openFeeds) openFeeds.addEventListener("click", () => { yourFeedState = null; switchTab("sources"); });
+    if (st.loading || st.error || !st.items) return;
+    const edits = feedEditList();
+    const words = currentMutes();
+    main.querySelectorAll(".yf-restore").forEach(b => b.addEventListener("click", () => {
+      const it = edits[Number(b.dataset.i)];
+      setFeedMode(it.src, it.outlet, "on");
+    }));
+    const addFromScreen = async () => { const mi = document.getElementById("yfMuteInput"); await addMute(mi.value); };
+    document.getElementById("yfMuteBtn").addEventListener("click", addFromScreen);
+    document.getElementById("yfMuteInput").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addFromScreen(); } });
+    main.querySelectorAll(".tune-peek").forEach(b => b.addEventListener("click", () => {
+      const box = main.querySelector(`[data-peek="${b.dataset.i}"]`);
       box.hidden = !box.hidden;
       b.textContent = box.hidden ? "Peek" : "Close";
     }));
-    el.querySelectorAll(".tune-unmute").forEach(b => b.addEventListener("click", async () => {
-      await removeMute(words[Number(b.dataset.i)]);
-      openFeedReviewSheet();
-    }));
-    el.querySelectorAll(".tune-restore").forEach(b => b.addEventListener("click", async () => {
-      const it = items[Number(b.dataset.i)];
-      await setFeedMode(it.src, it.outlet, "on");
-      openFeedReviewSheet();
-    }));
+    main.querySelectorAll(".tune-unmute").forEach(b => b.addEventListener("click", () => removeMute(words[Number(b.dataset.i)])));
   }
 
   // Edits made while signed out move into the account at sign-in.
@@ -1447,7 +1565,7 @@
       if (act) act.textContent = open ? "Hide" : "Show";
       return;
     }
-    if (t.closest("#feedReviewLink")) openFeedReviewSheet();
+    if (t.closest("#feedReviewLink")) openYourFeedScreen();
   });
 
   async function fetchItemsForSprayKey(key) {
@@ -2902,6 +3020,7 @@
   }
 
   async function renderSources() {
+    if (yourFeedState) return renderYourFeedScreen();
     if (manageState) return renderManageScreen();
     if (createFlowState) return renderCreateFlow();
     if (browseState) return renderBrowseScreen();
@@ -5641,7 +5760,7 @@
     initGetAppStrip();
 
     const feedsBtn = document.getElementById("feedsBtn");
-    if (feedsBtn) feedsBtn.addEventListener("click", () => openFeedReviewSheet());
+    if (feedsBtn) feedsBtn.addEventListener("click", () => openYourFeedScreen());
     const refreshBtn = document.getElementById("refreshBtn");
     if (refreshBtn) {
       refreshBtn.addEventListener("click", async () => {
