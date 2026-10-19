@@ -3054,7 +3054,14 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .voice-actions { display: flex; gap: 8px; margin-top: 8px; }
 .voice-actions .btn { padding: 6px 12px; font-size: 13px; min-height: 34px; }
 
-/* One-tap Hide, press-and-hold */
-.hide-btn { font-family: var(--body); font-size: 12.5px; font-weight: 600; padding: 6px 11px; border-radius: 999px; border: 1.5px solid var(--line); background: var(--bg); color: var(--alert); cursor: pointer; min-height: 30px; }
-.hide-btn.btn { font-size: 13px; }
+/* Press-and-hold */
 .mc-row, .feed-item-classic, .feed-item { -webkit-touch-callout: none; }
+
+/* Source line (expanded story) and the three-dots source button */
+.src-menu-btn { width: 40px; height: 40px; min-height: 0; padding: 0; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border-color: var(--ink); color: var(--ink); background: var(--bg); }
+.mc-source-line { display: flex; align-items: center; gap: 8px; margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--line); }
+.mc-source-line .src-menu-btn { width: 44px; height: 44px; flex: 0 0 auto; }
+.mc-source-id { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.mc-source-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); }
+.mc-source-name { font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mc-source-line .mc-support { min-height: 44px; display: inline-flex; align-items: center; box-sizing: border-box; }

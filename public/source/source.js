@@ -408,7 +408,7 @@
   // Bottom action row for every card shape. Videos get Save/Support in the
   // top band instead, so only the Follow control stays down here.
   function cardActionsHtml(d) {
-    return d.is_video ? sprayAddButton(d) : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}${tuneButton(d)}${hideButton(d)}`;
+    return d.is_video ? sprayAddButton(d) : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}${tuneButton(d)}`;
   }
 
   // Block-style badge for card lists (mobile cards, matches the visual
@@ -1153,18 +1153,15 @@
     return `<div class="fold-toggle-row"><button type="button" class="fold-toggle" data-fold-head="${escapeHtml(e.headKey)}" aria-expanded="false">${e.count} more from ${o} today <span class="fold-toggle-act">Show</span></button></div>`;
   }
 
+  const DOTS_SVG = '<svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>';
+  // The three-dots button opens the SOURCE sheet ("<Outlet> in My Feed"):
+  // Show all / Show fewer / Hide, plus Mute a word. It names the source in
+  // its label so the scope is never a guess.
   function tuneButton(d, cls) {
     const src = sprayableSource(d);
     if (!src) return "";
-    return `<button type="button" class="tune-btn${cls ? " " + cls : ""}" data-tune='${escapeHtml(JSON.stringify(src))}' title="Tune how ${escapeHtml(src.label || "this source")} shows up in your feed">Tune</button>`;
-  }
-
-  // One-tap Hide for a whole source (Undo toast follows). Same effect as
-  // Tune > Hide, one tap shorter; safe because every Hide is undoable.
-  function hideButton(d, cls) {
-    const src = sprayableSource(d);
-    if (!src) return "";
-    return `<button type="button" class="hide-btn${cls ? " " + cls : ""}" data-hide='${escapeHtml(JSON.stringify(src))}' title="Hide ${escapeHtml(src.label || "this source")} from your feed">Hide</button>`;
+    const name = escapeHtml(src.label || "this source");
+    return `<button type="button" class="tune-btn src-menu-btn${cls ? " " + cls : ""}" data-tune='${escapeHtml(JSON.stringify(src))}' aria-label="Options for ${name}" title="Options for ${name}">${DOTS_SVG}</button>`;
   }
 
   // Toast with one action (Undo). Uses the same #toast element.
@@ -1195,7 +1192,7 @@
     toastActionTimer = setTimeout(() => el.classList.remove("show", "has-action"), 6000);
   }
 
-  const FEED_MODE_LABEL = { on: "In your feed", fold: "Show less", hidden: "Hidden" };
+  const FEED_MODE_LABEL = { on: "In your feed", fold: "Show fewer", hidden: "Hidden" };
 
   async function setFeedMode(src, outlet, mode) {
     if (!currentUser) {
@@ -1242,12 +1239,12 @@
     if (mode === "hidden") {
       const left = currentUser && myFeed ? myFeed.total - myFeed.hidden : null;
       msg = currentUser
-        ? (inView ? `Hidden. Your feed is now ${left} sources.` : "Hidden from your feed.")
-        : "Hidden. Sign in to keep this on every device.";
+        ? (inView ? `${outlet} hidden. My Feed is now ${left} sources.` : `${outlet} hidden from My Feed.`)
+        : `${outlet} hidden. Sign in to keep this on every device.`;
     } else if (mode === "fold") {
-      msg = `Showing less from ${outlet}.`;
+      msg = `Showing fewer stories from ${outlet}.`;
     } else {
-      msg = "Back to normal.";
+      msg = `Showing all stories from ${outlet}.`;
     }
     if (mode === "hidden") {
       toastAction(msg, "Undo", () => { setFeedMode(src, outlet, prev); }, "Similar?", () => openVoicesSheet(outlet));
@@ -1315,13 +1312,13 @@
     el.innerHTML = `
       <div class="spray-picker-card">
         <div class="spray-picker-head">
-          <span>Tune <strong>${escapeHtml(outlet)}</strong></span>
+          <span><strong>${escapeHtml(outlet)}</strong> in My Feed</span>
           <button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button>
         </div>
-        <p class="spray-picker-sub">${currentUser ? "This changes your own feed only." : "This changes your own feed only. Saved on this device until you sign in."}</p>
-        ${opt("on", "In your feed", "Everything they post, newest first.")}
-        ${opt("fold", "Show less", "Their newest story each day shows. The rest fold into one row.")}
-        ${opt("hidden", "Hide", "Never shown. You can bring it back anytime.")}
+        <p class="spray-picker-sub">${currentUser ? "Changes only your own feed. You can change it anytime." : "Changes only your own feed. Saved on this device until you sign in."}</p>
+        ${opt("on", "Show all their stories", "Everything they post, newest first.")}
+        ${opt("fold", "Show fewer", "Their newest story each day shows. The rest fold into one row.")}
+        ${opt("hidden", "Hide " + escapeHtml(outlet), "Never shown. Bring it back from My Feed.")}
         <div class="tune-mute">
           <div class="tune-opt-title" style="margin-top:14px;">Mute a word</div>
           <div class="spray-picker-newrow">
@@ -1361,7 +1358,7 @@
     if (c.hidden) gone.push(`${c.hidden} source${c.hidden === 1 ? "" : "s"}`);
     if (c.muted) gone.push(`${c.muted} muted word${c.muted === 1 ? "" : "s"}`);
     if (gone.length) parts.push(`Hidden by you: ${gone.join(", ")}`);
-    if (c.fold) parts.push(`Showing less from ${c.fold}`);
+    if (c.fold) parts.push(`${c.fold} source${c.fold === 1 ? "" : "s"} showing fewer stories`);
     el.innerHTML = `Sorted by time. <button type="button" class="caption-link" id="feedReviewLink">${escapeHtml(parts.join(". "))}</button>`;
   }
   function feedEditList() {
@@ -1561,7 +1558,7 @@
         return `<div class="yf-row${r.mode === "hidden" ? " yf-off" : ""}">
           <div class="yf-row-top"><span class="yf-name">${escapeHtml(r.outlet)} ${tag}</span><span class="yf-count">${r.count} ${r.count === 1 ? "story" : "stories"}</span></div>
           <div class="yf-bar"><span style="width:${Math.max(3, Math.round((r.count / max) * 100))}%"></span></div>
-          <button type="button" class="tune-btn yf-tune" data-tune='${escapeHtml(JSON.stringify(src))}'>Tune</button>
+          <button type="button" class="tune-btn src-menu-btn yf-tune" data-tune='${escapeHtml(JSON.stringify(src))}' aria-label="Options for ${escapeHtml(r.outlet)}" title="Options for ${escapeHtml(r.outlet)}">${DOTS_SVG}</button>
         </div>`;
       }).join("");
       const edits = feedEditList();
@@ -1607,7 +1604,7 @@
       <div class="source-single-col-screen yf-screen">
         <button class="btn" id="yfBack" style="margin-bottom:14px;">\u2039 Back</button>
         <h2 class="manage-screen-title">Your feed</h2>
-        <div class="manage-screen-stat" style="margin-bottom:14px;">Tap Hide or Tune on any story, press and hold a story, or use the buttons below. ${escapeHtml(started)}</div>
+        <div class="manage-screen-stat" style="margin-bottom:14px;">Tap the three dots on any story, or press and hold one, to change how its source shows up. ${escapeHtml(started)}</div>
         ${body}
       </div>`;
     document.getElementById("yfBack").addEventListener("click", closeYourFeedScreen);
@@ -1674,12 +1671,6 @@
   document.addEventListener("click", (e) => {
     const t = e.target && e.target.closest ? e.target : null;
     if (!t) return;
-    const hide = t.closest(".hide-btn");
-    if (hide) {
-      e.preventDefault(); e.stopPropagation();
-      try { applyFeedMode(JSON.parse(hide.dataset.hide), "hidden"); } catch (err) { /* ignore malformed */ }
-      return;
-    }
     const tune = t.closest(".tune-btn");
     if (tune) {
       e.preventDefault(); e.stopPropagation();
@@ -2382,8 +2373,7 @@
           ${tipSubscribeButton(d)}
           ${sprayAddButton(d)}
           ${saveButton(d)}
-          ${tuneButton(d, "btn")}
-          ${hideButton(d, "btn")}
+          ${tuneButton(d)}
           ${shareButton(d)}
           <button class="btn reader-fullscreen-btn" id="readerFullscreenBtn" title="${readerFullscreen ? "Exit full screen" : "Full screen"}" aria-label="${readerFullscreen ? "Exit full screen" : "Full screen"}">${readerFullscreen ? "⤡" : "⛶"}</button>
         </div>
@@ -2495,9 +2485,11 @@
             <div class="mc-actions">
               ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
               ${saveButton(d)}
-              ${tuneButton(d, "mc-tune")}
-              ${hideButton(d, "mc-tune")}
-              ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener">💛 ${escapeHtml(support.label)}</a>` : ""}
+            </div>
+            <div class="mc-source-line">
+              <div class="mc-source-id"><span class="mc-source-label">Source</span><span class="mc-source-name">${escapeHtml((d.outlet || d.source || "").trim())}</span></div>
+              ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener" aria-label="${escapeHtml(support.label)}">💛 Support</a>` : ""}
+              ${tuneButton(d)}
             </div>
           </div>
         </div>`;
