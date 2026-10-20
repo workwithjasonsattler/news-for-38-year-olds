@@ -297,7 +297,7 @@
         ${getLayoutMode() === "desktop" ? `<button class="view-menu-item${mode === "columns" ? " active" : ""}" data-action="columns">Columns</button>` : ""}
         <button class="view-menu-item${mode === "classic" ? " active" : ""}" data-action="classic">Classic</button>
         <div class="view-menu-sep"></div>
-        <button class="view-menu-item" data-action="customize">Customize</button>
+        <button class="view-menu-item" data-action="customize">Feeds and RSS Packs</button>
       </div>`;
     const btn = document.getElementById("viewMenuBtn");
     const list = document.getElementById("viewMenuList");
@@ -2954,7 +2954,7 @@
       : filtered.map(p => `
           <button class="card" style="width:100%;text-align:left;display:block;margin-bottom:8px;" data-slug="${escapeHtml(p.slug)}">
             <div class="card-title" style="margin-bottom:2px;">${p.featured ? "⭐ " : ""}${escapeHtml(p.name)}</div>
-            <div class="card-meta">${p.location_label ? escapeHtml(p.location_label) + " · " : ""}${p.clone_count} follower${p.clone_count === 1 ? "" : "s"}</div>
+            <div class="card-meta">${[p.location_label ? escapeHtml(p.location_label) : "", (p.source_count || 0) + " source" + (p.source_count === 1 ? "" : "s")].filter(Boolean).join(" · ")}</div>
           </button>`).join("");
     container.querySelectorAll("[data-slug]").forEach(btn => {
       btn.addEventListener("click", () => openManagePack(btn.dataset.slug));
@@ -3018,7 +3018,7 @@
         <div class="manage-screen-head">
           ${mix.curator ? `<div class="tile-sheet-badge">By ${escapeHtml(mix.curator)}</div>` : mix.is_official ? `<div class="tile-sheet-badge">Official</div>` : ""}
           <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
-          <div class="manage-screen-stat">${mix.sources.length} source${mix.sources.length === 1 ? "" : "s"} · ${mix.clone_count || 0} follower${mix.clone_count === 1 ? "" : "s"}${mix.location_label ? " · " + escapeHtml(mix.location_label) : ""}</div>
+          <div class="manage-screen-stat">${mix.sources.length} source${mix.sources.length === 1 ? "" : "s"}${mix.location_label ? " · " + escapeHtml(mix.location_label) : ""}</div>
         </div>
         <div class="manage-screen-field">
           <div class="create-flow-label">Sources</div>
@@ -3040,7 +3040,7 @@
       body = `
         <div class="manage-screen-head">
           <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
-          <div class="manage-screen-stat">${mix.sources.length} source${mix.sources.length === 1 ? "" : "s"} · ${mix.clone_count || 0} follower${mix.clone_count === 1 ? "" : "s"}</div>
+          <div class="manage-screen-stat">${mix.sources.length} source${mix.sources.length === 1 ? "" : "s"}</div>
         </div>
         ${mix.admin_hidden ? `
         <div class="manage-screen-hidden-notice">
@@ -3253,7 +3253,7 @@
         <div class="sources-area-head">
           <div class="sources-area-rule"></div>
           <div class="sources-area-title">Your RSS Packs</div>
-          <div class="sources-area-sub">Tap any tile to follow, edit, or build something new.</div>
+          <div class="sources-area-sub">An RSS Pack is a bundle of outlets you follow together. Tap any tile to follow, edit, or build something new.</div>
         </div>`;
       leftHtml += renderSpraysShelf(bar, myMixes, officialPacksCache);
 
@@ -3275,7 +3275,7 @@
             <button class="spray-tile" data-tile="public" data-slug="${escapeHtml(p.slug)}">
               <span class="spray-tile-icon">${p.featured ? "⭐" : "🌐"}</span>
               <span class="spray-tile-name">${escapeHtml(p.name)}</span>
-              <span class="spray-tile-meta">${p.clone_count} follower${p.clone_count === 1 ? "" : "s"}</span>
+              <span class="spray-tile-meta">${p.source_count || 0} source${p.source_count === 1 ? "" : "s"}</span>
             </button>`).join("") + `
             <button class="spray-tile spray-tile-new" data-tile="browse-public">
               <span class="spray-tile-plus">🔎</span>
@@ -5470,7 +5470,12 @@
     if (st.step === 1) {
       body = `<h1>Pick a few packs to start</h1>
         <p>A pack is a bundle of outlets. Public media around the world is the basic news one. Change any of this later.</p>
-        ${st.packList.map(m => obChoice(sprayDisplayName(m.slug, m.name), m.slug === PUBLIC_MEDIA_SLUG ? "BBC, NPR, PBS, DW and other public broadcasters" : (m.auto_sync ? "The best of the independent web, in order" : ""), st.packs.has(m.slug), `data-pack="${escapeHtml(m.slug)}"`)).join("")}
+        ${(() => {
+          const one = (m) => obChoice(sprayDisplayName(m.slug, m.name), m.slug === PUBLIC_MEDIA_SLUG ? "BBC, NPR, PBS, DW and other public broadcasters" : (m.auto_sync ? "The best of the independent web, in order" : ""), st.packs.has(m.slug), `data-pack="${escapeHtml(m.slug)}"`);
+          const news = st.packList.filter(m => m.is_official || m.auto_sync);
+          const more = st.packList.filter(m => !(m.is_official || m.auto_sync));
+          return (news.length ? `<div class="ob-group">News</div>` + news.map(one).join("") : "") + (more.length ? `<div class="ob-group">More to explore</div>` + more.map(one).join("") : "");
+        })()}
         <button class="ob-btn" id="obNext">Next</button>`;
     } else if (st.step === 2) {
       body = `<h1>How do you want to read?</h1>
