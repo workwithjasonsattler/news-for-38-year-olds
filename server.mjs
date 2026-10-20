@@ -2352,6 +2352,78 @@ async function fetchCustomSourceItems(feedUrl) {
   return items;
 }
 
+// ---------- OPML import (one batch of up to 10 feeds per request) ----------
+// The client parses the OPML file on the device and sends feeds in small
+// batches so progress can be shown and no request runs long. Each feed is
+// (a) matched to an outlet SOURCE! already carries (costs no custom-source
+// slot), (b) already one of the reader's own feeds, or (c) validated like any
+// custom source (SSRF-guarded fetch, must parse into items) and added, up to
+// CUSTOM_SOURCE_CAP. The client then builds private Packs from the folders.
+function normFeedUrl(u) {
+  try {
+    const x = new URL(String(u).trim());
+    const path = x.pathname.replace(/\/+$/, "");
+    return x.hostname.replace(/^www\./, "").toLowerCase() + path + (x.search || "");
+  } catch (e) {
+    return String(u || "").trim().toLowerCase();
+  }
+}
+app.post("/api/my/opml-import", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const feeds = (Array.isArray(req.body?.feeds) ? req.body.feeds : []).slice(0, 10);
+  if (feeds.length === 0) return res.status(400).json({ error: "No feeds in this batch." });
+  try {
+    const registry = await dbAll(`SELECT outlet, feed_url FROM feeds WHERE submission_status = 'approved' AND feed_url IS NOT NULL`);
+    const regMap = new Map(registry.map((r) => [normFeedUrl(r.feed_url), r.outlet]));
+    const mine = await dbAll(`SELECT id, feed_url FROM user_custom_sources WHERE user_id = ?`, [user.id]);
+    const mineMap = new Map(mine.map((r) => [normFeedUrl(r.feed_url), r.id]));
+    let count = mine.length;
+    const results = new Array(feeds.length);
+    const toCheck = [];
+    feeds.forEach((f, i) => {
+      const url = String(f?.url || "").trim().slice(0, 500);
+      const title = String(f?.title || "").replace(/\s+/g, " ").trim().slice(0, 80);
+      if (!/^https?:\/\//i.test(url)) { results[i] = { url, title, status: "failed", reason: "Not a web address" }; return; }
+      const key = normFeedUrl(url);
+      if (regMap.has(key)) { results[i] = { url, title, status: "matched", outlet: regMap.get(key) }; return; }
+      if (mineMap.has(key)) { results[i] = { url, title, status: "exists", custom_source_id: mineMap.get(key) }; return; }
+      if (count + toCheck.length >= CUSTOM_SOURCE_CAP) { results[i] = { url, title, status: "capped" }; return; }
+      toCheck.push({ i, url, title, key });
+    });
+    // Validate the new ones in parallel (each has its own timeout), insert in order.
+    const checked = await Promise.all(toCheck.map(async (c) => {
+      try {
+        const resp = await fetchWithSSRFGuard(c.url, { timeoutMs: 8000 });
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const parsed = xmlParser.parse(await resp.text());
+        const items = extractItems(parsed).filter((it) => it.title && it.link);
+        if (items.length === 0) throw new Error("no stories");
+        return { ...c, ok: true };
+      } catch (e) {
+        return { ...c, ok: false };
+      }
+    }));
+    for (const c of checked) {
+      if (!c.ok) { results[c.i] = { url: c.url, title: c.title, status: "failed", reason: "Couldn't read it as a feed" }; continue; }
+      if (count >= CUSTOM_SOURCE_CAP) { results[c.i] = { url: c.url, title: c.title, status: "capped" }; continue; }
+      let name = c.title;
+      if (!name) { try { name = new URL(c.url).hostname.replace(/^www\./, ""); } catch (e) { name = "Imported feed"; } }
+      const info = await dbRun(
+        `INSERT INTO user_custom_sources (user_id, name, feed_url, validated, submission_status) VALUES (?, ?, ?, 1, 'pending')`,
+        [user.id, name, c.url]
+      );
+      count++;
+      mineMap.set(c.key, Number(info.lastInsertRowid));
+      results[c.i] = { url: c.url, title: c.title, status: "added", custom_source_id: Number(info.lastInsertRowid) };
+    }
+    res.json({ results, custom_count: count, cap: CUSTOM_SOURCE_CAP });
+  } catch (e) {
+    console.error("opml import failed:", e?.message || e);
+    res.status(500).json({ error: "Couldn't import that batch. Try again." });
+  }
+});
+
 app.get("/api/my/custom-sources", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });

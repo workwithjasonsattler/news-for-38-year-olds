@@ -3322,6 +3322,13 @@
             <input type="text" class="create-flow-input" id="quickAddFeedInput" placeholder="https://example.com" style="flex:1;">
             <button class="btn primary" id="quickAddFeedBtn">+ Add</button>
           </div>`;
+        rightHtml += `
+          <div class="opml-import">
+            <div class="opml-title">Bring your feeds from another reader</div>
+            <div class="opml-sub">Export an OPML file from Feedly, Inoreader, NetNewsWire or another reader, then choose it here. Folders become private RSS Packs.</div>
+            <button class="btn" id="opmlImportBtn" type="button">Choose OPML file</button>
+            <input type="file" id="opmlFile" accept=".opml,.xml,text/xml,application/xml,text/x-opml" hidden>
+          </div>`;
       } else {
         rightHtml += `<p class="sources-signin-hint">Sign in (on the You tab) to add your own RSS feeds.</p>`;
       }
@@ -3374,6 +3381,7 @@
       document.getElementById("sourcesBackToYou")?.addEventListener("click", () => switchTab("you"));
       wireSpraysShelf();
       wireQuickAddFeed();
+    wireOpmlImport();
       wireYourSpraysSection();
       wireSourcesArea1();
 
@@ -3387,6 +3395,127 @@
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "REGISTRY UNREACHABLE", body: e.message || "Could not load sources." });
     }
+  }
+
+  // ----- OPML import: bring feeds from another reader -----
+  function parseOpml(text) {
+    const doc = new DOMParser().parseFromString(text, "text/xml");
+    if (doc.querySelector("parsererror") || !doc.documentElement || doc.documentElement.tagName.toLowerCase() !== "opml") return null;
+    const feeds = [];
+    const seen = new Set();
+    const label = (n) => (n.getAttribute("text") || n.getAttribute("title") || "").trim();
+    const walk = (node, folder) => {
+      for (const child of Array.from(node.children)) {
+        if (child.tagName.toLowerCase() !== "outline") continue;
+        const url = (child.getAttribute("xmlUrl") || child.getAttribute("xmlurl") || "").trim();
+        if (url) {
+          if (!seen.has(url) && feeds.length < 300) { seen.add(url); feeds.push({ title: label(child), url, folder }); }
+        } else {
+          walk(child, label(child) || folder);
+        }
+      }
+    };
+    const body = doc.querySelector("body");
+    if (body) walk(body, "");
+    return feeds;
+  }
+  function readFileText(file) {
+    return new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = () => resolve(String(r.result || ""));
+      r.onerror = () => reject(new Error("Couldn't read that file."));
+      r.readAsText(file);
+    });
+  }
+  async function runOpmlImport(feeds, onProgress) {
+    const results = [];
+    for (let i = 0; i < feeds.length; i += 10) {
+      const batch = feeds.slice(i, i + 10);
+      onProgress(Math.min(i + 10, feeds.length), feeds.length);
+      try {
+        const r = await api("/api/my/opml-import", { method: "POST", body: JSON.stringify({ feeds: batch }) });
+        r.results.forEach((x, j) => results.push({ ...x, folder: batch[j].folder }));
+      } catch (e) {
+        batch.forEach(f => results.push({ ...f, status: "failed", reason: "Network error" }));
+      }
+    }
+    // Folders become private RSS Packs (25 sources each, at most 12 Packs).
+    const byFolder = new Map();
+    for (const r of results) {
+      if (!["matched", "added", "exists"].includes(r.status)) continue;
+      const k = r.folder || "Imported feeds";
+      const src = r.status === "matched" ? { source_type: "admin_outlet", outlet: r.outlet } : { source_type: "custom", custom_source_id: r.custom_source_id };
+      const arr = byFolder.get(k) || [];
+      if (!arr.some(x => JSON.stringify(x) === JSON.stringify(src))) arr.push(src);
+      byFolder.set(k, arr);
+    }
+    let packs = 0;
+    for (const [folder, srcs] of byFolder) {
+      for (let i = 0; i < srcs.length && packs < 12; i += 25) {
+        const name = (folder + (i ? ` (${i / 25 + 1})` : "")).slice(0, 40);
+        try { await api("/api/mixes", { method: "POST", body: JSON.stringify({ name, is_public: false, sources: srcs.slice(i, i + 25) }) }); packs++; } catch (e) { /* skip this Pack */ }
+      }
+    }
+    try { await loadMyMixes(true); } catch (e) { /* fail soft */ }
+    return { results, packs };
+  }
+  function openOpmlSheet(html) {
+    closeTuneSheet();
+    const el = document.createElement("div");
+    el.id = "tuneOverlay";
+    el.className = "spray-picker-overlay";
+    el.innerHTML = `<div class="spray-picker-card" id="opmlSheet">${html}</div>`;
+    document.body.appendChild(el);
+    return el;
+  }
+  async function startOpmlImport(file) {
+    let feeds;
+    try { feeds = parseOpml(await readFileText(file)); } catch (e) { feeds = null; }
+    if (!feeds) { toast("That doesn't look like an OPML file."); return; }
+    if (feeds.length === 0) { toast("That file has no feeds in it."); return; }
+    const folders = new Set(feeds.map(f => f.folder).filter(Boolean)).size;
+    const el = openOpmlSheet(`
+      <div class="spray-picker-head"><span>Import ${feeds.length} feed${feeds.length === 1 ? "" : "s"}</span><button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button></div>
+      <p class="spray-picker-sub">${folders ? `Found ${folders} folder${folders === 1 ? "" : "s"}. ` : ""}Outlets SOURCE! already carries are matched for free. The rest are added as your own feeds, up to 50. Each folder becomes a private RSS Pack.</p>
+      <button class="btn primary" id="opmlGo" style="width:100%;">Import</button>
+      <button class="btn" id="opmlCancel" style="width:100%; margin-top:8px;">Cancel</button>`);
+    el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
+    el.querySelector("#opmlCancel").addEventListener("click", closeTuneSheet);
+    el.querySelector("#opmlGo").addEventListener("click", async () => {
+      const sheet = el.querySelector("#opmlSheet");
+      sheet.innerHTML = `<div class="spray-picker-head"><span>Importing...</span></div><p class="spray-picker-sub" id="opmlProg">Starting...</p>`;
+      const { results, packs } = await runOpmlImport(feeds, (done, total) => {
+        const p = el.querySelector("#opmlProg");
+        if (p) p.textContent = `Importing ${done} of ${total}...`;
+      });
+      const n = (s) => results.filter(r => r.status === s).length;
+      const failed = results.filter(r => r.status === "failed");
+      const lines = [];
+      if (n("matched")) lines.push(`${n("matched")} already on SOURCE!`);
+      if (n("added")) lines.push(`${n("added")} added as your own feeds`);
+      if (n("exists")) lines.push(`${n("exists")} you already had`);
+      if (failed.length) lines.push(`${failed.length} couldn't be read`);
+      if (n("capped")) lines.push(`${n("capped")} not added (50-feed limit)`);
+      const ok = n("matched") + n("added") + n("exists");
+      sheet.innerHTML = `
+        <div class="spray-picker-head"><span>Imported ${ok} of ${results.length}</span><button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button></div>
+        <p class="spray-picker-sub">${lines.map(escapeHtml).join(". ")}.${packs ? ` Created ${packs} private RSS Pack${packs === 1 ? "" : "s"}.` : ""}</p>
+        ${failed.length ? `<div class="tune-peek-list" style="border:0;">${failed.slice(0, 8).map(f => `<span class="tune-opt-sub">${escapeHtml(f.title || f.url)}</span>`).join("")}${failed.length > 8 ? `<span class="tune-opt-sub">and ${failed.length - 8} more</span>` : ""}</div>` : ""}
+        <button class="btn primary" id="opmlDone" style="width:100%; margin-top:10px;">${packs ? "See my RSS Packs" : "Done"}</button>`;
+      sheet.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
+      sheet.querySelector("#opmlDone").addEventListener("click", () => { closeTuneSheet(); if (activeTab === "sources") renderActiveTab(); else switchTab("sources"); });
+    });
+  }
+  function wireOpmlImport() {
+    const btn = document.getElementById("opmlImportBtn");
+    const input = document.getElementById("opmlFile");
+    if (!btn || !input) return;
+    btn.addEventListener("click", () => input.click());
+    input.addEventListener("change", () => {
+      const f = input.files && input.files[0];
+      input.value = "";
+      if (f) startOpmlImport(f);
+    });
   }
 
   function wireQuickAddFeed() {

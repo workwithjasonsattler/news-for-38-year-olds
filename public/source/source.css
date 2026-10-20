@@ -3072,3 +3072,8 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .mc-actions .mc-open, .mc-actions .save-btn { min-height: 44px; display: inline-flex; align-items: center; box-sizing: border-box; }
 /* Onboarding pack groups */
 .ob-group { font-family: var(--body); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); margin: 18px 0 6px; }
+
+/* OPML import */
+.opml-import { margin: 16px 0 4px; padding: 14px; border: 1.5px dashed var(--line); border-radius: 10px; }
+.opml-title { font-weight: 600; font-size: 15px; }
+.opml-sub { font-size: 12.5px; color: var(--ink-muted); line-height: 1.45; margin: 4px 0 10px; }
