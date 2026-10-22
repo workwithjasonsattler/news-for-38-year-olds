@@ -66,6 +66,18 @@
     <p id="usageNote" style="font-size:11px;color:#666;"></p>
   </div>
 
+  <div class="panel" id="risingPanel">
+    <h2 style="font-family:var(--mono);font-size:14px;">RISING OUTLETS</h2>
+    <p style="font-size:12px;color:#666;margin:0 0 10px;">Sites that two or more of the Bluesky accounts you list have linked to in the last 7 days, and that SOURCE! doesn't carry yet. For your review only: nothing here reaches readers, and no like, repost or reply counts are used. The scan reads public posts and takes about 20 seconds.</p>
+    <div style="margin-bottom:10px;font-family:var(--mono);font-size:12px;">
+      Shared by at least <input type="number" id="risingMin" value="2" min="1" max="10" style="width:50px;"> accounts
+      <button type="button" onclick="loadRising(false)">Show</button>
+      <button type="button" onclick="loadRising(true)">Scan now</button>
+    </div>
+    <div id="risingNote" style="font-size:11px;color:#666;margin-bottom:8px;"></div>
+    <table><thead><tr><th>Site</th><th>Shared by</th><th>Latest link</th><th></th></tr></thead><tbody id="risingRows"></tbody></table>
+  </div>
+
   <div class="panel" id="statsPanel">
     <h2 style="font-family:var(--mono);font-size:14px;">STATS</h2>
     <p style="font-size:12px;color:#666;margin:0 0 10px;">Dispatch totals, clicks, and top stories. Loads on request because it scans every dispatch and click.</p>
@@ -274,6 +286,31 @@ async function login(){
 }
 
 function authHeaders(){ return {'Content-Type':'application/json','X-Admin-Token':TOKEN}; }
+
+
+function esc(s){ return String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+async function loadRising(refresh){
+  const rows = document.getElementById('risingRows');
+  const note = document.getElementById('risingNote');
+  if (!rows) return;
+  const min = Math.max(1, Math.min(10, parseInt(document.getElementById('risingMin').value, 10) || 2));
+  note.textContent = refresh ? 'Scanning accounts...' : 'Loading...';
+  const res = await fetch('/api/admin/rising?minSharers=' + min + (refresh ? '&refresh=1' : ''), {headers: authHeaders()});
+  if (!res.ok) { note.textContent = 'Could not load. Try again.'; return; }
+  const data = await res.json();
+  note.textContent = data.candidates.length + ' site' + (data.candidates.length === 1 ? '' : 's') + ' from ' + data.handles_scanned + ' accounts, scanned ' + new Date(data.generated_at).toLocaleString() + '.';
+  rows.innerHTML = data.candidates.map(c => `
+    <tr>
+      <td><a class="link-cell" href="https://${esc(c.host)}" target="_blank" rel="noopener">${esc(c.host)}</a></td>
+      <td style="color:#444;">${c.sharers.slice(0, 4).map(s => esc(s.outlet || s.handle)).join(', ')}${c.sharers.length > 4 ? ' +' + (c.sharers.length - 4) + ' more' : ''}</td>
+      <td><a class="link-cell" href="${esc(c.example.url)}" target="_blank" rel="noopener">${esc(c.example.title || c.example.url)}</a></td>
+      <td><button class="btn-danger" onclick="ignoreRising('${esc(c.host)}')">Ignore</button></td>
+    </tr>`).join('') || '<tr><td colspan="4" style="color:#666;">Nothing new right now.</td></tr>';
+}
+async function ignoreRising(host){
+  await fetch('/api/admin/rising/ignore', {method:'POST', headers: authHeaders(), body: JSON.stringify({host})});
+  await loadRising(false);
+}
 
 async function showAdmin(){
   document.getElementById('loginPanel').classList.add('hidden');

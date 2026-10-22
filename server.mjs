@@ -6303,6 +6303,110 @@ app.get("/api/stats", requireAdmin, async (req, res) => {
 //   GET /api/admin/usage                    (header: x-admin-token)
 //   GET /api/admin/usage?exclude=1,2,7      (leave test/reviewer user ids out)
 //   GET /api/admin/usage?traffic=1          (adds page view / click counts)
+// ---------- Rising outlets (admin-only review queue) ----------
+// Looks at the public posts of the Bluesky accounts already listed in `feeds`
+// and surfaces sites they link to that SOURCE! doesn't carry yet, so an editor
+// can decide what to add. Nothing here reaches readers, and no like, repost or
+// reply counts are read or returned: only who linked, what, and when.
+const RISING_CACHE_MS = 6 * 60 * 60 * 1000;
+const RISING_IGNORED_KEY = "rising_ignored";
+let risingCache = null; // { at, handles, posts: [{ handle, outlet, url, title, at }] }
+const RISING_SKIP = new Set([
+  "bsky.app", "bsky.social", "x.com", "twitter.com", "t.co", "youtube.com", "youtu.be", "facebook.com", "fb.com",
+  "instagram.com", "tiktok.com", "threads.net", "reddit.com", "linkedin.com", "google.com", "apple.com", "spotify.com",
+  "wikipedia.org", "archive.org", "archive.ph", "amazon.com", "patreon.com", "ko-fi.com", "gofundme.com", "actblue.com",
+  "github.com", "substack.com", "beehiiv.com", "medium.com", "wordpress.com", "blogspot.com", "docs.google.com",
+  "drive.google.com", "open.spotify.com", "podcasts.apple.com", "cnn.com", "nytimes.com", "washingtonpost.com",
+  "foxnews.com", "wsj.com", "apnews.com", "reuters.com", "nbcnews.com", "abcnews.go.com", "cbsnews.com",
+]);
+const RISING_PLATFORMS = ["substack.com", "beehiiv.com", "ghost.io", "medium.com", "wordpress.com", "blogspot.com", "buttondown.email"];
+function risingSiteKey(urlOrHost) {
+  let host = String(urlOrHost || "").toLowerCase();
+  try { if (/^https?:\/\//.test(host)) host = new URL(host).hostname; } catch (e) { return ""; }
+  host = host.replace(/^(www|m|amp|feeds?|rss)\./, "");
+  if (RISING_PLATFORMS.some((p) => host.endsWith("." + p))) return host; // each publication is its own site
+  const parts = host.split(".");
+  if (parts.length <= 2) return host;
+  const last = parts[parts.length - 1], second = parts[parts.length - 2];
+  return last.length === 2 && ["co", "com", "org", "gov", "ac", "net"].includes(second) ? parts.slice(-3).join(".") : parts.slice(-2).join(".");
+}
+async function fetchRisingPosts(days) {
+  if (process.env.RISING_FIXTURE_FILE) { // test hook: read posts from a file instead of the network
+    const fs = await import("node:fs");
+    return { handles: 0, posts: JSON.parse(fs.readFileSync(process.env.RISING_FIXTURE_FILE, "utf8")) };
+  }
+  const rows = await dbAll(`SELECT outlet, bluesky_handle FROM feeds WHERE bluesky_handle IS NOT NULL AND bluesky_handle != '' AND submission_status = 'approved' LIMIT 200`);
+  const cutoff = Date.now() - days * 86400000;
+  const posts = [];
+  for (let i = 0; i < rows.length; i += 6) {
+    await Promise.allSettled(rows.slice(i, i + 6).map(async (f) => {
+      const url = `https://public.api.bsky.app/xrpc/app.bsky.feed.getAuthorFeed?actor=${encodeURIComponent(f.bluesky_handle)}&limit=40&filter=posts_no_replies`;
+      const resp = await fetch(url, { headers: { "User-Agent": "n38-cms/1.0" } });
+      if (!resp.ok) return;
+      const json = await resp.json();
+      for (const entry of json.feed || []) {
+        const post = entry.post;
+        if (!post || post.author?.handle !== f.bluesky_handle) continue; // skip reposts of others
+        const at = new Date(post.record?.createdAt || post.indexedAt).getTime();
+        if (!at || at < cutoff) continue;
+        const ext = post.embed?.external || post.record?.embed?.external;
+        if (!ext?.uri) continue;
+        posts.push({ handle: f.bluesky_handle, outlet: f.outlet, url: ext.uri, title: String(ext.title || "").slice(0, 160), at });
+      }
+    }));
+  }
+  return { handles: rows.length, posts };
+}
+async function buildRising({ days, minSharers, refresh }) {
+  if (refresh || !risingCache || Date.now() - risingCache.at > RISING_CACHE_MS) {
+    const r = await fetchRisingPosts(days);
+    risingCache = { at: Date.now(), handles: r.handles, posts: r.posts };
+  }
+  // Sites SOURCE! already carries: hosts of every feed, tip and subscribe URL.
+  const known = new Set();
+  for (const r of await dbAll(`SELECT feed_url, tip_url, subscribe_url FROM feeds`)) {
+    for (const u of [r.feed_url, r.tip_url, r.subscribe_url]) { const k = risingSiteKey(u); if (k) known.add(k); }
+  }
+  let ignored = [];
+  try { ignored = JSON.parse((await dbGet(`SELECT value FROM bot_state WHERE key = ?`, [RISING_IGNORED_KEY]))?.value || "[]"); } catch (e) { ignored = []; }
+  const skip = new Set([...RISING_SKIP, ...ignored]);
+  const bySite = new Map();
+  for (const p of risingCache.posts) {
+    if (p.at < Date.now() - days * 86400000) continue;
+    const key = risingSiteKey(p.url);
+    if (!key || known.has(key) || skip.has(key)) continue;
+    const g = bySite.get(key) || { host: key, sharers: new Map(), example: null };
+    if (!g.sharers.has(p.handle)) g.sharers.set(p.handle, p.outlet);
+    if (!g.example || p.at > g.example.at) g.example = { title: p.title, url: p.url, handle: p.handle, at: p.at };
+    bySite.set(key, g);
+  }
+  const candidates = [...bySite.values()]
+    .filter((g) => g.sharers.size >= minSharers)
+    .sort((a, b) => b.sharers.size - a.sharers.size || b.example.at - a.example.at)
+    .slice(0, 40)
+    .map((g) => ({ host: g.host, sharers: [...g.sharers].map(([handle, outlet]) => ({ handle, outlet })), example: g.example }));
+  return { generated_at: new Date(risingCache.at).toISOString(), handles_scanned: risingCache.handles, candidates };
+}
+app.get("/api/admin/rising", requireAdmin, async (req, res) => {
+  const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 30);
+  const minSharers = Math.min(Math.max(parseInt(req.query.minSharers, 10) || 2, 1), 10);
+  try {
+    res.json(await buildRising({ days, minSharers, refresh: req.query.refresh === "1" }));
+  } catch (e) {
+    console.error("rising failed:", e?.message || e);
+    res.status(500).json({ error: "Couldn't scan right now. Try again." });
+  }
+});
+app.post("/api/admin/rising/ignore", requireAdmin, async (req, res) => {
+  const key = risingSiteKey(String(req.body?.host || ""));
+  if (!key) return res.status(400).json({ error: "host is required" });
+  let ignored = [];
+  try { ignored = JSON.parse((await dbGet(`SELECT value FROM bot_state WHERE key = ?`, [RISING_IGNORED_KEY]))?.value || "[]"); } catch (e) { ignored = []; }
+  if (!ignored.includes(key)) ignored.push(key);
+  await dbRun(`INSERT INTO bot_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [RISING_IGNORED_KEY, JSON.stringify(ignored.slice(-500))]);
+  res.json({ ok: true, ignored: ignored.length });
+});
+
 app.get("/api/admin/usage", requireAdmin, async (req, res) => {
   try {
     const excludeIds = String(req.query.exclude || "")
