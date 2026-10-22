@@ -5688,6 +5688,14 @@ async function getNationalGasPrice() {
   return gasPriceCache.price;
 }
 
+// Store links for the homepage and the in-app "Get the app" strip. Set
+// PLAY_STORE_URL in Render once Google Play has a public listing and Android
+// visitors switch from the beta steps to the store link, with no redeploy.
+const PLAY_STORE_URL = /^https:\/\/play\.google\.com\//.test(process.env.PLAY_STORE_URL || "") ? process.env.PLAY_STORE_URL : null;
+app.get("/api/app-links", (req, res) => {
+  res.set("Cache-Control", "public, max-age=60");
+  res.json({ ios: "https://apps.apple.com/us/app/source-news-reader/id6814234005", android: PLAY_STORE_URL });
+});
 app.get("/api/gas-price", async (req, res) => res.json({ price: await getNationalGasPrice() }));
 
 // ---------- Climate metrics (SOURCE! Desktop side panel) ----------

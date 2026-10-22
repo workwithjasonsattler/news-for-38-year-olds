@@ -3077,3 +3077,21 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .opml-import { margin: 16px 0 4px; padding: 14px; border: 1.5px dashed var(--line); border-radius: 10px; }
 .opml-title { font-weight: 600; font-size: 15px; }
 .opml-sub { font-size: 12.5px; color: var(--ink-muted); line-height: 1.45; margin: 4px 0 10px; }
+
+/* First-load brand moment */
+.source-splash { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; padding: 0 24px; }
+.splash-mark { font-family: var(--display); font-weight: 800; font-size: 30px; letter-spacing: -0.01em; }
+.splash-bang { color: var(--live); display: inline-block; }
+.splash-rule { position: relative; overflow: hidden; width: 46px; height: 3px; border-radius: 2px; background: var(--line); margin: 12px auto 22px; transform: rotate(-1.5deg); }
+.splash-rule::after { content: ""; position: absolute; inset: 0; background: var(--accent); }
+.splash-line { font-family: var(--display); font-size: 22px; font-weight: 700; line-height: 1.25; margin: 0; max-width: 16em; }
+.splash-sub { font-size: 14px; color: var(--ink-muted); margin: 10px 0 0; min-height: 1.4em; }
+@media (prefers-reduced-motion: no-preference) {
+  .splash-bang { animation: splashPulse 1.1s ease-in-out infinite; }
+  .splash-rule::after { transform-origin: left; animation: splashRule 1.4s ease-in-out infinite; }
+  .source-splash.pre { opacity: 0; animation: splashAppear 0.01s linear 0.3s forwards; }
+}
+@keyframes splashPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
+@keyframes splashRule { 0% { transform: scaleX(0); } 70% { transform: scaleX(1); } 100% { transform: scaleX(1); opacity: 0; } }
+@keyframes splashAppear { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .source-splash.pre { display: none; } }

@@ -111,7 +111,7 @@ document.getElementById("promoPlay").addEventListener("click",function(){
 
 <div style="display:flex;flex-wrap:wrap;gap:16px 40px;padding:28px 0;border-top:1px solid #cccccc">
 <div style="flex:0 0 180px"><div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:20px">1. The promise</div><div style="font-size:14px;color:#FF3E1D;font-weight:500;margin-top:4px">NOW</div></div>
-<div style="flex:1 1 320px"><p style="margin:0">Independent reporting as it's published, with a one-tap way to support the people behind it. Live on iPhone and iPad, in closed beta on Android.</p></div>
+<div style="flex:1 1 320px"><p style="margin:0">Independent reporting as it's published, with a one-tap way to support the people behind it. <span id="nowText">Live on iPhone and iPad, in closed beta on Android.</span></p></div>
 </div>
 <div style="display:flex;flex-wrap:wrap;gap:16px 40px;padding:28px 0;border-top:1px solid #cccccc">
 <div style="flex:0 0 180px"><div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:20px">2. Your feeds</div><div style="font-size:14px;color:#8a5f00;font-weight:500;margin-top:4px">NEXT</div></div>
@@ -135,7 +135,7 @@ document.getElementById("promoPlay").addEventListener("click",function(){
 <p style="margin:0 0 20px;color:#444444">Live now on the App Store.</p>
 <a href="https://apps.apple.com/us/app/source-news-reader/id6814234005" style="background:#111111;color:#ffffff;text-decoration:none;padding:14px 24px;display:inline-block;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500">Open the App Store</a>
 </div>
-<div>
+<div id="androidCard">
 <h3 style="margin:0 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Android beta</h3>
 <p style="margin:0 0 16px;color:#444444">Google needs testers opted in for 14 days before public launch. It takes two minutes:</p>
 <ol style="margin:0;padding-left:22px;color:#444444">
@@ -159,5 +159,31 @@ document.getElementById("promoPlay").addEventListener("click",function(){
 </div>
 </div>
 
+<script>
+(function () {
+  fetch('/api/app-links').then(function (r) { return r.json(); }).then(function (j) {
+    if (!j || !j.android) return;
+    var hero = document.querySelector('[data-ab="android"]');
+    if (hero) { hero.textContent = 'Get it on Google Play'; hero.href = j.android; }
+    var card = document.getElementById('androidCard');
+    if (card) {
+      while (card.firstChild) card.removeChild(card.firstChild);
+      var h3 = document.createElement('h3');
+      h3.setAttribute('style', "margin:0 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px");
+      h3.textContent = 'Android';
+      var p = document.createElement('p');
+      p.setAttribute('style', 'margin:0 0 20px;color:#444444');
+      p.textContent = 'Live now on Google Play.';
+      var a = document.createElement('a');
+      a.href = j.android;
+      a.setAttribute('style', "background:#111111;color:#ffffff;text-decoration:none;padding:14px 24px;display:inline-block;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500");
+      a.textContent = 'Open Google Play';
+      card.appendChild(h3); card.appendChild(p); card.appendChild(a);
+    }
+    var now = document.getElementById('nowText');
+    if (now) now.textContent = 'Live on iPhone, iPad and Android.';
+  }).catch(function () {});
+})();
+</script>
 </body>
 </html>

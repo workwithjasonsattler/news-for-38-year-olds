@@ -147,6 +147,19 @@
       el.hidden = true;
       try { localStorage.setItem("sourceGetAppDismissed", "1"); } catch (e) { /* ignore */ }
     });
+    // Once Google Play has a public listing (PLAY_STORE_URL set on the
+    // server), Android visitors get the plain store link, no redeploy needed.
+    if (/Android/.test(ua)) {
+      fetch("/api/app-links").then(r => r.json()).then(j => {
+        const a = el.querySelector(".get-app-link");
+        if (a && j && j.android) {
+          a.href = j.android;
+          a.target = "_blank";
+          a.rel = "noopener";
+          a.innerHTML = "Get it on Google Play &rarr;";
+        }
+      }).catch(() => { /* keep the beta link */ });
+    }
   }
 
   function setupInAppBrowserLinkHandling() {
@@ -1912,6 +1925,31 @@
     localStorage.setItem(LIVE_LAST_SEEN_KEY, String(Date.now()));
   }
 
+  // First load of a session: a short brand moment instead of a spinner. It
+  // only appears if loading takes more than a quarter second (fast loads
+  // never see it), and once shown it stays at least 700ms so it can't flash.
+  const SPLASH_LINES = ["No algorithm in between.", "Asking the outlets directly.", "Newest first."];
+  let firstReadLoadDone = false;
+  let splashCycle = null;
+  function sourceSplashHtml() {
+    return `<div class="source-single-col-screen source-splash" role="status" aria-live="polite">
+      <div class="splash-mark">SOURCE<span class="splash-bang">!</span></div>
+      <div class="splash-rule"></div>
+      <h2 class="splash-line">You\u2019re going straight to the source.</h2>
+      <p class="splash-sub" id="splashSub">${SPLASH_LINES[0]}</p>
+    </div>`;
+  }
+  function startSplashCycle() {
+    let i = 0;
+    clearInterval(splashCycle);
+    splashCycle = setInterval(() => {
+      const el = document.getElementById("splashSub");
+      if (!el) { clearInterval(splashCycle); return; }
+      i = (i + 1) % SPLASH_LINES.length;
+      el.textContent = SPLASH_LINES[i];
+    }, 1400);
+  }
+
   async function renderRead() {
     const main = document.getElementById("main");
     renderSprayToggle();
@@ -1919,11 +1957,36 @@
       renderReadColumns();
       return;
     }
-    main.innerHTML = stateBlock({ title: "Loading Fresh RSS Feeds", body: "Just posted", spin: true });
+    const firstLoad = !firstReadLoadDone;
+    let splashTimer = null, splashShownAt = 0;
+    if (firstLoad) {
+      main.innerHTML = "";
+      splashTimer = setTimeout(() => {
+        splashShownAt = Date.now();
+        main.innerHTML = sourceSplashHtml();
+        startSplashCycle();
+      }, 250);
+    } else {
+      main.innerHTML = stateBlock({ title: "Loading Fresh RSS Feeds", body: "Just posted", spin: true });
+    }
+    const endSplash = async () => {
+      clearTimeout(splashTimer);
+      if (splashShownAt) {
+        const left = 700 - (Date.now() - splashShownAt);
+        if (left > 0) await new Promise(r => setTimeout(r, left));
+      }
+      clearInterval(splashCycle);
+      firstReadLoadDone = true;
+    };
     try {
-      await ensureMyFeedLoaded();
-      refreshFeedCaption();
-      const items = await fetchReadItems();
+      let items;
+      try {
+        await ensureMyFeedLoaded();
+        refreshFeedCaption();
+        items = await fetchReadItems();
+      } finally {
+        await endSplash();
+      }
       if (!Array.isArray(items) || items.length === 0) {
         main.innerHTML = stateBlock({ glyph: "∅", title: "NO SIGNAL", body: "No dispatches available right now." });
         return;
