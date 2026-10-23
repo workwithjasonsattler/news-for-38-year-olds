@@ -1047,10 +1047,36 @@
     if (!list.length) localStorage.removeItem(FEED_MUTES_KEY);
     else localStorage.setItem(FEED_MUTES_KEY, JSON.stringify(list));
   }
-  function currentMutes() { return currentUser ? mutes : readHeldMutes(); }
+  // Words muted for everyone at first. A reader can turn any of them off and
+  // it stays off (device when signed out, account when signed in). Keep this
+  // list in step with SERVER_DEFAULT_MUTES in server.mjs.
+  const DEFAULT_MUTES = ["yglesias"];
+  const DEFAULT_OFF_KEY = "source_default_mutes_off";
+  let defaultsOffServer = [];
+  function readDefaultsOff() {
+    try {
+      const v = JSON.parse(localStorage.getItem(DEFAULT_OFF_KEY) || "null");
+      return Array.isArray(v) ? v.map(String) : [];
+    } catch (e) { return []; }
+  }
+  function writeDefaultsOff(list) {
+    if (!list.length) localStorage.removeItem(DEFAULT_OFF_KEY);
+    else localStorage.setItem(DEFAULT_OFF_KEY, JSON.stringify(list));
+  }
+  function defaultsOff() { return currentUser ? defaultsOffServer : readDefaultsOff(); }
+  function activeDefaultMutes() { const off = defaultsOff(); return DEFAULT_MUTES.filter(w => !off.includes(w)); }
+  function isDefaultMute(w) { return DEFAULT_MUTES.includes(w); }
+  function capWord(w) { return w ? w.charAt(0).toUpperCase() + w.slice(1) : w; }
+  // Default mutes also apply to the plain Headlines / All views, which is
+  // where a reader without My Feed reads. Other Packs are left alone.
+  function defaultMuteApplies(key) { return key === "all" || key === OFFICIAL_NEWS_SLUG; }
+  function currentMutes() {
+    const own = currentUser ? mutes : readHeldMutes();
+    return [...new Set([...activeDefaultMutes(), ...own])];
+  }
   // Whole-word, case-insensitive, Unicode-aware: "ice" never matches "police".
-  function muteRegexes() {
-    const words = currentMutes();
+  function muteRegexes(onlyWords) {
+    const words = onlyWords || currentMutes();
     const key = words.join("\u0001");
     if (muteRegexCache.key !== key) {
       muteRegexCache = {
@@ -1060,9 +1086,9 @@
     }
     return muteRegexCache.list;
   }
-  function mutedWordsIn(d) {
+  function mutedWordsIn(d, regs) {
     const text = (d.headline || d.title || "") + " " + (d.excerpt || "");
-    return muteRegexes().filter(m => m.re.test(text)).map(m => m.w);
+    return (regs || muteRegexes()).filter(m => m.re.test(text)).map(m => m.w);
   }
 
   function readHeldFeedEdits() {
@@ -1099,7 +1125,7 @@
   async function loadMyFeed() {
     if (!currentUser) { myFeed = null; return; }
     try { setMyFeedFromSummary(await api("/api/my/feed")); } catch (e) { /* fail soft: no edits applied */ }
-    try { mutes = (await api("/api/my/mutes")).words || []; } catch (e) { mutes = []; }
+    try { const mr = await api("/api/my/mutes"); mutes = mr.words || []; defaultsOffServer = mr.defaults_off || []; } catch (e) { mutes = []; }
   }
   function ensureMyFeedLoaded() {
     if (!currentUser) return Promise.resolve();
@@ -1110,12 +1136,16 @@
   // hidden sources for the signed-out (device-held) case. Signed-in Hide is
   // already applied server-side.
   function tagFeedItems(key, items) {
-    if (!Array.isArray(items) || !feedApplies(key)) return items;
-    const watching = muteRegexes().length > 0;
+    if (!Array.isArray(items)) return items;
+    const full = feedApplies(key);
+    const defOnly = !full && defaultMuteApplies(key) && activeDefaultMutes().length > 0;
+    if (!full && !defOnly) return items;
+    const regs = full ? muteRegexes() : muteRegexes(activeDefaultMutes());
+    const watching = regs.length > 0;
     const out = items.filter(d => {
-      if (!currentUser && feedModeFor((d.outlet || d.source || "").trim()) === "hidden") return false;
+      if (full && !currentUser && feedModeFor((d.outlet || d.source || "").trim()) === "hidden") return false;
       if (watching) {
-        const hit = mutedWordsIn(d);
+        const hit = mutedWordsIn(d, regs);
         if (hit.length) {
           hit.forEach(w => {
             const arr = mutedCaught.get(w) || [];
@@ -1127,7 +1157,7 @@
       }
       return true;
     });
-    out.forEach(d => { d._mf = true; });
+    if (full) out.forEach(d => { d._mf = true; });
     return out;
   }
 
@@ -1294,7 +1324,24 @@
     afterFeedChange();
     return word;
   }
+  async function setDefaultMute(word, on) {
+    if (currentUser) {
+      try {
+        const r = on
+          ? await api(`/api/my/mutes/default-off?word=${encodeURIComponent(word)}`, { method: "DELETE" })
+          : await api("/api/my/mutes/default-off", { method: "POST", body: JSON.stringify({ word }) });
+        defaultsOffServer = r.defaults_off || [];
+      } catch (e) { toast(e.message || "Couldn't save that. Try again."); return; }
+    } else {
+      const off = readDefaultsOff().filter(w => w !== word);
+      if (!on) off.push(word);
+      writeDefaultsOff(off);
+    }
+    afterFeedChange();
+    if (!on) toastAction(`Stopped muting \u201c${capWord(word)}\u201d.`, "Undo", () => setDefaultMute(word, true));
+  }
   async function removeMute(word) {
+    if (isDefaultMute(word) && activeDefaultMutes().includes(word)) return setDefaultMute(word, false);
     if (currentUser) {
       try { mutes = (await api(`/api/my/mutes?word=${encodeURIComponent(word)}`, { method: "DELETE" })).words || []; }
       catch (e) { toast(e.message || "Couldn't save that. Try again."); return; }
@@ -1353,24 +1400,29 @@
   // The caption keeps the promise honest: it only ever says something is
   // hidden when the reader hid it, and one tap shows what and restores it.
   function feedEditCounts() {
-    const muted = currentMutes().length;
-    if (currentUser) return myFeed ? { hidden: myFeed.hidden, fold: myFeed.fold, muted } : { hidden: 0, fold: 0, muted };
+    const defs = activeDefaultMutes();
+    const muted = currentMutes().filter(w => !defs.includes(w)).length;
+    if (currentUser) return myFeed ? { hidden: myFeed.hidden, fold: myFeed.fold, muted, defs } : { hidden: 0, fold: 0, muted, defs };
     const v = Object.values(readHeldFeedEdits());
-    return { hidden: v.filter(m => m === "hidden").length, fold: v.filter(m => m === "fold").length, muted };
+    return { hidden: v.filter(m => m === "hidden").length, fold: v.filter(m => m === "fold").length, muted, defs };
   }
   function refreshFeedCaption() {
     const el = document.getElementById("readPromiseCaption");
     if (!el) return;
     const c = feedEditCounts();
-    if (!feedEditsActiveInView() || (c.hidden === 0 && c.fold === 0 && c.muted === 0)) {
+    const inFull = feedEditsActiveInView();
+    const inDef = c.defs.length > 0 && Array.from(activeSprayKeys).some(k => defaultMuteApplies(k) || feedApplies(k));
+    if ((!inFull || (c.hidden === 0 && c.fold === 0 && c.muted === 0)) && !inDef) {
       el.textContent = "Sorted by time. Nothing hidden.";
       return;
     }
     const parts = [];
     const gone = [];
+    if (!inFull) { c.hidden = 0; c.fold = 0; c.muted = 0; }
     if (c.hidden) gone.push(`${c.hidden} source${c.hidden === 1 ? "" : "s"}`);
     if (c.muted) gone.push(`${c.muted} muted word${c.muted === 1 ? "" : "s"}`);
     if (gone.length) parts.push(`Hidden by you: ${gone.join(", ")}`);
+    if (inDef) parts.push(`Muted by default: ${c.defs.map(capWord).join(", ")}`);
     if (c.fold) parts.push(`${c.fold} source${c.fold === 1 ? "" : "s"} showing fewer stories`);
     el.innerHTML = `Sorted by time. <button type="button" class="caption-link" id="feedReviewLink">${escapeHtml(parts.join(". "))}</button>`;
   }
@@ -1602,9 +1654,12 @@
         <div class="card">
           ${words.map((w, i) => {
             const got = stats.caught.get(w) || [];
-            return `<div class="spray-picker-row tune-mute-row"><span>${escapeHtml(w)} <em class="tune-mode-tag">caught ${got.length}</em></span><span class="tune-mute-actions"><button type="button" class="btn tune-peek" data-i="${i}">Peek</button><button type="button" class="btn tune-unmute" data-i="${i}">Remove</button></span></div>
+            const isDef = isDefaultMute(w) && activeDefaultMutes().includes(w);
+            return `<div class="spray-picker-row tune-mute-row"><span>${escapeHtml(w)} <em class="tune-mode-tag">${isDef ? "default \u00b7 " : ""}caught ${got.length}</em></span><span class="tune-mute-actions"><button type="button" class="btn tune-peek" data-i="${i}">Peek</button><button type="button" class="btn tune-unmute" data-i="${i}">${isDef ? "Turn off" : "Remove"}</button></span></div>
             <div class="tune-peek-list" data-peek="${i}" hidden>${got.length ? got.map(d => `<a href="${escapeHtml(d.link || "#")}" target="_blank" rel="noopener"><strong>${escapeHtml(d.outlet || d.source || "")}</strong> ${escapeHtml(d.headline || d.title || "")}</a>`).join("") : `<span class="tune-opt-sub">Nothing caught in the last 7 days.</span>`}</div>`;
           }).join("")}
+          ${defaultsOff().map(w => `<div class="spray-picker-row"><span>${escapeHtml(w)} <em class="tune-mode-tag">default, turned off</em></span><button type="button" class="btn yf-default-on" data-w="${escapeHtml(w)}">Turn back on</button></div>`).join("")}
+          ${activeDefaultMutes().length ? `<div class="tune-opt-sub" style="margin-top:6px;">Words tagged default are muted for every reader at first. Turn one off and it stays off.</div>` : ""}
           <div class="spray-picker-newrow">
             <input type="text" id="yfMuteInput" placeholder="Mute a word or phrase" maxlength="40" autocomplete="off">
             <button class="btn" id="yfMuteBtn" type="button">Mute</button>
@@ -1653,10 +1708,21 @@
       b.textContent = box.hidden ? "Peek" : "Close";
     }));
     main.querySelectorAll(".tune-unmute").forEach(b => b.addEventListener("click", () => removeMute(words[Number(b.dataset.i)])));
+    main.querySelectorAll(".yf-default-on").forEach(b => b.addEventListener("click", () => setDefaultMute(b.dataset.w, true)));
   }
 
   // Edits made while signed out move into the account at sign-in.
   async function applyHeldFeedEdits() {
+    const heldOff = readDefaultsOff();
+    if (currentUser && heldOff.length) {
+      writeDefaultsOff([]);
+      try {
+        for (const w of heldOff) {
+          const r = await api("/api/my/mutes/default-off", { method: "POST", body: JSON.stringify({ word: w }) });
+          defaultsOffServer = r.defaults_off || [];
+        }
+      } catch (e) { writeDefaultsOff(heldOff); }
+    }
     const held = readHeldFeedEdits();
     const heldMutes = readHeldMutes();
     const edits = Object.entries(held).map(([outlet, mode]) => ({ outlet, mode }));

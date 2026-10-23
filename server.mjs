@@ -300,6 +300,14 @@ async function initSchema() {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(user_id, word)
     )`,
+    // Default mutes (e.g. "yglesias") apply to every reader until they turn one
+    // off. Only the turned-off ones are stored.
+    `CREATE TABLE IF NOT EXISTS user_mute_defaults_off (
+      user_id INTEGER NOT NULL,
+      word TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, word)
+    )`,
     `CREATE TABLE IF NOT EXISTS user_news_pref (
       user_id INTEGER PRIMARY KEY,
       mix_slug TEXT NOT NULL
@@ -1960,6 +1968,7 @@ app.delete("/api/my/account", async (req, res) => {
     await dbRun(`DELETE FROM user_spray_bar WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM user_news_pref WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM user_mutes WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_mute_defaults_off WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM feed_thumbs WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM sessions WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM login_tokens WHERE email = ?`, [user.email]);
@@ -4071,10 +4080,29 @@ function cleanMuteWord(raw) {
 async function mutesFor(userId) {
   return (await dbAll(`SELECT word FROM user_mutes WHERE user_id = ? ORDER BY id ASC`, [userId])).map((r) => r.word);
 }
+const SERVER_DEFAULT_MUTES = ["yglesias"]; // keep in step with DEFAULT_MUTES in source.js
+async function defaultsOffFor(userId) {
+  return (await dbAll(`SELECT word FROM user_mute_defaults_off WHERE user_id = ? ORDER BY word ASC`, [userId])).map((r) => r.word);
+}
 app.get("/api/my/mutes", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
-  res.json({ words: await mutesFor(user.id) });
+  res.json({ words: await mutesFor(user.id), defaults_off: await defaultsOffFor(user.id) });
+});
+app.post("/api/my/mutes/default-off", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const w = cleanMuteWord(req.body?.word);
+  if (!w || !SERVER_DEFAULT_MUTES.includes(w)) return res.status(400).json({ error: "That isn't a default mute." });
+  await dbRun(`INSERT OR IGNORE INTO user_mute_defaults_off (user_id, word) VALUES (?, ?)`, [user.id, w]);
+  res.json({ defaults_off: await defaultsOffFor(user.id) });
+});
+app.delete("/api/my/mutes/default-off", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const w = cleanMuteWord(req.query.word);
+  if (w) await dbRun(`DELETE FROM user_mute_defaults_off WHERE user_id = ? AND word = ?`, [user.id, w]);
+  res.json({ defaults_off: await defaultsOffFor(user.id) });
 });
 app.post("/api/my/mutes", async (req, res) => {
   const user = await getCurrentUser(req);
