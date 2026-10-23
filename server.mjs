@@ -2368,6 +2368,23 @@ function normFeedUrl(u) {
     return String(u || "").trim().toLowerCase();
   }
 }
+// When a reader already has My Feed, a feed they add later must also land
+// inside it, or it never reaches their News view (My Feed copies custom
+// sources only at creation). No-op for readers without a My Feed.
+async function addCustomToMyFeed(userId, customSourceId) {
+  try {
+    const mix = await dbGet(`SELECT id FROM feed_mixes WHERE creator_user_id = ? AND is_my_feed = 1 ORDER BY id ASC LIMIT 1`, [userId]);
+    if (!mix || !customSourceId) return;
+    const have = await dbGet(`SELECT id FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'custom' AND custom_source_id = ?`, [mix.id, customSourceId]);
+    if (have) return;
+    const n = (await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [mix.id])).n;
+    if (n >= MY_FEED_SOURCE_CAP) return;
+    await dbRun(`INSERT INTO feed_mix_sources (mix_id, source_type, outlet, custom_source_id, sort_order, mode) VALUES (?, 'custom', NULL, ?, ?, 'on')`, [mix.id, customSourceId, n]);
+  } catch (e) {
+    console.error("addCustomToMyFeed failed:", e?.message || e);
+  }
+}
+
 app.post("/api/my/opml-import", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
@@ -2414,6 +2431,7 @@ app.post("/api/my/opml-import", async (req, res) => {
         [user.id, name, c.url]
       );
       count++;
+      await addCustomToMyFeed(user.id, Number(info.lastInsertRowid));
       mineMap.set(c.key, Number(info.lastInsertRowid));
       results[c.i] = { url: c.url, title: c.title, status: "added", custom_source_id: Number(info.lastInsertRowid) };
     }
@@ -2471,6 +2489,7 @@ app.post("/api/my/custom-sources", async (req, res) => {
     `INSERT INTO user_custom_sources (user_id, name, feed_url, validated, submission_status) VALUES (?, ?, ?, 1, 'pending')`,
     [user.id, sourceName, feedUrl]
   );
+  await addCustomToMyFeed(user.id, Number(info.lastInsertRowid));
   res.json({ id: info.lastInsertRowid, name: sourceName, feed_url: feedUrl });
 });
 
@@ -3772,7 +3791,15 @@ app.get("/api/my/mixes", async (req, res) => {
 // Headlines outlets (started_from_headlines_at says when it forked). Show
 // less / Hide are per-source modes stored on feed_mix_sources.mode and apply
 // only inside this Pack; other Packs the reader follows are untouched.
+const myFeedInflight = new Map(); // userId -> Promise (collapses simultaneous first edits)
 async function ensureMyFeed(user) {
+  const running = myFeedInflight.get(user.id);
+  if (running) return running;
+  const p = ensureMyFeedInner(user).finally(() => myFeedInflight.delete(user.id));
+  myFeedInflight.set(user.id, p);
+  return p;
+}
+async function ensureMyFeedInner(user) {
   let mix = await dbGet(`SELECT * FROM feed_mixes WHERE creator_user_id = ? AND is_my_feed = 1 ORDER BY id ASC LIMIT 1`, [user.id]);
   if (mix) return mix;
   const slug = await generateUniqueMixSlug("My Feed");
@@ -3781,6 +3808,13 @@ async function ensureMyFeed(user) {
     [slug, user.id]
   );
   const mixId = info.lastInsertRowid;
+  // Cross-instance guard: if another request created one at the same moment,
+  // the lowest id wins and this one backs out.
+  const winner = await dbGet(`SELECT * FROM feed_mixes WHERE creator_user_id = ? AND is_my_feed = 1 ORDER BY id ASC LIMIT 1`, [user.id]);
+  if (winner && Number(winner.id) !== Number(mixId)) {
+    await dbRun(`DELETE FROM feed_mixes WHERE id = ?`, [mixId]);
+    return winner;
+  }
   try {
     const outlets = await dbAll(WIRE_OUTLETS_SQL);
     const customs = await dbAll(`SELECT id FROM user_custom_sources WHERE user_id = ? ORDER BY id ASC`, [user.id]);
@@ -3804,10 +3838,15 @@ async function ensureMyFeed(user) {
     await dbRun(`DELETE FROM feed_mixes WHERE id = ?`, [mixId]);
     throw e;
   }
-  await dbRun(
-    `INSERT INTO user_news_pref (user_id, mix_slug) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET mix_slug = excluded.mix_slug`,
-    [user.id, slug]
-  );
+  // Point News at My Feed, unless the reader already chose a different Pack
+  // as their News. Unset or the Headlines flagship means "default".
+  const curNews = await dbGet(`SELECT mix_slug FROM user_news_pref WHERE user_id = ?`, [user.id]);
+  if (!curNews || !curNews.mix_slug || curNews.mix_slug === OFFICIAL_HEADLINES_SPRAY_SLUG) {
+    await dbRun(
+      `INSERT INTO user_news_pref (user_id, mix_slug) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET mix_slug = excluded.mix_slug`,
+      [user.id, slug]
+    );
+  }
   return await dbGet(`SELECT * FROM feed_mixes WHERE id = ?`, [mixId]);
 }
 
@@ -3914,10 +3953,30 @@ app.post("/api/my/feed/source-mode", async (req, res) => {
 // (ties alphabetical, so it never shuffles between views), and every
 // suggestion carries a plain-language reason. "have" is what the reader's feed
 // already holds: their My Feed if they have one, otherwise the Headlines wire.
+const NEW_VOICES_CACHE_TTL_MS = 60 * 1000;
+const NEW_VOICES_RATE_MAX = 30; // per IP per minute
+const newVoicesCache = new Map(); // key -> { ts, out }
+const newVoicesRate = new Map(); // ip -> { start, count }
+function newVoicesRateOk(ip) {
+  const now = Date.now();
+  const rec = newVoicesRate.get(ip);
+  if (!rec || now - rec.start > 60 * 1000) {
+    if (newVoicesRate.size > 5000) newVoicesRate.clear();
+    newVoicesRate.set(ip, { start: now, count: 1 });
+    return true;
+  }
+  rec.count += 1;
+  return rec.count <= NEW_VOICES_RATE_MAX;
+}
 app.get("/api/new-voices", async (req, res) => {
+  const ip = String(req.headers["x-forwarded-for"] || req.ip || "unknown").split(",")[0].trim();
+  if (!newVoicesRateOk(ip)) return res.status(429).json({ error: "Slow down a moment, then try again." });
   const user = await getCurrentUser(req);
   const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 5, 1), 10);
-  const near = String(req.query.near || "").trim();
+  const near = String(req.query.near || "").trim().slice(0, 120);
+  const nvKey = `${user ? user.id : 0}|${near}|${limit}`;
+  const nvHit = newVoicesCache.get(nvKey);
+  if (nvHit && Date.now() - nvHit.ts < NEW_VOICES_CACHE_TTL_MS) return res.json(nvHit.out);
   try {
     let myFeedMix = user ? await dbGet(`SELECT id FROM feed_mixes WHERE creator_user_id = ? AND is_my_feed = 1 ORDER BY id ASC LIMIT 1`, [user.id]) : null;
     const have = new Set(
@@ -3937,12 +3996,20 @@ app.get("/api/new-voices", async (req, res) => {
          ORDER BY fms.outlet ASC LIMIT 40`, [user.id]
       )).map((r) => r.outlet);
     }
-    const cand = (await dbAll(
+    let cand = (await dbAll(
       `SELECT outlet, fallback_beat FROM feeds
        WHERE submission_status = 'approved' AND outlet IS NOT NULL AND feed_url IS NOT NULL
          AND COALESCE(feed_type, 'outlet') != 'journalist'
        ORDER BY outlet ASC`
     )).filter((r) => !have.has(r.outlet));
+    // "Similar?" after a Hide: only offer outlets that cover the same beat as
+    // the one just hidden. No beat on record, or nothing in that beat, means
+    // an empty list rather than an unrelated guess.
+    if (near) {
+      const nearRow = await dbGet(`SELECT fallback_beat FROM feeds WHERE outlet = ? AND submission_status = 'approved' LIMIT 1`, [near]);
+      const beat = nearRow?.fallback_beat ? String(nearRow.fallback_beat).toLowerCase() : null;
+      cand = beat ? cand.filter((r) => String(r.fallback_beat || "").toLowerCase() === beat) : [];
+    }
     const candMap = new Map(cand.map((r) => [r.outlet, r.fallback_beat]));
     for (const a of anchors) candMap.delete(a); // outlets in the reader's own Packs are already their pick
     const out = [];
@@ -3982,6 +4049,8 @@ app.get("/api/new-voices", async (req, res) => {
       taken.add(outlet);
       out.push({ outlet, section: beat || null, reason: beat ? `Not in your feed yet. Covers ${beat}.` : "Not in your feed yet." });
     }
+    if (newVoicesCache.size > 300) newVoicesCache.clear();
+    newVoicesCache.set(nvKey, { ts: Date.now(), out });
     res.json(out);
   } catch (e) {
     console.error("new voices failed:", e?.message || e);
@@ -4131,7 +4200,7 @@ app.get("/api/my/export.opml", async (req, res) => {
       `      <outline type="rss" text="${escapeXml(name)}" title="${escapeXml(name)}" xmlUrl="${escapeXml(url)}"/>`;
 
     const mixes = await dbAll(
-      `SELECT id, name FROM feed_mixes WHERE creator_user_id = ? AND COALESCE(auto_sync, 0) = 0 ORDER BY created_at ASC, id ASC`,
+      `SELECT id, name FROM feed_mixes WHERE creator_user_id = ? AND COALESCE(auto_sync, 0) = 0 AND COALESCE(is_my_feed, 0) = 0 ORDER BY created_at ASC, id ASC`,
       [user.id]
     );
     const folders = [];
@@ -6358,9 +6427,9 @@ async function fetchRisingPosts(days) {
   return { handles: rows.length, posts };
 }
 async function buildRising({ days, minSharers, refresh }) {
-  if (refresh || !risingCache || Date.now() - risingCache.at > RISING_CACHE_MS) {
+  if (refresh || !risingCache || Date.now() - risingCache.at > RISING_CACHE_MS || days > (risingCache.days || 0)) {
     const r = await fetchRisingPosts(days);
-    risingCache = { at: Date.now(), handles: r.handles, posts: r.posts };
+    risingCache = { at: Date.now(), days, handles: r.handles, posts: r.posts };
   }
   // Sites SOURCE! already carries: hosts of every feed, tip and subscribe URL.
   const known = new Set();
