@@ -5869,6 +5869,13 @@
           <div class="card-title">${escapeHtml(it.title || it.headline || "")}</div>
         </a>
       </div>`).join("");
+    // "Updated …" = newest dispatch among the Pack's outlets (no new tracking).
+    const newestMs = (mix.items || []).reduce((m, it) => {
+      const t = Date.parse(it.date || it.created_at || "");
+      return t > m ? t : m;
+    }, 0);
+    const ago = newestMs ? relTime(new Date(newestMs).toISOString()) : "";
+    const updatedLabel = ago ? ` · Updated ${ago === "now" ? "just now" : ago + " ago"}` : "";
     const following = (sprayBarData?.sprays || []).some(x => x.slug === mix.slug);
     const followLabel = !currentUser ? "Sign in to follow" : following ? "In your Read toggle ✓" : "Follow this RSS Pack";
     main.innerHTML = `
@@ -5876,7 +5883,7 @@
         <div class="manage-screen-head">
           ${mix.curator ? `<div class="tile-sheet-badge">Curated by ${escapeHtml(mix.curator)}</div>` : ""}
           <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
-          <div class="manage-screen-stat">${sources.length} source${sources.length === 1 ? "" : "s"}${mix.auto_sync ? " right now" : ""}${mix.location_label ? " · " + escapeHtml(mix.location_label) : ""}</div>
+          <div class="manage-screen-stat">${sources.length} source${sources.length === 1 ? "" : "s"}${mix.auto_sync ? " right now" : ""}${mix.location_label ? " · " + escapeHtml(mix.location_label) : ""}${updatedLabel}</div>
         </div>
         ${mix.is_public ? "" : `<div class="manage-screen-hidden-notice"><span>🔒</span><span><strong>Private.</strong> Only you can see this page. Make the Pack public in Feeds to share it.</span></div>`}
         <div class="manage-screen-field">
