@@ -5259,7 +5259,14 @@
       outlets: srcs.filter(x => x.source_type === "admin_outlet").map(x => x.outlet),
       customs: srcs.filter(x => x.source_type === "custom" && x.custom_source_id).map(x => ({ source_type: "custom", custom_source_id: x.custom_source_id })),
       isPublic: !!full.is_public,
+      byline: full.byline || "",
     };
+  }
+  // Saves the optional public byline on the support Pack (blank = anonymous).
+  async function saveSupportByline(st, byline) {
+    if (!st.signedIn || !st.slug) throw new Error("Sign in and share the list first.");
+    await api(`/api/mixes/${encodeURIComponent(st.slug)}`, { method: "PUT", body: JSON.stringify({ byline }) });
+    return { ...st, byline };
   }
   // Writes the list to the account (signed in) or the device (signed out).
   // Returns the new state. Removing the last outlet retires the Pack.
@@ -5348,7 +5355,16 @@
               <span>Share this list</span>
               <button class="tile-sheet-switch${st.isPublic ? " on" : ""}" id="supportShareToggle" role="switch" aria-checked="${st.isPublic}" aria-label="Share this list publicly"></button>
             </div>
-            ${st.isPublic && st.signedIn && st.slug ? `<button class="btn" id="supportShareBtn" style="width:100%; margin-top:8px;">Share this list ↗</button>` : ""}` : ""}
+            ${st.isPublic && st.signedIn && st.slug ? `
+              <div class="manage-screen-field" style="margin-top:12px;">
+                <div class="create-flow-label">Your name on this list (optional)</div>
+                <div style="display:flex; gap:8px;">
+                  <input class="create-flow-input" id="supportByline" value="${escapeHtml(st.byline || "")}" maxlength="40" placeholder="Anonymous" autocomplete="off" style="flex:1; min-width:0;">
+                  <button class="btn" id="supportBylineSave" type="button">Save</button>
+                </div>
+                <div class="manage-screen-stat" style="margin-top:6px;">Shown publicly as "Curated by …" on the shared list. Leave it blank to stay anonymous.</div>
+              </div>
+              <button class="btn" id="supportShareBtn" style="width:100%; margin-top:8px;">Share this list ↗</button>` : ""}` : ""}
         </div>`;
       const add = el.querySelector("#supportAdd");
       if (add) add.addEventListener("click", () => { picking = true; draw(); });
@@ -5369,8 +5385,26 @@
       }));
       const sw = el.querySelector("#supportShareToggle");
       if (sw) sw.addEventListener("click", () => persist(st.outlets, !st.isPublic));
+      const bylineIn = el.querySelector("#supportByline");
+      const bylineBtn = el.querySelector("#supportBylineSave");
+      async function commitByline() {
+        if (!bylineIn || busy) return;
+        const v = bylineIn.value.trim();
+        if (v === (st.byline || "")) return;
+        busy = true;
+        try {
+          st = await saveSupportByline(st, v);
+          toast(v ? "Name saved." : "Your list is anonymous.");
+        } catch (e) { toast(e.message || "Couldn't save that name. Try again."); }
+        busy = false;
+      }
+      if (bylineBtn) bylineBtn.addEventListener("click", commitByline);
+      if (bylineIn) bylineIn.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); commitByline(); } });
       const shareBtn = el.querySelector("#supportShareBtn");
-      if (shareBtn) shareBtn.addEventListener("click", () => doShare(packShareUrl(st.slug), `${SUPPORT_PACK_NAME} on SOURCE!`));
+      if (shareBtn) shareBtn.addEventListener("click", async () => {
+        await commitByline(); // a typed-but-unsaved name shouldn't be lost when sharing
+        doShare(packShareUrl(st.slug), `${SUPPORT_PACK_NAME} on SOURCE!`);
+      });
     }
     function wirePickRows(list) {
       list.querySelectorAll("[data-outlet]").forEach(b => b.addEventListener("click", async () => {
