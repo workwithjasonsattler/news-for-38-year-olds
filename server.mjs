@@ -6576,7 +6576,7 @@ const xmlParser = new XMLParser({
   // legitimately contain more than the library's default 1000 entity
   // expansions. Raised generously — still bounded, so this isn't reopening
   // the entity-bomb DoS the limit exists to prevent.
-  processEntities: { maxTotalExpansions: 20000 },
+  processEntities: { maxTotalExpansions: 50000 },
 });
 
 function textOf(field) {
