@@ -134,8 +134,8 @@
       href = "https://apps.apple.com/us/app/source-news-reader/id6814234005";
       label = "Get the app";
     } else if (/Android/.test(ua)) {
-      href = "/home/#get";
-      label = "Join the Android beta";
+      href = "https://play.google.com/store/apps/details?id=com.newsfor38yearolds.source";
+      label = "Get it on Google Play";
     } else {
       href = "/home/#get";
       label = "Get the app";
@@ -147,19 +147,6 @@
       el.hidden = true;
       try { localStorage.setItem("sourceGetAppDismissed", "1"); } catch (e) { /* ignore */ }
     });
-    // Once Google Play has a public listing (PLAY_STORE_URL set on the
-    // server), Android visitors get the plain store link, no redeploy needed.
-    if (/Android/.test(ua)) {
-      fetch("/api/app-links").then(r => r.json()).then(j => {
-        const a = el.querySelector(".get-app-link");
-        if (a && j && j.android) {
-          a.href = j.android;
-          a.target = "_blank";
-          a.rel = "noopener";
-          a.innerHTML = "Get it on Google Play &rarr;";
-        }
-      }).catch(() => { /* keep the beta link */ });
-    }
   }
 
   function setupInAppBrowserLinkHandling() {
