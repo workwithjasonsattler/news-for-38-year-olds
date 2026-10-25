@@ -1525,9 +1525,17 @@ app.get(["/source", "/source/", "/source/index.html"], async (req, res, next) =>
       }
       const by = packCurator(mix);
       const parts = [];
-      if (by) parts.push(`A Pack from ${by}`);
-      if (names.length) parts.push(`${names.join(", ")}${total > names.length ? ` and ${total - names.length} more` : ""}`);
-      parts.push("Newest first. No algorithm.");
+      const isSupportList = /^\s*publications i support\s*$/i.test(mix.name || "");
+      if (isSupportList && total > 0) {
+        // A person's list of who they back: say that, with a source count (not a follower count).
+        title = `${by ? `${by} backs` : "A reader backs"} ${total} publication${total === 1 ? "" : "s"} — SOURCE!`;
+        if (names.length) parts.push(`${names.join(", ")}${total > names.length ? ` and ${total - names.length} more` : ""}`);
+        parts.push("Make your own list on SOURCE!");
+      } else {
+        if (by) parts.push(`A Pack from ${by}`);
+        if (names.length) parts.push(`${names.join(", ")}${total > names.length ? ` and ${total - names.length} more` : ""}`);
+        parts.push("Newest first. No algorithm.");
+      }
       desc = parts.join(" · ");
     }
     // SITE_URL falls back to localhost when unset, which would break the
@@ -2763,10 +2771,18 @@ async function corporateMarkersFor(outlets) {
   if (outlets.length === 0) return new Map();
   const placeholders = outlets.map(() => "?").join(",");
   const rows = await dbAll(
-    `SELECT outlet, is_corporate, parent_company FROM feeds WHERE outlet IN (${placeholders})`,
+    `SELECT outlet, is_corporate, parent_company, tip_url, subscribe_url FROM feeds WHERE outlet IN (${placeholders})`,
     outlets
   );
-  return new Map(rows.map((r) => [r.outlet, { is_corporate: !!r.is_corporate, parent_company: r.parent_company || null }]));
+  // support_url: the outlet's tip link, else its subscribe link, http(s) only.
+  // Corporate/conglomerate outlets get none (a subscribe page there is a
+  // paywall pitch, not a tip jar).
+  const safeUrl = (u) => (/^https?:\/\//i.test(String(u || "").trim()) ? String(u).trim() : null);
+  return new Map(rows.map((r) => [r.outlet, {
+    is_corporate: !!r.is_corporate,
+    parent_company: r.parent_company || null,
+    support_url: r.is_corporate ? null : safeUrl(r.tip_url) || safeUrl(r.subscribe_url),
+  }]));
 }
 
 const MY_FEED_ITEM_CAP = 150; // a little deeper than the 60-item Pack view, so folds still leave a full screen
@@ -2809,6 +2825,7 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
         pending: false,
         is_corporate: markers.get(r.outlet)?.is_corporate || false,
         parent_company: markers.get(r.outlet)?.parent_company || null,
+        support_url: markers.get(r.outlet)?.support_url || null,
       })),
       items,
     };
@@ -2892,6 +2909,7 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
         mode: includePending ? (s.mode || "on") : undefined,
         is_corporate: marker?.is_corporate || false,
         parent_company: marker?.parent_company || null,
+        support_url: marker?.support_url || null,
       };
     }),
     items: [...customItems, ...dispatchItems],

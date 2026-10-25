@@ -5860,7 +5860,7 @@
     const CHIP_CAP = 24;
     const sources = mix.sources || [];
     const chips = sources.slice(0, CHIP_CAP).map(s => `
-      <span class="tile-sheet-chip">${escapeHtml(s.outlet || s.name || "Custom source")}${s.is_corporate ? `<span class="source-corporate-mark" title="${escapeHtml(s.parent_company || "Corporate/conglomerate-owned")}">*</span>` : ""}</span>`).join("");
+      <span class="tile-sheet-chip">${escapeHtml(s.outlet || s.name || "Custom source")}${s.is_corporate ? `<span class="source-corporate-mark" title="${escapeHtml(s.parent_company || "Corporate/conglomerate-owned")}">*</span>` : ""}${/^https?:\/\//i.test(s.support_url || "") ? `<a class="chip-support" href="${escapeHtml(s.support_url)}" target="_blank" rel="noopener noreferrer">Support</a>` : ""}</span>`).join("");
     const more = sources.length > CHIP_CAP ? `<div class="manage-screen-stat" style="margin-top:8px;">+ ${sources.length - CHIP_CAP} more</div>` : "";
     const latest = (mix.items || []).slice(0, 5).map(it => `
       <div class="card">
@@ -5876,6 +5876,7 @@
     }, 0);
     const ago = newestMs ? relTime(new Date(newestMs).toISOString()) : "";
     const updatedLabel = ago ? ` · Updated ${ago === "now" ? "just now" : ago + " ago"}` : "";
+    const isSupportList = /^\s*publications i support\s*$/i.test(mix.name || "");
     const following = (sprayBarData?.sprays || []).some(x => x.slug === mix.slug);
     const followLabel = !currentUser ? "Sign in to follow" : following ? "In your Read toggle ✓" : "Follow this RSS Pack";
     main.innerHTML = `
@@ -5892,11 +5893,24 @@
         </div>
         <button class="btn primary" id="packFollowBtn" style="width:100%; margin-top:14px;">${followLabel}</button>
         ${packShareButtonHtml(mix)}
+        <button class="btn" id="packMakeOwnBtn" style="width:100%; margin-top:10px;">${isSupportList ? "Make your own list of publications you support" : "Make your own RSS Pack"}</button>
         <a href="${location.origin}/api/mixes/${encodeURIComponent(mix.slug)}/rss" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
         ${latest ? `<div class="section-label" style="margin-top:22px;">LATEST</div>${latest}` : ""}
         <a href="/source/" class="ob-whats-this" style="display:block; margin-top:16px;">← Back to SOURCE!</a>
       </div>`;
     wirePackShareButton(main, mix);
+    document.getElementById("packMakeOwnBtn").addEventListener("click", async () => {
+      // Leave the ?pack= URL so a refresh doesn't bounce back to this page.
+      try { history.replaceState(null, "", "/source/"); } catch (e) {}
+      if (isSupportList) {
+        await switchTab("you");
+        const card = document.getElementById("youSupportCard");
+        if (card && card.scrollIntoView) card.scrollIntoView({ block: "start" });
+      } else {
+        await switchTab("sources");
+        openCreateFlow();
+      }
+    });
     document.getElementById("packFollowBtn").addEventListener("click", async (ev) => {
       const btn = ev.currentTarget;
       if (!requireSignIn("Sign in to follow this RSS Pack.", () => btn.click())) return;
