@@ -7034,6 +7034,22 @@ function extractItems(parsed) {
       };
     });
   }
+  // RDF/RSS 1.0 (for example DW's "rss-en-top"): items sit beside the channel, not inside it.
+  const rdfItems = parsed?.["rdf:RDF"]?.item;
+  if (rdfItems) {
+    const items = Array.isArray(rdfItems) ? rdfItems : [rdfItems];
+    return items.map((it) => {
+      const summaryHtml = textOf(it.description ?? it["content:encoded"]);
+      return {
+        title: textOf(it.title), link: textOf(it.link),
+        pubDate: textOf(it["dc:date"] ?? it.pubDate),
+        author: textOf(it["dc:creator"] ?? it.author),
+        summary: summaryHtml,
+        image: extractImage(it, summaryHtml),
+        isAudio: false,
+      };
+    });
+  }
   const atomEntries = parsed?.feed?.entry;
   if (atomEntries) {
     const entries = Array.isArray(atomEntries) ? atomEntries : [atomEntries];
