@@ -2269,6 +2269,24 @@ app.post("/api/my/news-pref", async (req, res) => {
 //      isn't enough co-occurrence data yet to fill the quota — guarantees
 //      useful suggestions even for the very first RSS Packs ever created,
 //      before any cross-RSS Pack pattern exists.
+// Outlets whose every registry row failed the last Source Doctor scan with a dead result
+// (gone or blocked). They deliver nothing to readers, so suggestions skip them. An outlet
+// with at least one working row is kept. Cached briefly so suggestion calls stay cheap.
+let deadOutletsCache = { at: 0, set: new Set() };
+async function getDeadOutlets() {
+  if (Date.now() - deadOutletsCache.at < 60000) return deadOutletsCache.set;
+  let set = new Set();
+  try {
+    const rows = await dbAll(
+      `SELECT f.outlet AS outlet FROM feeds f LEFT JOIN feed_health h ON h.feed_id = f.id
+       GROUP BY f.outlet HAVING SUM(CASE WHEN h.bucket IN ('gone','blocked') THEN 1 ELSE 0 END) = COUNT(*)`
+    );
+    set = new Set(rows.map((r) => r.outlet));
+  } catch { /* feed_health missing or unreadable: skip nothing */ }
+  deadOutletsCache = { at: Date.now(), set };
+  return set;
+}
+
 app.get("/api/spray-suggestions", async (req, res) => {
   const picked = String(req.query.sources || "")
     .split(",").map((s) => s.trim()).filter(Boolean);
@@ -2293,9 +2311,10 @@ app.get("/api/spray-suggestions", async (req, res) => {
       `SELECT outlet, fallback_beat FROM feeds
        WHERE submission_status = 'approved' AND outlet IS NOT NULL AND (${clauses})
        LIMIT ?`,
-      [...params, limit]
+      [...params, limit * 3]
     );
-    return res.json(rows.map((r) => ({ outlet: r.outlet, section: r.fallback_beat })));
+    const deadQ = await getDeadOutlets();
+    return res.json(rows.filter((r) => !deadQ.has(r.outlet)).slice(0, limit).map((r) => ({ outlet: r.outlet, section: r.fallback_beat })));
   }
 
   if (picked.length === 0) {
@@ -2304,9 +2323,10 @@ app.get("/api/spray-suggestions", async (req, res) => {
     const rows = await dbAll(
       `SELECT outlet, fallback_beat FROM feeds WHERE submission_status = 'approved' AND outlet IS NOT NULL
        ORDER BY RANDOM() LIMIT ?`,
-      [limit]
+      [limit * 3]
     );
-    return res.json(rows.map((r) => ({ outlet: r.outlet, section: r.fallback_beat })));
+    const deadS = await getDeadOutlets();
+    return res.json(rows.filter((r) => !deadS.has(r.outlet)).slice(0, limit).map((r) => ({ outlet: r.outlet, section: r.fallback_beat })));
   }
 
   const placeholders = picked.map(() => "?").join(",");
@@ -2325,8 +2345,9 @@ app.get("/api/spray-suggestions", async (req, res) => {
 
   const suggestions = [];
   const seen = new Set(picked);
+  const deadC = await getDeadOutlets();
   for (const row of coOccurring) {
-    if (seen.has(row.outlet)) continue;
+    if (seen.has(row.outlet) || deadC.has(row.outlet)) continue;
     seen.add(row.outlet);
     const feed = await dbGet(`SELECT fallback_beat FROM feeds WHERE outlet = ? AND submission_status = 'approved'`, [row.outlet]);
     if (!feed) continue; // co-occurring outlet no longer exists/approved
@@ -2351,7 +2372,7 @@ app.get("/api/spray-suggestions", async (req, res) => {
       );
       for (const row of fallbackRows) {
         if (suggestions.length >= limit) break;
-        if (seen.has(row.outlet)) continue;
+        if (seen.has(row.outlet) || deadC.has(row.outlet)) continue;
         seen.add(row.outlet);
         suggestions.push({ outlet: row.outlet, section: row.fallback_beat });
       }
@@ -2554,7 +2575,7 @@ app.delete("/api/my/custom-sources/:id", async (req, res) => {
 // URL server-side.
 const FEED_DISCOVERY_TIMEOUT_MS = 8000;
 const FEED_DISCOVERY_HEAD_SCAN_CAP = 100 * 1024; // bail out after 100KB if no </head> yet — no need to download a whole page to find two <link> tags
-const FEED_DISCOVERY_GUESS_PATHS = ["/feed", "/rss", "/rss.xml", "/atom.xml", "/feed.xml", "/index.xml"];
+const FEED_DISCOVERY_GUESS_PATHS = ["/feed", "/feed/", "/rss", "/rss/", "/rss.xml", "/atom.xml", "/feed.xml", "/index.xml"]; // Ghost sites use /rss/ and WordPress /feed/, with the trailing slash
 
 function isPrivateOrReservedIP(address) {
   const version = net.isIP(address);
@@ -2670,19 +2691,29 @@ async function tryGuessedFeedPaths(pageUrl) {
   let origin;
   try { origin = new URL(pageUrl).origin; } catch { return []; }
 
-  const found = [];
-  for (const guessPath of FEED_DISCOVERY_GUESS_PATHS) {
+  // All guesses run at once (each capped at 5s), so adding paths doesn't make the wait longer.
+  const results = await Promise.all(FEED_DISCOVERY_GUESS_PATHS.map(async (guessPath) => {
     const candidateUrl = origin + guessPath;
     try {
       const resp = await fetchWithSSRFGuard(candidateUrl, { timeoutMs: 5000 });
-      if (!resp.ok) continue;
+      if (!resp.ok) return null;
       const text = await resp.text();
       const parsed = xmlParser.parse(text);
       const items = extractItems(parsed).filter((it) => it.title && it.link);
-      if (items.length > 0) found.push({ title: null, url: candidateUrl });
+      return items.length > 0 ? { title: null, url: candidateUrl, items: items.length } : null;
     } catch {
-      continue; // a guessed path failing is expected most of the time, not an error
+      return null; // a guessed path failing is expected most of the time, not an error
     }
+  }));
+  // The same feed often answers at /feed and /feed/ and /rss; keep the first of each.
+  const found = [];
+  const seenFeeds = new Set();
+  for (const r of results) {
+    if (!r) continue;
+    const key = r.url.replace(/\/+$/, "").replace(/\/(feed|rss)$/, "");
+    if (seenFeeds.has(key + "|" + r.items)) continue;
+    seenFeeds.add(key + "|" + r.items);
+    found.push({ title: r.title, url: r.url });
   }
   return found;
 }
@@ -4046,12 +4077,13 @@ app.get("/api/new-voices", async (req, res) => {
          ORDER BY fms.outlet ASC LIMIT 40`, [user.id]
       )).map((r) => r.outlet);
     }
+    const deadNV = await getDeadOutlets();
     let cand = (await dbAll(
       `SELECT outlet, fallback_beat FROM feeds
        WHERE submission_status = 'approved' AND outlet IS NOT NULL AND feed_url IS NOT NULL
          AND COALESCE(feed_type, 'outlet') != 'journalist'
        ORDER BY outlet ASC`
-    )).filter((r) => !have.has(r.outlet));
+    )).filter((r) => !have.has(r.outlet) && !deadNV.has(r.outlet));
     // "Similar?" after a Hide: only offer outlets that cover the same beat as
     // the one just hidden. No beat on record, or nothing in that beat, means
     // an empty list rather than an unrelated guess.
