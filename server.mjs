@@ -2718,6 +2718,26 @@ async function tryGuessedFeedPaths(pageUrl) {
   return found;
 }
 
+// Does the registry already carry a site with this host? Matches the host of any
+// registry feed URL, or the home-page domain Source Doctor recorded for an outlet.
+async function findKnownOutlet(host) {
+  const h = String(host || "").toLowerCase().replace(/^www\./, "");
+  if (!h || DOCTOR_SHARED_HOSTS.has(h)) return null;
+  try {
+    const rows = await dbAll(
+      `SELECT f.outlet, f.feed_url FROM feeds f WHERE COALESCE(f.submission_status,'approved')='approved' AND f.feed_url LIKE ? LIMIT 20`,
+      [`%${h}%`]
+    );
+    const hit = rows.find((r) => doctorHost(r.feed_url) === h);
+    if (hit) return hit.outlet;
+    const viaHealth = await dbGet(
+      `SELECT f.outlet FROM feed_health fh JOIN feeds f ON f.id = fh.feed_id WHERE fh.domain = ? AND COALESCE(f.submission_status,'approved')='approved' LIMIT 1`,
+      [h]
+    );
+    return viaHealth ? viaHealth.outlet : null;
+  } catch { return null; }
+}
+
 app.post("/api/feed-discovery", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
@@ -2734,8 +2754,9 @@ app.post("/api/feed-discovery", async (req, res) => {
   // a direct feed URL by extension, don't slow it down with a discovery
   // round-trip — hand it straight back so the frontend can go straight to
   // the existing POST /api/my/custom-sources add flow.
+  const known = await findKnownOutlet(parsedInput.hostname);
   if (/\.(xml|rss|atom)(\?.*)?$/i.test(parsedInput.pathname)) {
-    return res.json({ candidates: [{ title: null, url: input }], sourceUrlWasAlreadyAFeed: true });
+    return res.json({ candidates: [{ title: null, url: input }], sourceUrlWasAlreadyAFeed: true, known });
   }
 
   try {
@@ -2745,14 +2766,14 @@ app.post("/api/feed-discovery", async (req, res) => {
     const contentType = (resp.headers.get("content-type") || "").toLowerCase();
     if (/rss\+xml|atom\+xml/.test(contentType)) {
       // Content-Type says this is already a feed — same fast path as the extension check above.
-      return res.json({ candidates: [{ title: null, url: input }], sourceUrlWasAlreadyAFeed: true });
+      return res.json({ candidates: [{ title: null, url: input }], sourceUrlWasAlreadyAFeed: true, known });
     }
 
     const html = await readCappedText(resp, FEED_DISCOVERY_HEAD_SCAN_CAP);
     let candidates = extractFeedLinksFromHtml(html, input);
     if (candidates.length === 0) candidates = await tryGuessedFeedPaths(input);
 
-    res.json({ candidates, sourceUrlWasAlreadyAFeed: false });
+    res.json({ candidates, sourceUrlWasAlreadyAFeed: false, known });
   } catch (err) {
     console.error(`[feed-discovery] failed for ${input}: ${err.message}`);
     res.status(400).json({ error: "Couldn't check that URL — try pasting the feed URL directly instead." });

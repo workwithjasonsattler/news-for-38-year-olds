@@ -3665,6 +3665,7 @@
     input.disabled = true;
     try {
       const result = await api("/api/feed-discovery", { method: "POST", body: JSON.stringify({ url: value }) });
+      if (result.known) toast(`SOURCE! already carries ${result.known}. You can find it in your feeds, or keep going to add this one anyway.`);
       if (result.sourceUrlWasAlreadyAFeed) {
         await addCustomSourceDirect((result.candidates[0] || {}).url || value, input, btn);
         return;
