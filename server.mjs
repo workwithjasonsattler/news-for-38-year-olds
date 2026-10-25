@@ -6836,6 +6836,13 @@ app.get("/api/admin/doctor", requireAdmin, async (req, res) => {
       `SELECT p.id, p.feed_id, p.kind, p.value, p.found_at, p.created_at, f.outlet FROM feed_proposals p JOIN feeds f ON f.id = p.feed_id
        WHERE p.status = 'pending' AND COALESCE(f.is_corporate,0) = 0 AND ((p.kind='tip_url' AND COALESCE(f.tip_url,'')='') OR (p.kind='subscribe_url' AND COALESCE(f.subscribe_url,'')='')) ORDER BY f.outlet ASC, p.kind ASC`
     );
+    for (const p of proposals) p.derived = /^derived from /i.test(p.found_at || "");
+    // Recently approved links that are still in place, newest first, each with an Undo.
+    const approvedRows = await dbAll(
+      `SELECT p.id, p.kind, p.value, f.outlet, f.tip_url, f.subscribe_url FROM feed_proposals p JOIN feeds f ON f.id = p.feed_id
+       WHERE p.status = 'approved' ORDER BY p.id DESC LIMIT 60`
+    );
+    const approved = approvedRows.filter((r) => r[r.kind] === r.value).map((r) => ({ id: r.id, kind: r.kind, value: r.value, outlet: r.outlet }));
     // Same domain on more than one row: flagged for review, never merged here.
     const byDomain = new Map();
     for (const h of health) if (h.domain && !DOCTOR_SHARED_HOSTS.has(h.domain)) { const a = byDomain.get(h.domain) || []; a.push({ id: h.id, outlet: h.outlet }); byDomain.set(h.domain, a); }
@@ -6844,24 +6851,59 @@ app.get("/api/admin/doctor", requireAdmin, async (req, res) => {
       `SELECT COUNT(*) AS n FROM feeds WHERE feed_url IS NOT NULL AND feed_url <> '' AND feed_type <> 'journalist' AND COALESCE(submission_status,'approved')='approved'`
     );
     const missing = await dbGet(`SELECT COUNT(*) AS n FROM feeds WHERE COALESCE(tip_url,'')='' AND COALESCE(subscribe_url,'')='' AND COALESCE(is_corporate,0)=0`);
-    res.json({ total_feeds: totals.n, scanned: health.length, counts, stale_days: DOCTOR_STALE_DAYS, without_support: missing.n, health, proposals, duplicates });
+    res.json({ total_feeds: totals.n, scanned: health.length, counts, stale_days: DOCTOR_STALE_DAYS, without_support: missing.n, health, proposals, approved, duplicates });
   } catch (e) {
     console.error("[doctor] list failed:", e?.message || e);
     res.status(500).json({ error: "Couldn't load." });
   }
 });
 
-app.post("/api/admin/doctor/proposals/:id/approve", requireAdmin, async (req, res) => {
-  const p = await dbGet(`SELECT * FROM feed_proposals WHERE id = ? AND status = 'pending'`, [parseInt(req.params.id, 10)]);
-  if (!p) return res.status(404).json({ error: "Proposal not found." });
-  if (p.kind !== "tip_url" && p.kind !== "subscribe_url") return res.status(400).json({ error: "Unsupported proposal." });
-  if (!/^https?:\/\//i.test(p.value)) return res.status(400).json({ error: "Not an http(s) link." });
+// Approving only ever fills an EMPTY field on one outlet, and every approval can be undone.
+async function doctorApproveOne(id) {
+  const p = await dbGet(`SELECT * FROM feed_proposals WHERE id = ? AND status = 'pending'`, [id]);
+  if (!p) return { ok: false, status: 404, error: "Proposal not found." };
+  if (p.kind !== "tip_url" && p.kind !== "subscribe_url") return { ok: false, status: 400, error: "Unsupported proposal." };
+  if (!/^https?:\/\//i.test(p.value)) return { ok: false, status: 400, error: "Not an http(s) link." };
   const f = await dbGet(`SELECT id, tip_url, subscribe_url, is_corporate FROM feeds WHERE id = ?`, [p.feed_id]);
-  if (!f) return res.status(404).json({ error: "Outlet is gone." });
-  if (f[p.kind]) return res.status(409).json({ error: "That outlet already has a link in that field." });
+  if (!f) return { ok: false, status: 404, error: "Outlet is gone." };
+  if (f.is_corporate) return { ok: false, status: 409, error: "Corporate outlet: Support stays blank." };
+  if (f[p.kind]) return { ok: false, status: 409, error: "That outlet already has a link in that field." };
   // p.kind is one of two fixed column names, checked above.
   await dbRun(`UPDATE feeds SET ${p.kind} = ? WHERE id = ?`, [p.value, p.feed_id]);
   await dbRun(`UPDATE feed_proposals SET status = 'approved' WHERE id = ?`, [p.id]);
+  return { ok: true };
+}
+app.post("/api/admin/doctor/proposals/:id/approve", requireAdmin, async (req, res) => {
+  const r = await doctorApproveOne(parseInt(req.params.id, 10));
+  if (!r.ok) return res.status(r.status).json({ error: r.error });
+  res.json({ ok: true });
+});
+// Approve a chosen set in one call. Each id is checked on its own: one that no longer
+// applies (already filled, outlet gone) is skipped and reported, and the rest still go through.
+app.post("/api/admin/doctor/proposals/bulk-approve", requireAdmin, async (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.map((n) => parseInt(n, 10)).filter((n) => n > 0))].slice(0, 200) : [];
+  if (ids.length === 0) return res.status(400).json({ error: "Nothing selected." });
+  let approved = 0;
+  const skipped = [];
+  for (const id of ids) {
+    try {
+      const r = await doctorApproveOne(id);
+      if (r.ok) approved++; else skipped.push({ id, reason: r.error });
+    } catch (e) { skipped.push({ id, reason: "Could not save." }); }
+  }
+  res.json({ approved, skipped });
+});
+// Undo an approval: blanks the field again, but only if it still holds exactly the approved link
+// (a hand edit made since is never overwritten). The proposal is then treated as rejected, so a
+// rescan does not offer it again.
+app.post("/api/admin/doctor/proposals/:id/undo", requireAdmin, async (req, res) => {
+  const p = await dbGet(`SELECT * FROM feed_proposals WHERE id = ? AND status = 'approved'`, [parseInt(req.params.id, 10)]);
+  if (!p) return res.status(404).json({ error: "Nothing to undo." });
+  if (p.kind !== "tip_url" && p.kind !== "subscribe_url") return res.status(400).json({ error: "Unsupported proposal." });
+  const f = await dbGet(`SELECT id, tip_url, subscribe_url FROM feeds WHERE id = ?`, [p.feed_id]);
+  if (!f || f[p.kind] !== p.value) return res.status(409).json({ error: "That field has changed since, so it was left alone." });
+  await dbRun(`UPDATE feeds SET ${p.kind} = '' WHERE id = ?`, [p.feed_id]);
+  await dbRun(`UPDATE feed_proposals SET status = 'rejected' WHERE id = ?`, [p.id]);
   res.json({ ok: true });
 });
 app.post("/api/admin/doctor/proposals/:id/reject", requireAdmin, async (req, res) => {

@@ -88,7 +88,16 @@
     </div>
     <div id="doctorNote" style="font-size:11px;color:#666;margin-bottom:8px;"></div>
     <h3 style="font-family:var(--mono);font-size:12px;">SUPPORT LINKS TO APPROVE</h3>
-    <table><thead><tr><th>Outlet</th><th>Link</th><th>Where it was found</th><th></th></tr></thead><tbody id="doctorProposals"></tbody></table>
+    <div style="margin-bottom:8px;font-family:var(--mono);font-size:12px;">
+      <button type="button" onclick="doctorSelect('derived')">Select Substack links</button>
+      <button type="button" onclick="doctorSelect('all')">Select all</button>
+      <button type="button" onclick="doctorSelect('none')">Select none</button>
+      <button type="button" id="doctorApproveSel" onclick="doctorApproveSelected()">Approve selected (0)</button>
+      <span style="color:#666;">Substack links are built from the feed address. Open the others before approving.</span>
+    </div>
+    <table><thead><tr><th></th><th>Outlet</th><th>Link</th><th>Where it was found</th><th></th></tr></thead><tbody id="doctorProposals"></tbody></table>
+    <h3 style="font-family:var(--mono);font-size:12px;">RECENTLY APPROVED (UNDO PUTS THE FIELD BACK TO EMPTY)</h3>
+    <table><thead><tr><th>Outlet</th><th>Link</th><th></th></tr></thead><tbody id="doctorApproved"></tbody></table>
     <h3 style="font-family:var(--mono);font-size:12px;">FEED HEALTH (WORST FIRST)</h3>
     <table><thead><tr><th>Outlet</th><th>Result</th><th>Newest item</th><th>Note</th></tr></thead><tbody id="doctorHealth"></tbody></table>
     <h3 style="font-family:var(--mono);font-size:12px;">SAME SITE ON MORE THAN ONE ROW</h3>
@@ -355,11 +364,19 @@ async function loadDoctor(){
   note.textContent = d.scanned + ' of ' + d.total_feeds + ' feeds scanned. ' + Object.keys(DOCTOR_LABEL).filter(k => c[k]).map(k => c[k] + ' ' + DOCTOR_LABEL[k].toLowerCase()).join(', ') + '. ' + d.without_support + ' outlets still have no Support link. Stale means no new item in ' + d.stale_days + ' days.';
   document.getElementById('doctorProposals').innerHTML = d.proposals.map(p => `
     <tr>
+      <td><input type="checkbox" class="doctor-pick" data-id="${p.id}" data-derived="${p.derived ? 1 : 0}" onchange="doctorCount()"></td>
       <td>${esc(p.outlet)}<div style="font-size:10px;color:#666;">${p.kind === 'tip_url' ? 'tip' : 'subscribe'}</div></td>
       <td><a class="link-cell" href="${esc(p.value)}" target="_blank" rel="noopener">${esc(p.value)}</a></td>
       <td style="color:#444;">${esc(p.found_at)}</td>
       <td><button type="button" onclick="doctorDecide(${p.id}, 'approve')">Approve</button> <button type="button" class="btn-danger" onclick="doctorDecide(${p.id}, 'reject')">Reject</button></td>
-    </tr>`).join('') || '<tr><td colspan="4" style="color:#666;">No links waiting.</td></tr>';
+    </tr>`).join('') || '<tr><td colspan="5" style="color:#666;">No links waiting.</td></tr>';
+  document.getElementById('doctorApproved').innerHTML = (d.approved || []).map(a => `
+    <tr>
+      <td>${esc(a.outlet)}<div style="font-size:10px;color:#666;">${a.kind === 'tip_url' ? 'tip' : 'subscribe'}</div></td>
+      <td><a class="link-cell" href="${esc(a.value)}" target="_blank" rel="noopener">${esc(a.value)}</a></td>
+      <td><button type="button" class="btn-danger" onclick="doctorUndo(${a.id})">Undo</button></td>
+    </tr>`).join('') || '<tr><td colspan="3" style="color:#666;">Nothing approved yet.</td></tr>';
+  doctorCount();
   document.getElementById('doctorHealth').innerHTML = d.health.filter(h => h.bucket !== 'ok').concat(d.health.filter(h => h.bucket === 'ok').slice(0, 0)).map(h => `
     <tr>
       <td>${esc(h.outlet)}</td>
@@ -368,6 +385,30 @@ async function loadDoctor(){
       <td style="color:#444;">${esc(h.note || '')}</td>
     </tr>`).join('') || '<tr><td colspan="4" style="color:#666;">Every scanned feed is healthy.</td></tr>';
   document.getElementById('doctorDupes').innerHTML = d.duplicates.map(x => '<div><b>' + esc(x.domain) + '</b>: ' + x.rows.map(r => esc(r.outlet)).join(', ') + '</div>').join('') || 'None found.';
+}
+function doctorPicks(){ return [...document.querySelectorAll('.doctor-pick')]; }
+function doctorCount(){
+  const n = doctorPicks().filter(c => c.checked).length;
+  document.getElementById('doctorApproveSel').textContent = 'Approve selected (' + n + ')';
+}
+function doctorSelect(mode){
+  doctorPicks().forEach(c => { c.checked = mode === 'all' ? true : mode === 'derived' ? c.dataset.derived === '1' : false; });
+  doctorCount();
+}
+async function doctorApproveSelected(){
+  const ids = doctorPicks().filter(c => c.checked).map(c => parseInt(c.dataset.id, 10));
+  if (!ids.length) { alert('Nothing selected.'); return; }
+  if (!confirm('Approve ' + ids.length + ' Support link' + (ids.length === 1 ? '' : 's') + '? Each one fills an empty field and can be undone below.')) return;
+  const res = await fetch('/api/admin/doctor/proposals/bulk-approve', {method:'POST', headers: authHeaders(), body: JSON.stringify({ids})});
+  const d = await res.json().catch(() => ({}));
+  if (!res.ok) { alert(d.error || 'Could not save.'); return; }
+  if (d.skipped && d.skipped.length) alert(d.approved + ' approved. ' + d.skipped.length + ' skipped: ' + d.skipped.map(s => s.reason).filter((v, i, a) => a.indexOf(v) === i).join(' '));
+  await loadDoctor();
+}
+async function doctorUndo(id){
+  const res = await fetch('/api/admin/doctor/proposals/' + id + '/undo', {method:'POST', headers: authHeaders()});
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not undo.'); }
+  await loadDoctor();
 }
 async function doctorDecide(id, action){
   const res = await fetch('/api/admin/doctor/proposals/' + id + '/' + action, {method:'POST', headers: authHeaders()});
