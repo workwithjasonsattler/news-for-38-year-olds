@@ -2587,7 +2587,7 @@ function isPrivateOrReservedIP(address) {
 // Resolves the hostname first and rejects anything pointed at a private/
 // loopback/link-local range BEFORE fetching, so this can't be used to probe
 // Render's own internal network or other services on the same host.
-async function fetchWithSSRFGuard(url, { timeoutMs = FEED_DISCOVERY_TIMEOUT_MS } = {}) {
+async function fetchWithSSRFGuard(url, { timeoutMs = FEED_DISCOVERY_TIMEOUT_MS, userAgent = "n38-cms/1.0 (+https://news-for-38-year-olds.onrender.com)" } = {}) {
   const parsed = new URL(url);
   if (!/^https?:$/.test(parsed.protocol)) throw new Error("Only http/https URLs are supported.");
 
@@ -2602,7 +2602,7 @@ async function fetchWithSSRFGuard(url, { timeoutMs = FEED_DISCOVERY_TIMEOUT_MS }
   }
 
   return fetch(url, {
-    headers: { "User-Agent": "n38-cms/1.0 (+https://news-for-38-year-olds.onrender.com)" },
+    headers: { "User-Agent": userAgent },
     signal: AbortSignal.timeout(timeoutMs),
   });
 }
@@ -6555,6 +6555,15 @@ const DOCTOR_BATCH_MAX = 30;
 const DOCTOR_CONCURRENCY = 4;
 const DOCTOR_STALE_DAYS = parseInt(process.env.DOCTOR_STALE_DAYS, 10) || 60;
 const DOCTOR_PAGE_CAP = 400 * 1024; // homepage bytes scanned for Support links and metadata
+const DOCTOR_FEED_READ_CAP = 10 * 1024 * 1024; // big podcast feeds ran past the old 3 MB cap and looked broken
+const DOCTOR_FEED_UA = "n38-cms/1.0"; // same User-Agent the importer uses, so a result here predicts what the importer sees
+// Hosts that serve many unrelated shows or sites. A feed whose home page is one of
+// these says nothing about the outlet, so it gets no duplicate flag and no Support proposal.
+const DOCTOR_SHARED_HOSTS = new Set([
+  "news.google.com", "rss.app", "feedburner.com", "feeds.feedburner.com", "feeds.libsyn.com", "libsyn.com",
+  "audioboom.com", "simplecast.com", "megaphone.fm", "feeds.megaphone.fm", "omny.fm", "omnycontent.com", "acast.com", "feeds.acast.com",
+  "anchor.fm", "buzzsprout.com", "podbean.com", "soundcloud.com", "transistor.fm", "spreaker.com", "art19.com", "rss.com", "podtrac.com",
+]);
 const DOCTOR_RECHECK_HOURS = 20; // a feed checked within this window is skipped by "scan next batch" unless force=1
 
 function doctorHost(u) {
@@ -6601,10 +6610,11 @@ function doctorSupportCandidates(html, baseUrl, feedUrl) {
     try { u = new URL(value, baseUrl); } catch { return; }
     if (!/^https?:$/.test(u.protocol)) return;
     u.hash = "";
-    for (const k of [...u.searchParams.keys()]) if (/^(utm_|fbclid|gclid|ref$)/i.test(k)) u.searchParams.delete(k);
+    for (const k of [...u.searchParams.keys()]) if (/^(utm_|fbclid|gclid|ref$|campaign$)/i.test(k)) u.searchParams.delete(k);
     const v = u.toString();
-    if (v.length > 300 || seen.has(v)) return;
-    seen.add(v);
+    const key = kind + "|" + u.hostname.replace(/^www\./, "") + u.pathname.replace(/\/+$/, "").toLowerCase() + u.search;
+    if (v.length > 300 || seen.has(key)) return;
+    seen.add(key);
     out.push({ kind, value: v, found });
   };
   // Platform-derived guess first: a *.substack.com feed always has /subscribe.
@@ -6642,12 +6652,24 @@ async function doctorScanOne(feed) {
   let xml = null, parsed = null, items = [];
   let errKind = null;
   try {
-    const r = await fetchWithSSRFGuard(feed.feed_url, { timeoutMs: 8000 });
+    const r = await fetchWithSSRFGuard(feed.feed_url, { timeoutMs: 8000, userAgent: DOCTOR_FEED_UA });
     row.status = r.status;
     if (r.ok) {
-      xml = await readCappedText(r, 3 * 1024 * 1024);
-      try { parsed = xmlParser.parse(xml); items = extractItems(parsed).filter((it) => it.title && it.link); }
+      xml = await readCappedText(r, DOCTOR_FEED_READ_CAP);
+      const tryParse = (text) => { const pr = xmlParser.parse(text); return { pr, its: extractItems(pr).filter((it) => it.title && it.link) }; };
+      try { ({ pr: parsed, its: items } = tryParse(xml)); }
       catch (e) { row.note = "XML didn't parse: " + String(e.message || e).slice(0, 120); }
+      if (items.length === 0) {
+        // A feed cut off mid-file (very large, or a stray unclosed tag) still has good items
+        // before the cut. Keep everything up to the last complete <item> and close the tags.
+        const cut = xml.lastIndexOf("</item>");
+        if (cut > 0) {
+          try {
+            const salvaged = tryParse(xml.slice(0, cut + 7) + "</channel></rss>");
+            if (salvaged.its.length > 0) { parsed = salvaged.pr; items = salvaged.its; row.note = "Read the first part of a large or damaged feed."; }
+          } catch { /* leave as broken */ }
+        }
+      }
     } else { try { r.body?.cancel(); } catch {} }
   } catch (e) {
     errKind = /timeout|abort/i.test(String(e.name) + String(e.message)) ? "timeout" : "network";
@@ -6670,8 +6692,11 @@ async function doctorScanOne(feed) {
     }
     try { home = new URL(home).toString(); } catch { try { home = new URL(feed.feed_url).origin + "/"; } catch { home = ""; } }
     row.domain = doctorHost(home) || row.domain;
+    const sharedHost = DOCTOR_SHARED_HOSTS.has(row.domain) || DOCTOR_SHARED_HOSTS.has(doctorHost(feed.feed_url));
+    if (sharedHost) { row.domain = null; home = ""; }
     const needsSupport = !feed.tip_url && !feed.subscribe_url && !feed.is_corporate;
     try {
+      if (!home) throw new Error("shared host: nothing to read");
       const pr = await fetchWithSSRFGuard(home, { timeoutMs: 8000 });
       if (pr.ok) {
         const html = await readCappedText(pr, DOCTOR_PAGE_CAP);
@@ -6683,7 +6708,7 @@ async function doctorScanOne(feed) {
       } else { try { pr.body?.cancel(); } catch {} }
     } catch { /* homepage unreachable: health result still stands */ }
     if (!row.title && ch) row.title = textOf(ch.title);
-    if (needsSupport && proposals.length === 0) {
+    if (needsSupport && !sharedHost && proposals.length === 0) {
       const d = doctorSupportCandidates("", home, feed.feed_url); // platform-derived only
       proposals.push(...d.map((c) => ({ ...c, found_at: `${c.found} (${feed.feed_url})` })));
     }
@@ -6760,7 +6785,7 @@ app.get("/api/admin/doctor", requireAdmin, async (req, res) => {
     );
     // Same domain on more than one row: flagged for review, never merged here.
     const byDomain = new Map();
-    for (const h of health) if (h.domain) { const a = byDomain.get(h.domain) || []; a.push({ id: h.id, outlet: h.outlet }); byDomain.set(h.domain, a); }
+    for (const h of health) if (h.domain && !DOCTOR_SHARED_HOSTS.has(h.domain)) { const a = byDomain.get(h.domain) || []; a.push({ id: h.id, outlet: h.outlet }); byDomain.set(h.domain, a); }
     const duplicates = [...byDomain].filter(([, v]) => v.length > 1).map(([domain, rows]) => ({ domain, rows }));
     const totals = await dbGet(
       `SELECT COUNT(*) AS n FROM feeds WHERE feed_url IS NOT NULL AND feed_url <> '' AND feed_type <> 'journalist' AND COALESCE(submission_status,'approved')='approved'`
