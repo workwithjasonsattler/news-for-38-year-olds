@@ -5233,25 +5233,28 @@
   function readSupportLocal() {
     try {
       const v = JSON.parse(localStorage.getItem(SUPPORT_LOCAL_KEY) || "null");
-      if (v && Array.isArray(v.outlets)) return { outlets: v.outlets.map(String), isPublic: !!v.isPublic };
+      if (v && Array.isArray(v.outlets)) return { outlets: v.outlets.map(String), listed: cleanListedLocal(v.listed), isPublic: !!v.isPublic };
     } catch (e) { /* fall through */ }
-    return { outlets: [], isPublic: false };
+    return { outlets: [], listed: [], isPublic: false };
   }
-  function writeSupportLocal(outlets, isPublic) {
-    if (!outlets.length) localStorage.removeItem(SUPPORT_LOCAL_KEY);
-    else localStorage.setItem(SUPPORT_LOCAL_KEY, JSON.stringify({ outlets, isPublic: !!isPublic }));
+  function cleanListedLocal(arr) {
+    return (Array.isArray(arr) ? arr : []).filter(x => x && x.name && x.url).map(x => ({ name: String(x.name), url: String(x.url), support_url: x.support_url ? String(x.support_url) : null }));
+  }
+  function writeSupportLocal(outlets, isPublic, listed) {
+    if (!outlets.length && !(listed || []).length) localStorage.removeItem(SUPPORT_LOCAL_KEY);
+    else localStorage.setItem(SUPPORT_LOCAL_KEY, JSON.stringify({ outlets, listed: listed || [], isPublic: !!isPublic }));
   }
   async function loadSupportState() {
     if (!currentUser) {
       const l = readSupportLocal();
-      return { signedIn: false, slug: null, outlets: l.outlets, customs: [], isPublic: l.isPublic };
+      return { signedIn: false, slug: null, outlets: l.outlets, listed: l.listed, customs: [], isPublic: l.isPublic };
     }
     const mixes = await loadMyMixes(true);
     const remembered = localStorage.getItem(SUPPORT_SLUG_KEY);
     const mine = (mixes || []).filter(m => !m.is_official);
     const found = mine.find(m => m.slug === remembered)
       || mine.find(m => (m.name || "").trim().toLowerCase() === SUPPORT_PACK_NAME.toLowerCase());
-    if (!found) return { signedIn: true, slug: null, outlets: [], customs: [], isPublic: false };
+    if (!found) return { signedIn: true, slug: null, outlets: [], listed: [], customs: [], isPublic: false };
     const full = await api(`/api/mixes/${encodeURIComponent(found.slug)}`);
     const srcs = full.sources || [];
     return {
@@ -5260,6 +5263,7 @@
       outlets: srcs.filter(x => x.source_type === "admin_outlet").map(x => x.outlet),
       customs: srcs.filter(x => x.source_type === "custom" && x.custom_source_id).map(x => ({ source_type: "custom", custom_source_id: x.custom_source_id })),
       isPublic: !!full.is_public,
+      listed: cleanListedLocal(full.listed),
       byline: full.byline || "",
     };
   }
@@ -5271,37 +5275,39 @@
   }
   // Writes the list to the account (signed in) or the device (signed out).
   // Returns the new state. Removing the last outlet retires the Pack.
-  async function saveSupportState(st, outlets, isPublic) {
-    if (outlets.length > SUPPORT_CAP) throw new Error(`A Pack holds up to ${SUPPORT_CAP} publications.`);
+  async function saveSupportState(st, outlets, isPublic, listed = st.listed || []) {
+    if (outlets.length + listed.length > SUPPORT_CAP) throw new Error(`A list holds up to ${SUPPORT_CAP} publications.`);
     if (!st.signedIn) {
-      writeSupportLocal(outlets, isPublic);
-      return { ...st, outlets, isPublic };
+      writeSupportLocal(outlets, isPublic, listed);
+      return { ...st, outlets, isPublic, listed };
     }
     const sources = [...outlets.map(o => ({ source_type: "admin_outlet", outlet: o })), ...st.customs];
     let slug = st.slug;
-    if (!sources.length) {
+    if (!sources.length && !listed.length) {
       if (slug) await api(`/api/mixes/${encodeURIComponent(slug)}`, { method: "DELETE" });
       localStorage.removeItem(SUPPORT_SLUG_KEY);
       slug = null;
       isPublic = false;
     } else if (slug) {
-      await api(`/api/mixes/${encodeURIComponent(slug)}`, { method: "PUT", body: JSON.stringify({ sources, is_public: !!isPublic }) });
+      await api(`/api/mixes/${encodeURIComponent(slug)}`, { method: "PUT", body: JSON.stringify({ sources, listed, is_public: !!isPublic }) });
     } else {
-      const mix = await api("/api/mixes", { method: "POST", body: JSON.stringify({ name: SUPPORT_PACK_NAME, is_public: !!isPublic, sources }) });
+      const mix = await api("/api/mixes", { method: "POST", body: JSON.stringify({ name: SUPPORT_PACK_NAME, is_public: !!isPublic, sources, listed }) });
       slug = mix.slug;
       localStorage.setItem(SUPPORT_SLUG_KEY, slug);
     }
     try { await loadMyMixes(true); await loadSprayBar(true); } catch (e) { /* fail soft */ }
-    return { ...st, slug, outlets, isPublic };
+    return { ...st, slug, outlets, isPublic, listed };
   }
   async function applySupportLocal() {
     const l = readSupportLocal();
-    if (!currentUser || !l.outlets.length) return;
+    if (!currentUser || (!l.outlets.length && !l.listed.length)) return;
     localStorage.removeItem(SUPPORT_LOCAL_KEY); // clear first so a failure can't double-apply
     try {
       const st = await loadSupportState();
       const merged = [...new Set([...st.outlets, ...l.outlets])].slice(0, SUPPORT_CAP);
-      await saveSupportState(st, merged, st.slug ? st.isPublic : l.isPublic);
+      const have = new Set((st.listed || []).map(x => x.name.toLowerCase()));
+      const mergedListed = [...(st.listed || []), ...l.listed.filter(x => !have.has(x.name.toLowerCase()))].slice(0, Math.max(0, SUPPORT_CAP - merged.length));
+      await saveSupportState(st, merged, st.slug ? st.isPublic : l.isPublic, mergedListed);
       toast("Your supported publications are saved.");
     } catch (e) {
       toast("Couldn't save your supported publications. Add them again from the You tab.");
@@ -5313,7 +5319,7 @@
     el.innerHTML = `<div class="section-label" style="margin-top:2px;">PUBLICATIONS I SUPPORT</div><div class="card"><div class="card-meta">Loading…</div></div>`;
     let st;
     try { st = await loadSupportState(); }
-    catch (e) { st = { signedIn: !!currentUser, slug: null, outlets: [], customs: [], isPublic: false }; }
+    catch (e) { st = { signedIn: !!currentUser, slug: null, outlets: [], listed: [], customs: [], isPublic: false }; }
     if (!sourcesRegistryCache) {
       try {
         const reg = await api("/api/sources");
@@ -5321,12 +5327,13 @@
       } catch (e) { sourcesRegistryCache = []; }
     }
     const registry = [...sourcesRegistryCache].sort((a, b) => (a.outlet || "").localeCompare(b.outlet || ""));
-    let picking = false, filter = "", busy = false;
+    let picking = false, filter = "", busy = false, adding = false, addErr = "";
+    const totalCount = () => st.outlets.length + (st.listed || []).length;
 
-    async function persist(outlets, isPublic) {
+    async function persist(outlets, isPublic, listed) {
       if (busy) return;
       busy = true;
-      try { st = await saveSupportState(st, outlets, isPublic); }
+      try { st = await saveSupportState(st, outlets, isPublic, listed); }
       catch (e) { toast(e.message || "Couldn't save that. Try again."); }
       busy = false;
       draw();
@@ -5338,19 +5345,35 @@
         || `<div class="manage-screen-stat">No matches.</div>`;
     }
     function draw() {
-      const has = st.outlets.length > 0;
-      const chips = st.outlets.map(o => `<span class="tile-sheet-chip">${escapeHtml(o)}<button type="button" class="support-chip-x" data-remove="${escapeHtml(o)}" aria-label="Remove ${escapeHtml(o)}">×</button></span>`).join("");
+      const has = totalCount() > 0;
+      const listedArr = st.listed || [];
+      const chips = st.outlets.map(o => `<span class="tile-sheet-chip">${escapeHtml(o)}<button type="button" class="support-chip-x" data-remove="${escapeHtml(o)}" aria-label="Remove ${escapeHtml(o)}">×</button></span>`).join("")
+        + listedArr.map((x, i) => `<span class="tile-sheet-chip" title="No RSS feed. Listed by name and website only.">${escapeHtml(x.name)}<span class="manage-screen-stat" style="margin:0 0 0 6px; display:inline;">no feed</span><button type="button" class="support-chip-x" data-remove-listed="${i}" aria-label="Remove ${escapeHtml(x.name)}">×</button></span>`).join("");
       el.innerHTML = `
         <div class="section-label" style="margin-top:2px;">PUBLICATIONS I SUPPORT</div>
         <div class="card" style="padding:12px;">
-          ${has ? `<div class="manage-screen-stat">${st.outlets.length} publication${st.outlets.length === 1 ? "" : "s"}${st.signedIn ? "" : " · saved on this device until you sign in"}</div>
+          ${has ? `<div class="manage-screen-stat">${totalCount()} publication${totalCount() === 1 ? "" : "s"}${st.signedIn ? "" : " · saved on this device until you sign in"}</div>
             <div class="tile-sheet-sources" style="margin-top:8px;">${chips}</div>`
             : `<div class="section-sub" style="margin:0 0 10px;">The outlets you pay for or want to back. Private unless you share it.${st.signedIn ? "" : " Saved on this device until you sign in."}</div>`}
           ${picking ? `
             <input type="search" class="create-flow-input" id="supportFilter" placeholder="Search publications" value="${escapeHtml(filter)}" autocomplete="off" style="margin-top:10px;">
             <div class="support-pick-list" id="supportPickList">${pickRows()}</div>
             <button class="btn primary" id="supportDone" style="width:100%; margin-top:10px;">Done</button>`
-          : `<button class="btn" id="supportAdd" style="width:100%; margin-top:10px;">${has ? "Add more" : "Add publications"}</button>`}
+          : `<button class="btn" id="supportAdd" style="width:100%; margin-top:10px;">${has ? "Add more" : "Add publications"}</button>
+             ${adding ? `
+               <div class="manage-screen-field" style="margin-top:12px;" id="supportListedForm">
+                 <div class="create-flow-label">A publication with no RSS feed</div>
+                 <input class="create-flow-input" id="supportListedName" maxlength="80" placeholder="Name" autocomplete="off" style="margin-bottom:6px;">
+                 <input class="create-flow-input" id="supportListedUrl" type="url" inputmode="url" placeholder="Website, like example.com" autocomplete="off" style="margin-bottom:6px;">
+                 <input class="create-flow-input" id="supportListedSupport" type="url" inputmode="url" placeholder="Where to support it (optional)" autocomplete="off">
+                 ${addErr ? `<div class="manage-screen-stat" style="margin-top:6px; color:var(--alert);" role="alert">${escapeHtml(addErr)}</div>` : ""}
+                 <div style="display:flex; gap:8px; margin-top:8px;">
+                   <button class="btn primary" id="supportListedSave" type="button" style="flex:1;">Add to my list</button>
+                   <button class="btn" id="supportListedCancel" type="button">Cancel</button>
+                 </div>
+                 <div class="manage-screen-stat" style="margin-top:6px;">It shows on your list as a link. It never adds headlines to Read.</div>
+               </div>`
+             : `<button class="btn" id="supportAddListed" type="button" style="width:100%; margin-top:8px;">Add one with no RSS feed</button>`}`}
           ${has ? `
             <div class="tile-sheet-toggle-row" style="margin-top:12px;">
               <span>Share this list</span>
@@ -5369,6 +5392,29 @@
         </div>`;
       const add = el.querySelector("#supportAdd");
       if (add) add.addEventListener("click", () => { picking = true; draw(); });
+      const addListed = el.querySelector("#supportAddListed");
+      if (addListed) addListed.addEventListener("click", () => { adding = true; addErr = ""; draw(); const n = el.querySelector("#supportListedName"); if (n) n.focus(); });
+      const listedCancel = el.querySelector("#supportListedCancel");
+      if (listedCancel) listedCancel.addEventListener("click", () => { adding = false; addErr = ""; draw(); });
+      const listedSave = el.querySelector("#supportListedSave");
+      if (listedSave) listedSave.addEventListener("click", async () => {
+        const name = (el.querySelector("#supportListedName").value || "").trim();
+        const url = (el.querySelector("#supportListedUrl").value || "").trim();
+        const sup = (el.querySelector("#supportListedSupport").value || "").trim();
+        const fix = (u) => (u && !/^https?:\/\//i.test(u) ? "https://" + u : u);
+        const ok = (u) => { try { const x = new URL(u); return /^https?:$/.test(x.protocol) && x.hostname.includes("."); } catch (e) { return false; } };
+        if (!name) { addErr = "Add the publication's name."; draw(); return; }
+        if (!ok(fix(url))) { addErr = "Add its website, like example.com."; draw(); return; }
+        if (sup && !ok(fix(sup))) { addErr = "That Support link isn't a valid web address."; draw(); return; }
+        if (totalCount() >= SUPPORT_CAP) { addErr = `A list holds up to ${SUPPORT_CAP} publications.`; draw(); return; }
+        if ((st.listed || []).some(x => x.name.toLowerCase() === name.toLowerCase())) { addErr = "That one is already on your list."; draw(); return; }
+        adding = false; addErr = "";
+        await persist(st.outlets, st.isPublic, [...(st.listed || []), { name, url: fix(url), support_url: sup ? fix(sup) : null }]);
+      });
+      el.querySelectorAll("[data-remove-listed]").forEach(b => b.addEventListener("click", () => {
+        const i = parseInt(b.getAttribute("data-remove-listed"), 10);
+        persist(st.outlets, st.isPublic, (st.listed || []).filter((_, j) => j !== i));
+      }));
       const done = el.querySelector("#supportDone");
       if (done) done.addEventListener("click", () => { picking = false; filter = ""; draw(); });
       const flt = el.querySelector("#supportFilter");
@@ -5382,10 +5428,10 @@
       if (list) wirePickRows(list);
       el.querySelectorAll("[data-remove]").forEach(b => b.addEventListener("click", () => {
         const o = b.getAttribute("data-remove");
-        persist(st.outlets.filter(x => x !== o), st.isPublic);
+        persist(st.outlets.filter(x => x !== o), st.isPublic, st.listed);
       }));
       const sw = el.querySelector("#supportShareToggle");
-      if (sw) sw.addEventListener("click", () => persist(st.outlets, !st.isPublic));
+      if (sw) sw.addEventListener("click", () => persist(st.outlets, !st.isPublic, st.listed));
       const bylineIn = el.querySelector("#supportByline");
       const bylineBtn = el.querySelector("#supportBylineSave");
       async function commitByline() {
@@ -5411,13 +5457,13 @@
       list.querySelectorAll("[data-outlet]").forEach(b => b.addEventListener("click", async () => {
         const o = b.getAttribute("data-outlet");
         const next = st.outlets.includes(o) ? st.outlets.filter(x => x !== o) : [...st.outlets, o];
-        if (next.length > SUPPORT_CAP) { toast(`A Pack holds up to ${SUPPORT_CAP} publications.`); return; }
+        if (next.length + (st.listed || []).length > SUPPORT_CAP) { toast(`A list holds up to ${SUPPORT_CAP} publications.`); return; }
         try { st = await saveSupportState(st, next, st.isPublic); }
         catch (e) { toast(e.message || "Couldn't save that. Try again."); return; }
         b.classList.toggle("on", st.outlets.includes(o));
         b.setAttribute("aria-pressed", st.outlets.includes(o));
         const stat = el.querySelector(".manage-screen-stat");
-        if (stat && /publication/.test(stat.textContent)) stat.textContent = `${st.outlets.length} publication${st.outlets.length === 1 ? "" : "s"}${st.signedIn ? "" : " · saved on this device until you sign in"}`;
+        if (stat && /publication/.test(stat.textContent)) stat.textContent = `${totalCount()} publication${totalCount() === 1 ? "" : "s"}${st.signedIn ? "" : " · saved on this device until you sign in"}`;
       }));
     }
     draw();
@@ -5863,6 +5909,15 @@
     const chips = sources.slice(0, CHIP_CAP).map(s => `
       <span class="tile-sheet-chip">${escapeHtml(s.outlet || s.name || "Custom source")}${s.is_corporate ? `<span class="source-corporate-mark" title="${escapeHtml(s.parent_company || "Corporate/conglomerate-owned")}">*</span>` : ""}${/^https?:\/\//i.test(s.support_url || "") ? `<a class="chip-support" href="${escapeHtml(s.support_url)}" target="_blank" rel="noopener noreferrer">Support</a>` : ""}</span>`).join("");
     const more = sources.length > CHIP_CAP ? `<div class="manage-screen-stat" style="margin-top:8px;">+ ${sources.length - CHIP_CAP} more</div>` : "";
+    // Publications the curator backs that have no RSS feed: plain links, never fetched by SOURCE!.
+    const listed = Array.isArray(mix.listed) ? mix.listed : [];
+    const hostOf = (u) => { try { return new URL(u).hostname.replace(/^www\./, ""); } catch (e) { return ""; } };
+    const listedHtml = listed.length ? `
+        <div class="manage-screen-field">
+          <div class="create-flow-label">Also backs, with no RSS feed</div>
+          <div class="tile-sheet-sources">${listed.map(x => `
+            <span class="tile-sheet-chip"><a href="${escapeHtml(x.url)}" target="_blank" rel="nofollow noopener noreferrer ugc">${escapeHtml(x.name)}</a><span class="manage-screen-stat" style="margin:0 0 0 6px; display:inline;">${escapeHtml(hostOf(x.url))}</span>${/^https?:\/\//i.test(x.support_url || "") ? `<a class="chip-support" href="${escapeHtml(x.support_url)}" target="_blank" rel="nofollow noopener noreferrer ugc">Support</a>` : ""}</span>`).join("")}</div>
+        </div>` : "";
     const latest = (mix.items || []).slice(0, 5).map(it => `
       <div class="card">
         <a class="card-link" href="${escapeHtml(it.link || "#")}" target="_blank" rel="noopener">
@@ -5885,13 +5940,14 @@
         <div class="manage-screen-head">
           ${mix.curator ? `<div class="tile-sheet-badge">Curated by ${escapeHtml(mix.curator)}</div>` : ""}
           <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
-          <div class="manage-screen-stat">${sources.length} source${sources.length === 1 ? "" : "s"}${mix.auto_sync ? " right now" : ""}${mix.location_label ? " · " + escapeHtml(mix.location_label) : ""}${updatedLabel}</div>
+          <div class="manage-screen-stat">${sources.length + listed.length} ${listed.length ? "publication" : "source"}${sources.length + listed.length === 1 ? "" : "s"}${mix.auto_sync ? " right now" : ""}${mix.location_label ? " · " + escapeHtml(mix.location_label) : ""}${updatedLabel}</div>
         </div>
         ${mix.is_public ? "" : `<div class="manage-screen-hidden-notice"><span>🔒</span><span><strong>Private.</strong> Only you can see this page. Make the Pack public in Feeds to share it.</span></div>`}
         <div class="manage-screen-field">
           <div class="create-flow-label">Sources</div>
           <div class="tile-sheet-sources">${chips}</div>${more}
         </div>
+        ${listedHtml}
         <button class="btn primary" id="packFollowBtn" style="width:100%; margin-top:14px;">${followLabel}</button>
         ${packShareButtonHtml(mix)}
         <button class="btn" id="packMakeOwnBtn" style="width:100%; margin-top:10px;">${isSupportList ? "Make your own list of publications you support" : "Make your own RSS Pack"}</button>

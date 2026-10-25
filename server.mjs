@@ -338,6 +338,15 @@ async function initSchema() {
     // to survive restarts (e.g. "what was the last roundup post's URL") —
     // deliberately generic so future single-value bot state doesn't need
     // its own one-off table each time.
+    `CREATE TABLE IF NOT EXISTS feed_mix_listed (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      mix_id INTEGER NOT NULL,
+      name TEXT NOT NULL,
+      url TEXT NOT NULL,
+      support_url TEXT,
+      sort_order INTEGER DEFAULT 0
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_feed_mix_listed_mix ON feed_mix_listed (mix_id)`,
     `CREATE TABLE IF NOT EXISTS feed_health (
       feed_id INTEGER PRIMARY KEY,
       last_status INTEGER,
@@ -1545,6 +1554,12 @@ app.get(["/source", "/source/", "/source/index.html"], async (req, res, next) =>
         );
         total = rows.length;
         names = rows.slice(0, 4).map((r) => r.outlet);
+        if (/^\s*publications i support\s*$/i.test(mix.name || "")) {
+          // Publications listed without a feed count toward "backs N publications" too.
+          const extra = await dbAll(`SELECT name FROM feed_mix_listed WHERE mix_id = ? ORDER BY sort_order ASC, id ASC`, [mix.id]);
+          total += extra.length;
+          names = [...names, ...extra.map((r) => r.name)].slice(0, 4);
+        }
       }
       const by = packCurator(mix);
       const parts = [];
@@ -1978,6 +1993,7 @@ app.delete("/api/my/account", async (req, res) => {
     const ownedMixes = await dbAll(`SELECT id FROM feed_mixes WHERE creator_user_id = ?`, [user.id]);
     for (const mix of ownedMixes) {
       await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
+      await dbRun(`DELETE FROM feed_mix_listed WHERE mix_id = ?`, [mix.id]);
       await dbRun(`DELETE FROM feed_mix_topics WHERE mix_id = ?`, [mix.id]);
     }
     await dbRun(`DELETE FROM feed_mixes WHERE creator_user_id = ?`, [user.id]);
@@ -2991,6 +3007,54 @@ async function resolveMixSources(mix, { includePending = false } = {}) {
   };
 }
 
+// ---------- Publications a reader backs that have no RSS feed ----------
+// Only the reader's "Publications I Support" list can hold these. They are a name and a
+// website (plus an optional Support link) the reader typed: never fetched, never part of
+// Read, the RSS output or OPML export. Shown as plain text links on the list and its Pack page.
+const LISTED_CAP = 25;
+const isSupportListName = (name) => /^\s*publications i support\s*$/i.test(name || "");
+function cleanListedUrl(raw, label) {
+  let t = String(raw || "").trim();
+  if (!t) return { value: null };
+  if (!/^https?:\/\//i.test(t)) t = "https://" + t;
+  if (t.length > 300) return { error: `${label} is too long.` };
+  let u;
+  try { u = new URL(t); } catch { return { error: `${label} isn't a valid web address.` }; }
+  if (!/^https?:$/.test(u.protocol) || u.username || u.password) return { error: `${label} isn't a valid web address.` };
+  const h = u.hostname;
+  if (!h.includes(".") || /^[\d.]+$/.test(h) || h.includes(":") || /(^|\.)(localhost|local|internal)$/i.test(h)) return { error: `${label} isn't a valid web address.` };
+  u.hash = "";
+  return { value: u.toString() };
+}
+function cleanListed(raw) {
+  if (raw === undefined) return { value: undefined };
+  if (!Array.isArray(raw)) return { error: "listed must be a list." };
+  if (raw.length > LISTED_CAP) return { error: `You can list up to ${LISTED_CAP} publications without a feed.` };
+  const out = [];
+  const seen = new Set();
+  for (const r of raw) {
+    const name = String(r?.name || "").replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+    if (!name) return { error: "Each publication needs a name." };
+    const site = cleanListedUrl(r?.url, "The website");
+    if (site.error) return { error: site.error };
+    if (!site.value) return { error: `Add a website for ${name}.` };
+    const sup = cleanListedUrl(r?.support_url, "The Support link");
+    if (sup.error) return { error: sup.error };
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, url: site.value, support_url: sup.value });
+  }
+  return { value: out };
+}
+async function saveListed(mixId, listed) {
+  await dbRun(`DELETE FROM feed_mix_listed WHERE mix_id = ?`, [mixId]);
+  for (let i = 0; i < listed.length; i++) {
+    await dbRun(`INSERT INTO feed_mix_listed (mix_id, name, url, support_url, sort_order) VALUES (?, ?, ?, ?, ?)`,
+      [mixId, listed[i].name, listed[i].url, listed[i].support_url, i]);
+  }
+}
+
 app.post("/api/mixes", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
@@ -3003,7 +3067,11 @@ app.post("/api/mixes", async (req, res) => {
   if (bl.error) return res.status(400).json({ error: bl.error });
 
   if (!name) return res.status(400).json({ error: "name is required" });
-  if (sources.length === 0) return res.status(400).json({ error: "a mix needs at least one source" });
+  const lc = cleanListed(req.body?.listed);
+  if (lc.error) return res.status(400).json({ error: lc.error });
+  const listedNew = lc.value || [];
+  if (listedNew.length && !isSupportListName(name)) return res.status(400).json({ error: "Only the Publications I Support list can hold publications without a feed." });
+  if (sources.length === 0 && listedNew.length === 0) return res.status(400).json({ error: "a mix needs at least one source" });
   if (sources.length > MIX_SOURCE_CAP) return res.status(400).json({ error: `mixes are capped at ${MIX_SOURCE_CAP} sources` });
 
   // Topics are optional (a mix can carry several, or none), but every one
@@ -3046,6 +3114,7 @@ app.post("/api/mixes", async (req, res) => {
       [info.lastInsertRowid, v.source_type, v.outlet, v.custom_source_id, i]
     );
   }
+  if (listedNew.length) await saveListed(info.lastInsertRowid, listedNew);
   for (const tid of topicIds) {
     await dbRun(`INSERT OR IGNORE INTO feed_mix_topics (mix_id, topic_id) VALUES (?, ?)`, [info.lastInsertRowid, tid]);
   }
@@ -3073,6 +3142,11 @@ app.put("/api/mixes/:slug", async (req, res) => {
     if (bl.error) return res.status(400).json({ error: bl.error });
     byline = bl.value;
   }
+  const lcPut = cleanListed(req.body?.listed);
+  if (lcPut.error) return res.status(400).json({ error: lcPut.error });
+  if (lcPut.value && lcPut.value.length && !isSupportListName(name)) return res.status(400).json({ error: "Only the Publications I Support list can hold publications without a feed." });
+  const listedCountAfter = lcPut.value !== undefined ? lcPut.value.length
+    : (await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_listed WHERE mix_id = ?`, [mix.id])).n;
 
   await dbRun(
     `UPDATE feed_mixes SET name = ?, location_label = ?, is_public = ?, byline = ?, updated_at = datetime('now') WHERE id = ?`,
@@ -3097,7 +3171,7 @@ app.put("/api/mixes/:slug", async (req, res) => {
   // re-send the whole source list.
   if (Array.isArray(req.body?.sources)) {
     const sources = req.body.sources;
-    if (sources.length === 0) return res.status(400).json({ error: "a mix needs at least one source" });
+    if (sources.length === 0 && listedCountAfter === 0) return res.status(400).json({ error: "a mix needs at least one source" });
     if (sources.length > capFor(mix)) return res.status(400).json({ error: `mixes are capped at ${capFor(mix)} sources` });
     const validated = [];
     for (const s of sources) {
@@ -3129,6 +3203,7 @@ app.put("/api/mixes/:slug", async (req, res) => {
     }
   }
 
+  if (lcPut.value !== undefined) await saveListed(mix.id, lcPut.value);
   res.json({ ok: true, slug: mix.slug });
 });
 
@@ -3148,6 +3223,7 @@ app.delete("/api/mixes/:slug", async (req, res) => {
   if (mix.creator_user_id !== user.id) return res.status(403).json({ error: "not your mix" });
 
   await dbRun(`DELETE FROM feed_mix_sources WHERE mix_id = ?`, [mix.id]);
+  await dbRun(`DELETE FROM feed_mix_listed WHERE mix_id = ?`, [mix.id]);
   await dbRun(`DELETE FROM feed_mix_topics WHERE mix_id = ?`, [mix.id]);
   // Unpin it from anyone's Read-toggle bar (including other readers who'd
   // pinned this reader's public RSS Pack, not just the owner) and reset
@@ -3211,9 +3287,13 @@ app.get("/api/mixes/:slug", async (req, res) => {
     [mix.id]
   );
   const { sources, items } = await resolveMixSources(mix, { includePending: isOwner });
+  const listed = isSupportListName(mix.name)
+    ? await dbAll(`SELECT name, url, support_url FROM feed_mix_listed WHERE mix_id = ? ORDER BY sort_order ASC, id ASC`, [mix.id])
+    : [];
   res.json({
     slug: mix.slug,
     name: mix.name,
+    listed,
     location_label: mix.location_label,
     is_public: !!mix.is_public,
     is_owner: isOwner,
