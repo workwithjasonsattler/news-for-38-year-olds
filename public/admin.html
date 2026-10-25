@@ -78,6 +78,23 @@
     <table><thead><tr><th>Site</th><th>Shared by</th><th>Latest link</th><th></th></tr></thead><tbody id="risingRows"></tbody></table>
   </div>
 
+  <div class="panel" id="doctorPanel">
+    <h2 style="font-family:var(--mono);font-size:14px;">SOURCE DOCTOR</h2>
+    <p style="font-size:12px;color:#666;margin:0 0 10px;">Checks every feed in the registry, then looks on each outlet's own site for a place to support it. Nothing changes until you approve a link. Corporate outlets are skipped. The scan runs in small batches and takes a few minutes the first time.</p>
+    <div style="margin-bottom:10px;font-family:var(--mono);font-size:12px;">
+      <button type="button" onclick="scanDoctor(true)">Scan all feeds</button>
+      <button type="button" onclick="scanDoctor(false)">Scan what's due</button>
+      <button type="button" onclick="loadDoctor()">Show results</button>
+    </div>
+    <div id="doctorNote" style="font-size:11px;color:#666;margin-bottom:8px;"></div>
+    <h3 style="font-family:var(--mono);font-size:12px;">SUPPORT LINKS TO APPROVE</h3>
+    <table><thead><tr><th>Outlet</th><th>Link</th><th>Where it was found</th><th></th></tr></thead><tbody id="doctorProposals"></tbody></table>
+    <h3 style="font-family:var(--mono);font-size:12px;">FEED HEALTH (WORST FIRST)</h3>
+    <table><thead><tr><th>Outlet</th><th>Result</th><th>Newest item</th><th>Note</th></tr></thead><tbody id="doctorHealth"></tbody></table>
+    <h3 style="font-family:var(--mono);font-size:12px;">SAME SITE ON MORE THAN ONE ROW</h3>
+    <div id="doctorDupes" style="font-size:12px;"></div>
+  </div>
+
   <div class="panel" id="statsPanel">
     <h2 style="font-family:var(--mono);font-size:14px;">STATS</h2>
     <p style="font-size:12px;color:#666;margin:0 0 10px;">Dispatch totals, clicks, and top stories. Loads on request because it scans every dispatch and click.</p>
@@ -310,6 +327,52 @@ async function loadRising(refresh){
 async function ignoreRising(host){
   await fetch('/api/admin/rising/ignore', {method:'POST', headers: authHeaders(), body: JSON.stringify({host})});
   await loadRising(false);
+}
+
+const DOCTOR_LABEL = {ok:'OK', stale:'Stale', gone:'Gone (404)', blocked:'Blocked (403/402)', broken_xml:'Broken XML', error:'Server error', timeout:'Timed out', network:'Unreachable'};
+async function scanDoctor(all){
+  const note = document.getElementById('doctorNote');
+  const since = all ? new Date().toISOString() : undefined;
+  let total = 0;
+  for (let i = 0; i < 60; i++) {
+    note.textContent = 'Scanning... ' + total + ' checked so far.';
+    let res;
+    try { res = await fetch('/api/admin/doctor/scan', {method:'POST', headers: authHeaders(), body: JSON.stringify({since})}); } catch (e) { note.textContent = 'Lost connection after ' + total + ' feeds. Press the button again to continue.'; return; }
+    if (!res.ok) { note.textContent = 'Scan stopped after ' + total + ' feeds. Press the button again to continue.'; break; }
+    const d = await res.json();
+    total += d.scanned;
+    if (d.remaining === 0 || d.scanned === 0) break;
+  }
+  await loadDoctor();
+  note.textContent = 'Checked ' + total + ' feeds. ' + note.textContent;
+}
+async function loadDoctor(){
+  const note = document.getElementById('doctorNote');
+  const res = await fetch('/api/admin/doctor', {headers: authHeaders()});
+  if (!res.ok) { note.textContent = 'Could not load. Try again.'; return; }
+  const d = await res.json();
+  const c = d.counts || {};
+  note.textContent = d.scanned + ' of ' + d.total_feeds + ' feeds scanned. ' + Object.keys(DOCTOR_LABEL).filter(k => c[k]).map(k => c[k] + ' ' + DOCTOR_LABEL[k].toLowerCase()).join(', ') + '. ' + d.without_support + ' outlets still have no Support link. Stale means no new item in ' + d.stale_days + ' days.';
+  document.getElementById('doctorProposals').innerHTML = d.proposals.map(p => `
+    <tr>
+      <td>${esc(p.outlet)}<div style="font-size:10px;color:#666;">${p.kind === 'tip_url' ? 'tip' : 'subscribe'}</div></td>
+      <td><a class="link-cell" href="${esc(p.value)}" target="_blank" rel="noopener">${esc(p.value)}</a></td>
+      <td style="color:#444;">${esc(p.found_at)}</td>
+      <td><button type="button" onclick="doctorDecide(${p.id}, 'approve')">Approve</button> <button type="button" class="btn-danger" onclick="doctorDecide(${p.id}, 'reject')">Reject</button></td>
+    </tr>`).join('') || '<tr><td colspan="4" style="color:#666;">No links waiting.</td></tr>';
+  document.getElementById('doctorHealth').innerHTML = d.health.filter(h => h.bucket !== 'ok').concat(d.health.filter(h => h.bucket === 'ok').slice(0, 0)).map(h => `
+    <tr>
+      <td>${esc(h.outlet)}</td>
+      <td>${esc(DOCTOR_LABEL[h.bucket] || h.bucket)}${h.fail_count > 1 ? ' (x' + h.fail_count + ')' : ''}</td>
+      <td style="color:#444;">${h.newest_item_at ? new Date(h.newest_item_at).toLocaleDateString() : ''}</td>
+      <td style="color:#444;">${esc(h.note || '')}</td>
+    </tr>`).join('') || '<tr><td colspan="4" style="color:#666;">Every scanned feed is healthy.</td></tr>';
+  document.getElementById('doctorDupes').innerHTML = d.duplicates.map(x => '<div><b>' + esc(x.domain) + '</b>: ' + x.rows.map(r => esc(r.outlet)).join(', ') + '</div>').join('') || 'None found.';
+}
+async function doctorDecide(id, action){
+  const res = await fetch('/api/admin/doctor/proposals/' + id + '/' + action, {method:'POST', headers: authHeaders()});
+  if (!res.ok) { const e = await res.json().catch(() => ({})); alert(e.error || 'Could not save.'); }
+  await loadDoctor();
 }
 
 async function showAdmin(){

@@ -338,6 +338,29 @@ async function initSchema() {
     // to survive restarts (e.g. "what was the last roundup post's URL") —
     // deliberately generic so future single-value bot state doesn't need
     // its own one-off table each time.
+    `CREATE TABLE IF NOT EXISTS feed_health (
+      feed_id INTEGER PRIMARY KEY,
+      last_status INTEGER,
+      bucket TEXT,
+      last_checked_at TEXT,
+      fail_count INTEGER DEFAULT 0,
+      newest_item_at TEXT,
+      note TEXT,
+      domain TEXT,
+      platform TEXT,
+      site_title TEXT,
+      site_description TEXT
+    )`,
+    `CREATE TABLE IF NOT EXISTS feed_proposals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      feed_id INTEGER NOT NULL,
+      kind TEXT NOT NULL,
+      value TEXT NOT NULL,
+      found_at TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      created_at TEXT,
+      UNIQUE(feed_id, kind, value)
+    )`,
     `CREATE TABLE IF NOT EXISTS bot_state (
       key TEXT PRIMARY KEY,
       value TEXT
@@ -6520,6 +6543,252 @@ app.post("/api/admin/rising/ignore", requireAdmin, async (req, res) => {
   if (!ignored.includes(key)) ignored.push(key);
   await dbRun(`INSERT INTO bot_state (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [RISING_IGNORED_KEY, JSON.stringify(ignored.slice(-500))]);
   res.json({ ok: true, ignored: ignored.length });
+});
+
+// ---------- Source Doctor (admin only): feed health + Support-link proposals ----------
+// Slice 1: health scan of every approved registry feed. Slice 3: Support-link
+// proposals found on each outlet's own site. Nothing here changes the feeds
+// table until an admin approves a proposal. Reuses fetchWithSSRFGuard, so the
+// same private-address blocking applies. Admin-only, no reader data touched.
+const DOCTOR_BATCH_DEFAULT = 12;
+const DOCTOR_BATCH_MAX = 30;
+const DOCTOR_CONCURRENCY = 4;
+const DOCTOR_STALE_DAYS = parseInt(process.env.DOCTOR_STALE_DAYS, 10) || 60;
+const DOCTOR_PAGE_CAP = 400 * 1024; // homepage bytes scanned for Support links and metadata
+const DOCTOR_RECHECK_HOURS = 20; // a feed checked within this window is skipped by "scan next batch" unless force=1
+
+function doctorHost(u) {
+  try { return new URL(u).hostname.toLowerCase().replace(/^www\./, ""); } catch { return null; }
+}
+function doctorClassify(status, errKind, itemCount, newestAt) {
+  if (errKind) return errKind; // "timeout" | "network"
+  if (status === 404 || status === 410) return "gone";
+  if (status === 401 || status === 402 || status === 403 || status === 429) return "blocked";
+  if (status >= 500) return "error";
+  if (status < 200 || status >= 400) return "error";
+  if (itemCount === 0) return "broken_xml";
+  if (newestAt && Date.now() - newestAt > DOCTOR_STALE_DAYS * 86400000) return "stale";
+  return "ok";
+}
+function doctorPlatform(host, html) {
+  const h = String(host || "");
+  if (/(^|\.)substack\.com$/.test(h) || /substackcdn\.com/i.test(html)) return "substack";
+  if (/beehiiv\.com/i.test(html) && /beehiiv/i.test(html.slice(0, 20000))) return "beehiiv";
+  if (/<meta[^>]+generator[^>]+ghost/i.test(html) || /\.ghost\.io$/.test(h)) return "ghost";
+  if (/<meta[^>]+generator[^>]+wordpress/i.test(html) || /wp-content\//i.test(html)) return "wordpress";
+  if (/patreon\.com$/.test(h)) return "patreon";
+  return html ? "custom" : null;
+}
+function doctorMeta(html) {
+  const pick = (re) => { const m = html.match(re); return m ? decodeEntities(m[1]).slice(0, 300) : null; };
+  const title = pick(/<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']+)["']/i)
+    || pick(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:site_name["']/i)
+    || pick(/<title[^>]*>([^<]{1,200})<\/title>/i);
+  const description = pick(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']+)["']/i)
+    || pick(/<meta[^>]+content=["']([^"']+)["'][^>]+name=["']description["']/i)
+    || pick(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']+)["']/i);
+  return { title, description };
+}
+
+// Finds Support-link candidates in a homepage's anchors. Returns
+// [{kind:'tip_url'|'subscribe_url', value, found}] best first, max 3.
+function doctorSupportCandidates(html, baseUrl, feedUrl) {
+  const out = [];
+  const seen = new Set();
+  const baseHost = doctorHost(baseUrl);
+  const add = (kind, value, found) => {
+    let u;
+    try { u = new URL(value, baseUrl); } catch { return; }
+    if (!/^https?:$/.test(u.protocol)) return;
+    u.hash = "";
+    for (const k of [...u.searchParams.keys()]) if (/^(utm_|fbclid|gclid|ref$)/i.test(k)) u.searchParams.delete(k);
+    const v = u.toString();
+    if (v.length > 300 || seen.has(v)) return;
+    seen.add(v);
+    out.push({ kind, value: v, found });
+  };
+  // Platform-derived guess first: a *.substack.com feed always has /subscribe.
+  const fh = doctorHost(feedUrl);
+  if (fh && /(^|\.)substack\.com$/.test(fh)) add("subscribe_url", `https://${fh}/subscribe`, "derived from the Substack feed address");
+
+  const anchors = html.match(/<a\b[^>]*\bhref\s*=\s*["'][^"']+["'][^>]*>/gi) || [];
+  for (const tag of anchors) {
+    const hm = tag.match(/\bhref\s*=\s*["']([^"']+)["']/i);
+    if (!hm) continue;
+    let u;
+    try { u = new URL(decodeEntities(hm[1]), baseUrl); } catch { continue; }
+    if (!/^https?:$/.test(u.protocol)) continue;
+    const host = u.hostname.toLowerCase().replace(/^www\./, "");
+    const path = u.pathname.toLowerCase();
+    const where = `link on ${baseHost || "the homepage"}`;
+    if (/share|intent|sharer/i.test(u.pathname + u.search)) continue;
+    if (host === "patreon.com" && path.length > 1 && !/^\/(posts|login|signup|c\/|about|policy|home)/.test(path)) add("tip_url", u.toString(), `Patreon ${where}`);
+    else if (host === "ko-fi.com" && path.length > 1) add("tip_url", u.toString(), `Ko-fi ${where}`);
+    else if (host === "buymeacoffee.com" && path.length > 1) add("tip_url", u.toString(), `Buy Me a Coffee ${where}`);
+    else if (host === "opencollective.com" && path.length > 1) add("tip_url", u.toString(), `Open Collective ${where}`);
+    else if (host === baseHost || host.endsWith("." + (baseHost || "~"))) {
+      if (/^\/(donate|give|contribute|support|support-us|membership)\/?$/.test(path)) add(/membership/.test(path) ? "subscribe_url" : "tip_url", u.toString(), `"${path.replace(/\//g, "")}" page ${where}`);
+      else if (/^\/(subscribe|subscribe\/|join|become-a-member)\/?$/.test(path)) add("subscribe_url", u.toString(), `"${path.replace(/\//g, "")}" page ${where}`);
+    }
+  }
+  // Prefer one tip and one subscribe, tips first (a tip jar is the closer match to "Support").
+  const tip = out.filter((c) => c.kind === "tip_url").slice(0, 2);
+  const sub = out.filter((c) => c.kind === "subscribe_url").slice(0, 1);
+  return [...tip, ...sub];
+}
+
+async function doctorScanOne(feed) {
+  const row = { feed_id: feed.id, status: null, bucket: null, newest: null, note: null, domain: doctorHost(feed.feed_url), platform: null, title: null, description: null };
+  let xml = null, parsed = null, items = [];
+  let errKind = null;
+  try {
+    const r = await fetchWithSSRFGuard(feed.feed_url, { timeoutMs: 8000 });
+    row.status = r.status;
+    if (r.ok) {
+      xml = await readCappedText(r, 3 * 1024 * 1024);
+      try { parsed = xmlParser.parse(xml); items = extractItems(parsed).filter((it) => it.title && it.link); }
+      catch (e) { row.note = "XML didn't parse: " + String(e.message || e).slice(0, 120); }
+    } else { try { r.body?.cancel(); } catch {} }
+  } catch (e) {
+    errKind = /timeout|abort/i.test(String(e.name) + String(e.message)) ? "timeout" : "network";
+    row.note = String(e.message || e).slice(0, 140);
+  }
+  let newestAt = null;
+  for (const it of items.slice(0, 10)) { const t = Date.parse(it.pubDate); if (!isNaN(t) && (!newestAt || t > newestAt)) newestAt = t; }
+  row.newest = newestAt ? new Date(newestAt).toISOString() : null;
+  row.bucket = doctorClassify(row.status, errKind, items.length, newestAt);
+
+  // Slice 3 + metadata: only for feeds that respond, to keep the fetch count down.
+  const proposals = [];
+  if (row.status && row.status < 400 && parsed) {
+    const ch = parsed?.rss?.channel;
+    let home = ch ? textOf(ch.link) : "";
+    if (!home && parsed?.feed) {
+      const links = Array.isArray(parsed.feed.link) ? parsed.feed.link : [parsed.feed.link].filter(Boolean);
+      const alt = links.find((l) => l && l["@_rel"] === "alternate") || links[0];
+      home = (alt && alt["@_href"]) || "";
+    }
+    try { home = new URL(home).toString(); } catch { try { home = new URL(feed.feed_url).origin + "/"; } catch { home = ""; } }
+    row.domain = doctorHost(home) || row.domain;
+    const needsSupport = !feed.tip_url && !feed.subscribe_url && !feed.is_corporate;
+    try {
+      const pr = await fetchWithSSRFGuard(home, { timeoutMs: 8000 });
+      if (pr.ok) {
+        const html = await readCappedText(pr, DOCTOR_PAGE_CAP);
+        const meta = doctorMeta(html);
+        row.title = meta.title || (ch ? textOf(ch.title) : null);
+        row.description = meta.description || (ch ? textOf(ch.description) : null);
+        row.platform = doctorPlatform(row.domain, html);
+        if (needsSupport) proposals.push(...doctorSupportCandidates(html, home, feed.feed_url).map((c) => ({ ...c, found_at: `${c.found} (${home})` })));
+      } else { try { pr.body?.cancel(); } catch {} }
+    } catch { /* homepage unreachable: health result still stands */ }
+    if (!row.title && ch) row.title = textOf(ch.title);
+    if (needsSupport && proposals.length === 0) {
+      const d = doctorSupportCandidates("", home, feed.feed_url); // platform-derived only
+      proposals.push(...d.map((c) => ({ ...c, found_at: `${c.found} (${feed.feed_url})` })));
+    }
+  }
+  return { row, proposals };
+}
+
+async function doctorSave({ row, proposals }) {
+  const prev = await dbGet(`SELECT fail_count FROM feed_health WHERE feed_id = ?`, [row.feed_id]);
+  const fails = row.bucket === "ok" || row.bucket === "stale" ? 0 : (prev?.fail_count || 0) + 1;
+  await dbRun(
+    `INSERT INTO feed_health (feed_id, last_status, bucket, last_checked_at, fail_count, newest_item_at, note, domain, platform, site_title, site_description)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?)
+     ON CONFLICT(feed_id) DO UPDATE SET last_status=excluded.last_status, bucket=excluded.bucket, last_checked_at=excluded.last_checked_at,
+       fail_count=excluded.fail_count, newest_item_at=excluded.newest_item_at, note=excluded.note, domain=excluded.domain,
+       platform=COALESCE(excluded.platform, feed_health.platform), site_title=COALESCE(excluded.site_title, feed_health.site_title),
+       site_description=COALESCE(excluded.site_description, feed_health.site_description)`,
+    [row.feed_id, row.status, row.bucket, new Date().toISOString(), fails, row.newest, row.note, row.domain, row.platform, row.title, row.description]
+  );
+  for (const p of proposals) {
+    await dbRun(
+      `INSERT OR IGNORE INTO feed_proposals (feed_id, kind, value, found_at, status, created_at) VALUES (?,?,?,?, 'pending', ?)`,
+      [row.feed_id, p.kind, p.value, p.found_at, new Date().toISOString()]
+    );
+  }
+}
+
+// One batch per call: the oldest-checked (or never-checked) feeds first. The
+// admin page calls this repeatedly until `remaining` is 0, so no request runs long.
+app.post("/api/admin/doctor/scan", requireAdmin, async (req, res) => {
+  const limit = Math.min(Math.max(parseInt(req.body?.limit, 10) || DOCTOR_BATCH_DEFAULT, 1), DOCTOR_BATCH_MAX);
+  const force = req.body?.force === true || req.body?.force === 1;
+  const startedAt = req.body?.since || null; // ISO time the admin's full pass began; feeds checked after it are done
+  try {
+    const cutoff = startedAt || (force ? new Date().toISOString() : new Date(Date.now() - DOCTOR_RECHECK_HOURS * 3600000).toISOString());
+    const where = `f.feed_url IS NOT NULL AND f.feed_url <> '' AND f.feed_type <> 'journalist' AND COALESCE(f.submission_status,'approved') = 'approved'
+       AND (h.last_checked_at IS NULL OR h.last_checked_at < ?)`;
+    const due = await dbAll(
+      `SELECT f.* FROM feeds f LEFT JOIN feed_health h ON h.feed_id = f.id WHERE ${where} ORDER BY h.last_checked_at IS NOT NULL, h.last_checked_at ASC, f.id ASC LIMIT ?`,
+      [cutoff, limit]
+    );
+    let done = 0;
+    const queue = [...due];
+    const workers = Array.from({ length: Math.min(DOCTOR_CONCURRENCY, queue.length) }, async () => {
+      while (queue.length) {
+        const f = queue.shift();
+        try { await doctorSave(await doctorScanOne(f)); done++; }
+        catch (e) { console.error(`[doctor] ${f.outlet}: ${e.message}`); }
+      }
+    });
+    await Promise.all(workers);
+    const left = await dbGet(`SELECT COUNT(*) AS n FROM feeds f LEFT JOIN feed_health h ON h.feed_id = f.id WHERE ${where}`, [cutoff]);
+    res.json({ scanned: done, remaining: left.n, cutoff });
+  } catch (e) {
+    console.error("[doctor] scan failed:", e?.message || e);
+    res.status(500).json({ error: "Scan failed. Try again." });
+  }
+});
+
+app.get("/api/admin/doctor", requireAdmin, async (req, res) => {
+  try {
+    const health = await dbAll(
+      `SELECT f.id, f.outlet, f.feed_url, f.is_corporate, f.tip_url, f.subscribe_url, h.last_status, h.bucket, h.last_checked_at, h.fail_count,
+              h.newest_item_at, h.note, h.domain, h.platform, h.site_title, h.site_description
+       FROM feed_health h JOIN feeds f ON f.id = h.feed_id ORDER BY f.outlet ASC`
+    );
+    const order = { gone: 0, broken_xml: 1, error: 2, timeout: 3, network: 3, blocked: 4, stale: 5, ok: 6 };
+    health.sort((a, b) => (order[a.bucket] ?? 9) - (order[b.bucket] ?? 9) || a.outlet.localeCompare(b.outlet));
+    const counts = {};
+    for (const h of health) counts[h.bucket] = (counts[h.bucket] || 0) + 1;
+    const proposals = await dbAll(
+      `SELECT p.id, p.feed_id, p.kind, p.value, p.found_at, p.created_at, f.outlet FROM feed_proposals p JOIN feeds f ON f.id = p.feed_id
+       WHERE p.status = 'pending' AND COALESCE(f.is_corporate,0) = 0 AND ((p.kind='tip_url' AND COALESCE(f.tip_url,'')='') OR (p.kind='subscribe_url' AND COALESCE(f.subscribe_url,'')='')) ORDER BY f.outlet ASC, p.kind ASC`
+    );
+    // Same domain on more than one row: flagged for review, never merged here.
+    const byDomain = new Map();
+    for (const h of health) if (h.domain) { const a = byDomain.get(h.domain) || []; a.push({ id: h.id, outlet: h.outlet }); byDomain.set(h.domain, a); }
+    const duplicates = [...byDomain].filter(([, v]) => v.length > 1).map(([domain, rows]) => ({ domain, rows }));
+    const totals = await dbGet(
+      `SELECT COUNT(*) AS n FROM feeds WHERE feed_url IS NOT NULL AND feed_url <> '' AND feed_type <> 'journalist' AND COALESCE(submission_status,'approved')='approved'`
+    );
+    const missing = await dbGet(`SELECT COUNT(*) AS n FROM feeds WHERE COALESCE(tip_url,'')='' AND COALESCE(subscribe_url,'')='' AND COALESCE(is_corporate,0)=0`);
+    res.json({ total_feeds: totals.n, scanned: health.length, counts, stale_days: DOCTOR_STALE_DAYS, without_support: missing.n, health, proposals, duplicates });
+  } catch (e) {
+    console.error("[doctor] list failed:", e?.message || e);
+    res.status(500).json({ error: "Couldn't load." });
+  }
+});
+
+app.post("/api/admin/doctor/proposals/:id/approve", requireAdmin, async (req, res) => {
+  const p = await dbGet(`SELECT * FROM feed_proposals WHERE id = ? AND status = 'pending'`, [parseInt(req.params.id, 10)]);
+  if (!p) return res.status(404).json({ error: "Proposal not found." });
+  if (p.kind !== "tip_url" && p.kind !== "subscribe_url") return res.status(400).json({ error: "Unsupported proposal." });
+  if (!/^https?:\/\//i.test(p.value)) return res.status(400).json({ error: "Not an http(s) link." });
+  const f = await dbGet(`SELECT id, tip_url, subscribe_url, is_corporate FROM feeds WHERE id = ?`, [p.feed_id]);
+  if (!f) return res.status(404).json({ error: "Outlet is gone." });
+  if (f[p.kind]) return res.status(409).json({ error: "That outlet already has a link in that field." });
+  // p.kind is one of two fixed column names, checked above.
+  await dbRun(`UPDATE feeds SET ${p.kind} = ? WHERE id = ?`, [p.value, p.feed_id]);
+  await dbRun(`UPDATE feed_proposals SET status = 'approved' WHERE id = ?`, [p.id]);
+  res.json({ ok: true });
+});
+app.post("/api/admin/doctor/proposals/:id/reject", requireAdmin, async (req, res) => {
+  const info = await dbRun(`UPDATE feed_proposals SET status = 'rejected' WHERE id = ? AND status = 'pending'`, [parseInt(req.params.id, 10)]);
+  res.json({ ok: true });
 });
 
 app.get("/api/admin/usage", requireAdmin, async (req, res) => {
