@@ -7300,7 +7300,19 @@ async function importAllFeeds() {
       const beatKeywords = JSON.parse(feed.beat_keywords || "{}");
       const items = extractItems(parsed).slice(0, feed.items_per_feed || 3);
       let feedAdded = 0;
+      // Most items are already stored, and Turso counts even an ignored INSERT as a row
+      // written. One indexed read per feed tells us which links are known, so only new
+      // items are written. (Reads have a far larger monthly allowance than writes.)
+      const links = [...new Set(items.map((it) => it.link).filter(Boolean))];
+      let known = new Set();
+      if (links.length) {
+        try {
+          const rows = await dbAll(`SELECT link FROM dispatches WHERE link IN (${links.map(() => "?").join(",")})`, links);
+          known = new Set(rows.map((r) => r.link));
+        } catch { /* if the check fails, fall back to trying every insert, as before */ }
+      }
       for (const item of items) {
+        if (item.link && known.has(item.link)) continue;
         const headline = stripHtml(item.title);
         const excerpt = truncate(item.isAudio ? cleanPodcastText(item.summary) : stripHtml(item.summary), 160);
         if (!headline || !item.link) continue;
