@@ -17,7 +17,14 @@
     else localStorage.removeItem(TOKEN_KEY);
   }
 
+  // The service worker answers these data endpoints from its cache straight away and only
+  // refreshes the cache for the NEXT request, so a plain re-fetch shows the previous copy.
+  // The Refresh button turns forceFresh on, and a query string makes the worker step aside
+  // and let the request go to the network.
+  const SWR_DATA_PATHS = new Set(["/api/dispatches", "/api/actions-feed", "/api/nerve-center/bluesky", "/api/nerve-center/chatter", "/api/sources", "/api/video-feed"]);
+  let forceFresh = false;
   async function api(path, opts = {}) {
+    if (forceFresh && SWR_DATA_PATHS.has(path) && !opts.method) path += "?fresh=" + Date.now();
     const headers = Object.assign({}, opts.headers || {});
     const token = getToken();
     if (token) headers["Authorization"] = "Bearer " + token;
@@ -6310,12 +6317,14 @@
     if (refreshBtn) {
       refreshBtn.addEventListener("click", async () => {
         refreshBtn.classList.add("spinning");
+        forceFresh = true;
         try {
           await renderActiveTab();
           toast("Refreshed");
         } catch (e) {
           toast("Couldn't refresh — try again.");
         } finally {
+          forceFresh = false;
           refreshBtn.classList.remove("spinning");
         }
       });
