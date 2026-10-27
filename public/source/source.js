@@ -1990,7 +1990,15 @@
   const REL_STOP = new Set(("a an and are as at be been but by for from has have had he her his how if in into is it its more new not of on or our out over " +
     "says say said she that the their them they this to up us was we were what when who why will with you your after about amid against can could would " +
     "should may might than then there these those just also now one two get gets got make makes first last year years day days week report reports " +
-    "according could here still very much many most some any all off down back says-it").split(" "));
+    "according could here still very much many most some any all off down back says-it " +
+    "tells tell told claims claim asks ask wants want calls call urges urge pushes push gets keeps keep").split(" "));
+  // Words so common on this wire that sharing them says nothing about whether
+  // two stories are the same story. They may help a link, but never make one
+  // alone: a pair of stories needs at least one shared term outside this set.
+  // Keys are in the normalized (lowercase, plural-stripped) form relTerms makes.
+  const REL_GENERIC = new Set(("trump doj justice department republican democrat democratic gop congress senate house " +
+    "court judge ruling federal president white administration government state law bill lawsuit election vote voter ballot " +
+    "campaign party political politics american america national").split(" "));
   function relTerms(text) {
     const out = new Map(); // key -> display form
     const raw = String(text || "").replace(/['\u2019]s\b/g, "").match(/[A-Za-z0-9][A-Za-z0-9-]*/g) || [];
@@ -2018,8 +2026,9 @@
     const MIN_SCORE = 3.0;
     function linked(i, j) {
       let shared = 0, score = 0;
-      for (const k of info[i]) if (info[j].has(k)) { shared++; score += idf(k); }
-      return shared >= 2 && score >= MIN_SCORE;
+      let specific = 0;
+      for (const k of info[i]) if (info[j].has(k)) { shared++; score += idf(k); if (!REL_GENERIC.has(k)) specific++; }
+      return shared >= 2 && specific >= 1 && score >= MIN_SCORE;
     }
     const groups = [];
     for (let i = 0; i < n; i++) {
@@ -2040,10 +2049,11 @@
       const count = new Map();
       g.forEach(i => info[i].forEach(k => count.set(k, (count.get(k) || 0) + 1)));
       const need = Math.max(2, Math.ceil(g.length / 2));
-      const words = Array.from(count.entries()).filter(([, c]) => c >= need)
+      const words = Array.from(count.entries()).filter(([k, c]) => c >= need && !REL_GENERIC.has(k))
         .sort((a, b) => b[1] - a[1] || idf(b[0]) - idf(a[0])).slice(0, 3)
         .map(([k]) => { for (const i of g) if (terms[i].has(k)) return terms[i].get(k); return k; });
-      out.clusters.push({ label: words.join(" · ") || "Shared story", outlets, items: g.map(i => items[i]) });
+      if (!words.length) continue; // nothing specific in common: leave these in "Everything else"
+      out.clusters.push({ label: words.join(" · "), outlets, items: g.map(i => items[i]) });
       g.forEach(i => out.inCluster.add(items[i]));
     }
     out.clusters.sort((a, b) => b.outlets.length - a.outlets.length ||
