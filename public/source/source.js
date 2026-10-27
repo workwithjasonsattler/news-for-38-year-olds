@@ -1401,6 +1401,12 @@
     return { hidden: v.filter(m => m === "hidden").length, fold: v.filter(m => m === "fold").length, muted, defs };
   }
   function refreshFeedCaption() {
+    refreshFeedCaptionBase();
+    if (!relevanceActive()) return;
+    const el = document.getElementById("readPromiseCaption");
+    if (el) el.innerHTML = el.innerHTML.replace("Sorted by time.", "Sorted by relevance: stories your sources agree on come first.");
+  }
+  function refreshFeedCaptionBase() {
     const el = document.getElementById("readPromiseCaption");
     if (!el) return;
     const c = feedEditCounts();
@@ -1964,6 +1970,125 @@
     return Number.isFinite(t) && t > lastSeenAt;
   }
 
+  // ---------------------------------------------------------------
+  // Sort by relevance — a reader-chosen view, NEVER the default. It lives
+  // on the live strip ("70 new dispatches    Sort by relevance [switch]"),
+  // is session-only (every launch starts newest-first), and only applies
+  // in the Classic list (mobile and desktop). The rule is one sentence and
+  // is printed in the caption while it is on: stories covered by more of
+  // the reader's own sources come first; inside a story, newest first;
+  // everything else stays in time order underneath. Runs on the device on
+  // the list already loaded (after mutes and hidden sources were applied),
+  // so it costs no server reads and stores nothing. Bluesky and YouTube
+  // items never count toward "biggest".
+  // ---------------------------------------------------------------
+  let relevanceOn = false;
+  function relevanceAvailable() { return activeTab === "read" && getReadDisplay() === "classic"; }
+  function relevanceActive() { return relevanceOn && relevanceAvailable(); }
+
+  /* RELEVANCE-BEGIN */
+  const REL_STOP = new Set(("a an and are as at be been but by for from has have had he her his how if in into is it its more new not of on or our out over " +
+    "says say said she that the their them they this to up us was we were what when who why will with you your after about amid against can could would " +
+    "should may might than then there these those just also now one two get gets got make makes first last year years day days week report reports " +
+    "according could here still very much many most some any all off down back says-it").split(" "));
+  function relTerms(text) {
+    const out = new Map(); // key -> display form
+    const raw = String(text || "").replace(/['\u2019]s\b/g, "").match(/[A-Za-z0-9][A-Za-z0-9-]*/g) || [];
+    for (const w of raw) {
+      let k = w.toLowerCase();
+      if (k.length < 3 || REL_STOP.has(k) || /^\d+$/.test(k)) continue;
+      if (k.length > 4 && k.endsWith("s") && !k.endsWith("ss")) k = k.slice(0, -1);
+      if (!out.has(k)) out.set(k, w);
+    }
+    return out;
+  }
+  // items: newest-first. Returns { clusters: [{label, outlets, items}], inCluster: Set }.
+  // Conservative on purpose: a story joins a group only when it shares at
+  // least two uncommon words with at least half of that group's stories.
+  function relCluster(items) {
+    const n = items.length;
+    const out = { clusters: [], inCluster: new Set() };
+    if (n < 6) return out;
+    const terms = items.map(d => relTerms(d.title || d.headline || ""));
+    const df = new Map();
+    terms.forEach(m => m.forEach((_, k) => df.set(k, (df.get(k) || 0) + 1)));
+    const maxDf = Math.max(6, Math.floor(n * 0.4));
+    const idf = k => Math.log(n / df.get(k));
+    const info = terms.map(m => { const s = new Set(); m.forEach((_, k) => { const c = df.get(k); if (c >= 2 && c <= maxDf) s.add(k); }); return s; });
+    const MIN_SCORE = 3.0;
+    function linked(i, j) {
+      let shared = 0, score = 0;
+      for (const k of info[i]) if (info[j].has(k)) { shared++; score += idf(k); }
+      return shared >= 2 && score >= MIN_SCORE;
+    }
+    const groups = [];
+    for (let i = 0; i < n; i++) {
+      let best = null, bestHits = 0;
+      for (const g of groups) {
+        let hits = 0;
+        for (const j of g) if (linked(i, j)) hits++;
+        if (hits >= Math.max(1, Math.ceil(g.length / 2)) && hits > bestHits) { best = g; bestHits = hits; }
+      }
+      if (best) best.push(i); else groups.push([i]);
+    }
+    const outletOf = d => (d.outlet || d.source || "").trim();
+    for (const g of groups) {
+      if (g.length < 2) continue;
+      const outlets = [];
+      g.forEach(i => { const o = outletOf(items[i]); if (o && !outlets.includes(o)) outlets.push(o); });
+      if (outlets.length < 2) continue;
+      const count = new Map();
+      g.forEach(i => info[i].forEach(k => count.set(k, (count.get(k) || 0) + 1)));
+      const need = Math.max(2, Math.ceil(g.length / 2));
+      const words = Array.from(count.entries()).filter(([, c]) => c >= need)
+        .sort((a, b) => b[1] - a[1] || idf(b[0]) - idf(a[0])).slice(0, 3)
+        .map(([k]) => { for (const i of g) if (terms[i].has(k)) return terms[i].get(k); return k; });
+      out.clusters.push({ label: words.join(" · ") || "Shared story", outlets, items: g.map(i => items[i]) });
+      g.forEach(i => out.inCluster.add(items[i]));
+    }
+    out.clusters.sort((a, b) => b.outlets.length - a.outlets.length ||
+      new Date(b.items[0].date || 0) - new Date(a.items[0].date || 0));
+    return out;
+  }
+  /* RELEVANCE-END */
+
+  function relIsClusterable(d) {
+    return !(d.is_video || /^(bsky|yt)-/.test(String(d.id)));
+  }
+  // Entries for the Classic renderers: group headers + rows. Same entry shape
+  // as foldEntriesFor, plus { role: "group" } header rows.
+  function relevanceEntries(shown) {
+    let pool = shown.filter(d => relIsClusterable(d) && dispatchIsNew(d));
+    if (pool.length < 12) {
+      const cutoff = Date.now() - 24 * 3600 * 1000;
+      pool = shown.filter(d => relIsClusterable(d) && new Date(d.date || 0).getTime() >= cutoff);
+    }
+    pool = pool.slice(0, 400);
+    const res = relCluster(pool);
+    const entries = [];
+    res.clusters.forEach(c => {
+      entries.push({ role: "group", label: c.label, outlets: c.outlets });
+      c.items.slice().sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0)).forEach(d => entries.push({ d, role: "normal" }));
+    });
+    entries.push({ role: "group", plain: true, label: res.clusters.length ? "Everything else, newest first" : "Nothing is covered by two or more of your sources right now. Newest first." });
+    shown.forEach(d => { if (!res.inCluster.has(d)) entries.push({ d, role: "normal" }); });
+    return entries;
+  }
+  function readEntries(shown) { return relevanceActive() ? relevanceEntries(shown) : foldEntriesFor(shown, true); }
+  function relGroupHtml(e) {
+    if (e.plain) return `<div class="rel-group plain"><div class="rel-group-label">${escapeHtml(e.label)}</div></div>`;
+    const names = e.outlets.slice(0, 5).map(escapeHtml).join(", ") + (e.outlets.length > 5 ? " and others" : "");
+    return `<div class="rel-group"><div class="rel-group-label">${escapeHtml(e.label)}</div><div class="rel-group-outlets">${names}</div></div>`;
+  }
+  function setRelevance(on) {
+    relevanceOn = !!on;
+    const sw = document.getElementById("relSwitch");
+    if (sw) sw.setAttribute("aria-checked", relevanceOn ? "true" : "false");
+    refreshFeedCaption();
+    if (activeTab !== "read" || !Array.isArray(lastShown) || !lastShown.length) return;
+    getTrendingLinks().then(t => { if (activeTab === "read") renderReadBody(lastShown, t); });
+  }
+
   function updateLiveStrip(items) {
     const el = document.getElementById("liveStrip");
     const textEl = document.getElementById("liveStripText");
@@ -1973,13 +2098,24 @@
       lastSeenAt = raw ? Number(raw) : null;
       lastSeenRead = true;
     }
-    if (lastSeenAt == null) {
+    const tog = document.getElementById("relToggle");
+    const canRel = relevanceAvailable();
+    if (tog) {
+      tog.hidden = !canRel;
+      if (!tog.dataset.wired) {
+        tog.dataset.wired = "1";
+        tog.addEventListener("click", () => setRelevance(!relevanceOn));
+      }
+      const sw = document.getElementById("relSwitch");
+      if (sw) sw.setAttribute("aria-checked", relevanceActive() ? "true" : "false");
+    }
+    if (lastSeenAt == null && !canRel) {
       el.hidden = true;
     } else {
       const newCount = items.filter(dispatchIsNew).length;
       el.hidden = false;
-      textEl.textContent = newCount > 0
-        ? `${newCount} dispatch${newCount === 1 ? "" : "es"} since you last opened this`
+      textEl.textContent = lastSeenAt == null ? "Latest dispatches"
+        : newCount > 0 ? `${newCount} new dispatch${newCount === 1 ? "" : "es"}`
         : "You're caught up";
     }
     localStorage.setItem(LIVE_LAST_SEEN_KEY, String(Date.now()));
@@ -2589,7 +2725,8 @@
     const main = document.getElementById("main");
     main.classList.remove("read-layout", "read-scroll-desktop");
     main.classList.add("read-mobile-classic");
-    main.innerHTML = `<div class="mc-list">` + foldEntriesFor(shown, true).map(e => {
+    main.innerHTML = `<div class="mc-list">` + readEntries(shown).map(e => {
+      if (e.role === "group") return relGroupHtml(e);
       const d = e.d;
       const id = escapeHtml(String(d.id));
       const title = escapeHtml(d.title || d.headline || "");
@@ -2658,7 +2795,8 @@
     // to one line so a screenful shows many items at once. Denser than
     // Headlines Only's own boxed-card treatment on purpose.
     if (classicMode) {
-      feed.innerHTML = foldEntriesFor(shown, true).map(e => {
+      feed.innerHTML = readEntries(shown).map(e => {
+        if (e.role === "group") return relGroupHtml(e);
         const d = e.d;
         const active = selectedDispatch && d.id === selectedDispatch.id;
         const rowHtml = `

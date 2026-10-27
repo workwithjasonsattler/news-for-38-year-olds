@@ -3105,3 +3105,68 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 @keyframes splashRule { 0% { transform: scaleX(0); } 70% { transform: scaleX(1); } 100% { transform: scaleX(1); opacity: 0; } }
 @keyframes splashAppear { to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .source-splash.pre { display: none; } }
+
+
+/* Sort by relevance: the switch on the live strip and the group headers
+   it adds in the Classic list. Reader-chosen, never the default. */
+.live-strip { min-height: 44px; padding-top: 0; padding-bottom: 0; }
+.rel-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 0 0 8px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--body, inherit);
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+.rel-toggle[hidden] { display: none; }
+.rel-switch {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  border-radius: 12px;
+  background: var(--line);
+  border: 1px solid #C9CBC3;
+  transition: background .15s;
+  flex: none;
+}
+.rel-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.3);
+  transition: transform .15s;
+}
+.rel-switch[aria-checked="true"] { background: var(--ink); border-color: var(--ink); }
+.rel-switch[aria-checked="true"] .rel-knob { transform: translateX(16px); }
+.rel-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+.rel-group {
+  padding: 14px 18px 6px;
+  border-top: 2px solid var(--ink);
+  background: var(--bg, #fff);
+}
+.rel-group-label {
+  font-family: var(--display);
+  font-weight: 700;
+  font-size: 15px;
+  line-height: 1.25;
+  color: var(--ink);
+}
+.rel-group-outlets {
+  margin-top: 2px;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+}
+.rel-group.plain { border-top: 1px solid var(--line); padding-top: 12px; }
+.rel-group.plain .rel-group-label { font-weight: 500; font-size: 13px; color: var(--ink-muted); }
