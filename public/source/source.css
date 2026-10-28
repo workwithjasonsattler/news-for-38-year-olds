@@ -3177,3 +3177,5 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 /* Headlines Only: tap a headline to expand in place (excerpt, Read, Share, Story page). */
 .card-expand { padding: 4px 0 10px; }
 .card-expand .mc-excerpt { margin: 0 0 10px; }
+
+.story-tune { width: auto; min-height: 44px; }

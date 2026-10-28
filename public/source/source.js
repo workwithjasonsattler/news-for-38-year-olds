@@ -6179,9 +6179,23 @@
           ${storyShareButton(item)}
           ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener">💛 Support</a>` : ""}
         </div>
+        ${storyTuneHtml(item)}
       </div>`;
     wireSaveButtons(main);
     wireStoryShareButtons(main);
+  }
+
+  // Signed-in readers only (Jason's call): a visitor from a shared link has no
+  // My Feed to edit. Opens the same source sheet as the three dots on a row
+  // (Top source / Show fewer / Hide / Mute a word) via the document-level
+  // .tune-btn handler. Worded "<Outlet> in My Feed", not "Tune" (dropped as unclear).
+  function storyTuneHtml(item) {
+    if (!currentUser) return "";
+    const src = sprayableSource(item);
+    if (!src) return "";
+    return `<div class="mc-source-line" style="margin-top:14px;">
+      <button type="button" class="btn tune-btn story-tune" data-tune='${escapeHtml(JSON.stringify(src))}'>${escapeHtml(src.label)} in My Feed ⋯</button>
+    </div>`;
   }
 
   // ----- Pack share link + public Pack page (?pack=<slug>) -----
