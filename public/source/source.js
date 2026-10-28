@@ -571,9 +571,35 @@
   // installed — Bluesky, Messages, copy link, etc.) rather than a
   // SOURCE!-specific composer, so it works the same everywhere and needs
   // no new backend.
+  //
+  // UPDATE (Oct 28 2026, Jason's call): Share also appears in the EXPANDED
+  // area of a row (storyShareButton below), not only here. An expanded row
+  // has at least shown the excerpt, which was the point of the original rule.
+  // Stored items share the SOURCE! story page (/source/?story=<id>); custom
+  // feed / Bluesky / YouTube items have no stored id, so they share the
+  // article link as before.
+  function isStoredId(id) { return /^\d{1,12}$/.test(String(id ?? "")); }
+  function storyShareUrl(d) {
+    return isStoredId(d.id) ? `${location.origin}/source/?story=${encodeURIComponent(d.id)}` : (d.link || "");
+  }
   function shareButton(d) {
-    if (!d.link) return "";
-    return `<button class="btn" id="readerShareBtn" data-share-url="${escapeHtml(d.link)}" data-share-title="${escapeHtml(d.title || d.headline || "")}">Share ↗</button>`;
+    const url = storyShareUrl(d);
+    if (!url) return "";
+    return `<button class="btn" id="readerShareBtn" data-share-url="${escapeHtml(url)}" data-share-title="${escapeHtml(d.title || d.headline || "")}">Share ↗</button>`;
+  }
+  // Class-based version for rows (many on screen at once).
+  function storyShareButton(d) {
+    const url = storyShareUrl(d);
+    if (!url) return "";
+    return `<button type="button" class="mc-share story-share-btn" data-share-url="${escapeHtml(url)}" data-share-title="${escapeHtml(d.title || d.headline || "")}">Share ↗</button>`;
+  }
+  function wireStoryShareButtons(root) {
+    root.querySelectorAll(".story-share-btn").forEach(btn => {
+      btn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        doShare(btn.dataset.shareUrl, btn.dataset.shareTitle);
+      });
+    });
   }
 
   // Shared by the reader-pane Share button and the video-card Share button
@@ -2807,6 +2833,7 @@
             <div class="mc-actions">
               ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
               ${saveButton(d)}
+              ${storyShareButton(d)}
             </div>
             <div class="mc-source-line">
               <div class="mc-source-id"><span class="mc-source-label">Source</span><span class="mc-source-name">${escapeHtml((d.outlet || d.source || "").trim())}</span></div>
@@ -2844,6 +2871,7 @@
       row.querySelector(".mc-open")?.addEventListener("click", () => { mobileClassicSeen.add(row.dataset.id); row.classList.add("seen"); });
     });
     wireSaveButtons(main);
+    wireStoryShareButtons(main);
     main.querySelector(".mc-list")?.insertAdjacentHTML("beforeend", readFootnoteHtml());
   }
 
@@ -6085,6 +6113,41 @@
   // ---------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------
+  // ----- Public story page (?story=<id>) -----
+  // What a shared story link opens. Server fills og tags (see server.mjs).
+  async function renderPublicStory(id, sessionPromise) {
+    const main = document.getElementById("main");
+    main.classList.remove("read-layout", "read-scroll-desktop", "read-mobile-classic");
+    main.innerHTML = `<div class="source-single-col-screen"><div class="card"><div class="card-meta">Loading story…</div></div></div>`;
+    let d;
+    try {
+      [d] = await Promise.all([api(`/api/story/${encodeURIComponent(id)}`), sessionPromise]);
+    } catch (e) {
+      main.innerHTML = `<div class="source-single-col-screen"><div class="card"><div class="card-meta">We couldn't find that story. It may be older than what SOURCE! keeps.</div></div><a href="/source/" class="ob-whats-this" style="display:block; margin-top:16px;">← Back to SOURCE!</a></div>`;
+      return;
+    }
+    const item = { id: d.id, title: d.headline, headline: d.headline, outlet: d.outlet, date: d.date, excerpt: d.excerpt, link: d.link, image_url: d.image_url, tip_url: d.tip_url, subscribe_url: d.subscribe_url };
+    const support = tipSubscribeInfo(item);
+    main.innerHTML = `
+      <div class="source-single-col-screen story-page">
+        <a href="/source/" class="ob-whats-this" style="display:block; margin-bottom:12px;">← Back to SOURCE!</a>
+        <div class="card">
+          <div class="card-meta">${outletChip(item.outlet)}<span>${relTime(item.date)}</span></div>
+          <h2 class="manage-screen-title" style="margin:8px 0 10px;">${escapeHtml(item.title)}</h2>
+          ${item.image_url ? `<img class="mc-img loaded" alt="" src="${escapeHtml(item.image_url)}" onerror="this.remove()" style="width:100%; border-radius:6px; margin-bottom:10px;">` : ""}
+          ${item.excerpt ? `<p class="mc-excerpt">${escapeHtml(String(item.excerpt).trim().slice(0, 600))}</p>` : ""}
+        </div>
+        ${item.link ? `<a class="btn primary" style="display:block; text-align:center; margin-top:12px;" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">Read the full story at ${escapeHtml(item.outlet)} ↗</a>` : ""}
+        <div class="mc-actions" style="margin-top:12px;">
+          ${saveButton(item)}
+          ${storyShareButton(item)}
+          ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener">💛 Support</a>` : ""}
+        </div>
+      </div>`;
+    wireSaveButtons(main);
+    wireStoryShareButtons(main);
+  }
+
   // ----- Pack share link + public Pack page (?pack=<slug>) -----
   // The shareable address for an RSS Pack. The server fills in og/twitter
   // tags for this URL so a pasted link shows a real card.
@@ -6549,8 +6612,11 @@
     const bootParams = new URLSearchParams(location.search);
     const sharedSavesSlug = bootParams.get("saves");
     const sharedPackSlug = bootParams.get("pack");
+    const sharedStoryId = bootParams.get("story");
     if (sharedSavesSlug) {
       renderPublicSaves(sharedSavesSlug);
+    } else if (sharedStoryId && /^\d{1,12}$/.test(sharedStoryId)) {
+      renderPublicStory(sharedStoryId, sessionPromise);
     } else if (sharedPackSlug) {
       renderPublicPack(sharedPackSlug, sessionPromise);
     } else {

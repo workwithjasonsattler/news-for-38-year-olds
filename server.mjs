@@ -1556,8 +1556,61 @@ app.get("/nerve-center.html", (req, res) => res.redirect(301, "/source/"));
 function escAttr(str) {
   return String(str ?? "").replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+// Story page share cards: /source/?story=<dispatch id>. Same idea as the Pack
+// page: crawlers don't run JS, so put the headline in the og tags here.
+async function sendStoryShellWithCard(req, res, next, storyId) {
+  try {
+    let html = await readFile(path.join(__dirname, "public", "source", "index.html"), "utf8");
+    let title = "Story on SOURCE!";
+    let desc = "Independent news in the order it's published. No algorithm.";
+    const d = await dbGet(`SELECT headline, outlet, excerpt FROM dispatches WHERE id = ?`, [Number(storyId)]);
+    if (d) {
+      title = `${d.headline} — ${d.outlet}`.slice(0, 200);
+      const ex = String(d.excerpt || "").replace(/\s+/g, " ").trim().slice(0, 180);
+      desc = ex || `From ${d.outlet}. Shared on SOURCE!`;
+    }
+    const base = /localhost|127\.0\.0\.1/.test(SITE_URL) && req.get("host") && !/localhost|127\.0\.0\.1/.test(req.get("host"))
+      ? `${req.get("x-forwarded-proto") || "https"}://${req.get("host")}`
+      : SITE_URL;
+    const url = `${base}/source/?story=${encodeURIComponent(storyId)}`;
+    const img = `${base}/home/og.png`;
+    const t = escAttr(title), dd = escAttr(desc);
+    html = html
+      .replace(/<title>[^<]*<\/title>/, `<title>${t}</title>`)
+      .replace(/(<meta name="description" content=")[^"]*(")/, `$1${dd}$2`)
+      .replace(/(<meta property="og:title" content=")[^"]*(")/, `$1${t}$2`)
+      .replace(/(<meta property="og:description" content=")[^"]*(")/, `$1${dd}$2`)
+      .replace(/(<meta property="og:image" content=")[^"]*(")/, `$1${escAttr(img)}$2`)
+      .replace(/(<meta property="og:url" content=")[^"]*(")/, `$1${escAttr(url)}$2`)
+      .replace(/(<meta name="twitter:title" content=")[^"]*(")/, `$1${t}$2`)
+      .replace(/(<meta name="twitter:description" content=")[^"]*(")/, `$1${dd}$2`)
+      .replace(/(<meta name="twitter:image" content=")[^"]*(")/, `$1${escAttr(img)}$2`);
+    res.set("Cache-Control", "no-cache");
+    res.type("html").send(html);
+  } catch (e) {
+    next();
+  }
+}
+// One story for the story page. Public, one indexed lookup by primary key.
+app.get("/api/story/:id", async (req, res) => {
+  if (!/^\d{1,12}$/.test(req.params.id)) return res.status(400).json({ error: "bad id" });
+  try {
+    const d = await dbGet(`SELECT * FROM dispatches WHERE id = ?`, [Number(req.params.id)]);
+    if (!d) return res.status(404).json({ error: "not found" });
+    res.set("Cache-Control", "public, max-age=60");
+    res.json({
+      id: d.id, headline: d.headline, outlet: d.outlet, date: d.date, excerpt: d.excerpt || "",
+      link: d.link, image_url: d.image_url || null,
+      tip_url: d.tip_url || null, subscribe_url: d.subscribe_url || null,
+    });
+  } catch (e) {
+    res.status(500).json({ error: "lookup failed" });
+  }
+});
 app.get(["/source", "/source/", "/source/index.html"], async (req, res, next) => {
   const slug = typeof req.query.pack === "string" ? req.query.pack.trim().slice(0, 120) : "";
+  const storyId = typeof req.query.story === "string" && /^\d{1,12}$/.test(req.query.story.trim()) ? req.query.story.trim() : "";
+  if (storyId && !slug) return sendStoryShellWithCard(req, res, next, storyId);
   if (!slug) return next();
   try {
     let html = await readFile(path.join(__dirname, "public", "source", "index.html"), "utf8");

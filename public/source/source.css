@@ -2985,7 +2985,8 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .mc-body { padding: 0 16px 14px; }
 .mc-excerpt { margin: 0 0 10px; font-family: var(--body); font-size: 14px; line-height: 1.5; color: var(--ink); }
 .mc-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-.mc-open, .mc-support { font-family: var(--body); font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 999px; border: 1.5px solid var(--line); color: var(--ink); text-decoration: none; background: var(--bg); }
+.mc-open, .mc-support, .mc-share { font-family: var(--body); font-size: 13px; font-weight: 600; padding: 7px 12px; border-radius: 999px; border: 1.5px solid var(--line); color: var(--ink); text-decoration: none; background: var(--bg); }
+.mc-share { cursor: pointer; }
 .mc-open { background: var(--follow); border-color: var(--follow); color: #fff; }
 
 .mc-img-link { display: block; margin: 0 0 10px; }
@@ -3077,9 +3078,9 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .mc-source-line .mc-support { min-height: 44px; display: inline-flex; align-items: center; box-sizing: border-box; }
 
 /* Comfortable touch targets for the story-level controls */
-.tune-btn, .save-btn, .spray-add-btn, .follow-btn, .mc-open, .mc-support { min-height: 40px; }
+.tune-btn, .save-btn, .spray-add-btn, .follow-btn, .mc-open, .mc-support, .mc-share { min-height: 40px; }
 .src-menu-btn { min-height: 40px; }
-.mc-actions .mc-open, .mc-actions .save-btn { min-height: 44px; display: inline-flex; align-items: center; box-sizing: border-box; }
+.mc-actions .mc-open, .mc-actions .save-btn, .mc-actions .mc-share { min-height: 44px; display: inline-flex; align-items: center; box-sizing: border-box; }
 /* Onboarding pack groups */
 .ob-group { font-family: var(--body); font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ink-muted); margin: 18px 0 6px; }
 
