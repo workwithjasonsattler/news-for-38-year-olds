@@ -1,5 +1,5 @@
-const SHELL_CACHE = "source-app-shell-v103";
-const DATA_CACHE = "source-app-data-v103";
+const SHELL_CACHE = "source-app-shell-v104";
+const DATA_CACHE = "source-app-data-v104";
 
 const SHELL_ASSETS = [
   "/source/",

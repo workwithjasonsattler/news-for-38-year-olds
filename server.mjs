@@ -2824,7 +2824,8 @@ app.post("/api/feed-discovery", async (req, res) => {
 const MIX_SOURCE_CAP = 25; // per mix, Jason's call
 const MY_FEED_SOURCE_CAP = 500; // My Feed snapshots every Headlines outlet, so it is exempt from MIX_SOURCE_CAP
 const capFor = (mix) => (mix && mix.is_my_feed ? MY_FEED_SOURCE_CAP : MIX_SOURCE_CAP);
-const FEED_MODES = new Set(["on", "fold", "hidden"]);
+const FEED_MODES = new Set(["on", "fold", "hidden", "top"]);
+const MY_FEED_TOP_CAP = 10; // top sources per reader; keeps the "top" section from taking over the page
 const MIX_TOPIC_CAP = 6; // per mix — an RSS Pack can carry several tags, but capped so tags stay meaningful, not spammed
 // The four RSS Pack-building branches, plus "other" as the escape hatch for
 // anything that doesn't cleanly fit one. A branch is never itself a
@@ -4058,13 +4059,20 @@ async function ensureMyFeedInner(user) {
 // Returns null on success or an error string.
 async function applyMyFeedMode(user, mix, edit) {
   const mode = String(edit?.mode || "");
-  if (!FEED_MODES.has(mode)) return "mode must be on, fold or hidden";
+  if (!FEED_MODES.has(mode)) return "mode must be on, fold, hidden or top";
   const outlet = edit?.outlet ? String(edit.outlet).trim() : null;
   const csId = edit?.custom_source_id ? Number(edit.custom_source_id) : null;
   if (!outlet && !csId) return "outlet or custom_source_id is required";
   const existing = outlet
     ? await dbGet(`SELECT id FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'admin_outlet' AND outlet = ?`, [mix.id, outlet])
     : await dbGet(`SELECT id FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'custom' AND custom_source_id = ?`, [mix.id, csId]);
+  if (mode === "top") {
+    const cur = existing ? await dbGet(`SELECT mode FROM feed_mix_sources WHERE id = ?`, [existing.id]) : null;
+    if (!cur || cur.mode !== "top") {
+      const tops = (await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ? AND mode = 'top'`, [mix.id])).n;
+      if (tops >= MY_FEED_TOP_CAP) return `You can have up to ${MY_FEED_TOP_CAP} top sources. Turn one off first.`;
+    }
+  }
   if (existing) {
     await dbRun(`UPDATE feed_mix_sources SET mode = ? WHERE id = ?`, [mode, existing.id]);
     return null;
@@ -4103,6 +4111,7 @@ async function myFeedSummary(mix) {
     total: rows.length,
     hidden: modes.filter((m) => m.mode === "hidden").length,
     fold: modes.filter((m) => m.mode === "fold").length,
+    top: modes.filter((m) => m.mode === "top").length,
     modes,
   };
 }

@@ -812,6 +812,7 @@
       });
       wireSaveButtons(main);
       wireVideoShareButtons(main);
+      main.insertAdjacentHTML("beforeend", readFootnoteHtml());
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "TRANSMISSION FAILED", body: e.message || "Could not load videos." });
     }
@@ -1110,7 +1111,7 @@
   function setMyFeedFromSummary(sm) {
     if (!sm || !sm.exists) { myFeed = null; return; }
     myFeed = {
-      slug: sm.slug, total: sm.total, hidden: sm.hidden, fold: sm.fold,
+      slug: sm.slug, total: sm.total, hidden: sm.hidden, fold: sm.fold, top: sm.top || 0,
       started: sm.started_from_headlines_at || null,
       list: sm.modes || [],
       modes: new Map((sm.modes || []).map(m => [m.outlet, m.mode])),
@@ -1229,11 +1230,16 @@
     toastActionTimer = setTimeout(() => el.classList.remove("show", "has-action"), 6000);
   }
 
-  const FEED_MODE_LABEL = { on: "In your feed", fold: "Show fewer", hidden: "Hidden" };
+  const FEED_MODE_LABEL = { on: "In your feed", fold: "Show fewer", hidden: "Hidden", top: "Top source" };
+  const TOP_CAP = 10;
 
   async function setFeedMode(src, outlet, mode) {
     if (!currentUser) {
       const e = readHeldFeedEdits();
+      if (mode === "top" && e[outlet] !== "top" && Object.values(e).filter(m => m === "top").length >= TOP_CAP) {
+        toast(`You can have up to ${TOP_CAP} top sources. Turn one off first.`);
+        return false;
+      }
       if (mode === "on") delete e[outlet]; else e[outlet] = mode;
       writeHeldFeedEdits(e);
     } else {
@@ -1278,6 +1284,8 @@
       msg = currentUser
         ? (inView ? `${outlet} hidden. My Feed is now ${left} sources.` : `${outlet} hidden from My Feed.`)
         : `${outlet} hidden. Sign in to keep this on every device.`;
+    } else if (mode === "top") {
+      msg = `${outlet} is a top source. Its last 24 hours go first in the Classic list.`;
     } else if (mode === "fold") {
       msg = `Showing fewer stories from ${outlet}.`;
     } else {
@@ -1370,6 +1378,7 @@
           <button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button>
         </div>
         <p class="spray-picker-sub">${currentUser ? "Changes only your own feed. You can change it anytime." : "Changes only your own feed. Saved on this device until you sign in."}</p>
+        ${opt("top", "Top source", "Their stories from the last 24 hours go first, in their own labeled section (Classic list).")}
         ${opt("on", "Show all their stories", "Everything they post, newest first.")}
         ${opt("fold", "Show fewer", "Their newest story each day shows. The rest fold into one row.")}
         ${opt("hidden", "Hide " + escapeHtml(outlet), "Never shown. Bring it back from My Feed.")}
@@ -1396,9 +1405,9 @@
   function feedEditCounts() {
     const defs = activeDefaultMutes();
     const muted = currentMutes().filter(w => !defs.includes(w)).length;
-    if (currentUser) return myFeed ? { hidden: myFeed.hidden, fold: myFeed.fold, muted, defs } : { hidden: 0, fold: 0, muted, defs };
+    if (currentUser) return myFeed ? { hidden: myFeed.hidden, fold: myFeed.fold, top: myFeed.top || 0, muted, defs } : { hidden: 0, fold: 0, top: 0, muted, defs };
     const v = Object.values(readHeldFeedEdits());
-    return { hidden: v.filter(m => m === "hidden").length, fold: v.filter(m => m === "fold").length, muted, defs };
+    return { hidden: v.filter(m => m === "hidden").length, fold: v.filter(m => m === "fold").length, top: v.filter(m => m === "top").length, muted, defs };
   }
   function refreshFeedCaption() {
     refreshFeedCaptionBase();
@@ -1412,7 +1421,8 @@
     const c = feedEditCounts();
     const inFull = feedEditsActiveInView();
     const inDef = c.defs.length > 0 && Array.from(activeSprayKeys).some(k => defaultMuteApplies(k) || feedApplies(k));
-    if (!inFull || (c.hidden === 0 && c.fold === 0 && c.muted === 0)) {
+    const topShown = inFull && c.top > 0 && topSectionAvailable();
+    if (!inFull || (c.hidden === 0 && c.fold === 0 && c.muted === 0 && !topShown)) {
       // The default mute is listed on the Your feed screen, not on the main page.
       // While it applies, don't claim "Nothing hidden."
       el.textContent = inDef ? "Sorted by time." : "Sorted by time. Nothing hidden.";
@@ -1424,6 +1434,7 @@
     if (c.hidden) gone.push(`${c.hidden} source${c.hidden === 1 ? "" : "s"}`);
     if (c.muted) gone.push(`${c.muted} muted word${c.muted === 1 ? "" : "s"}`);
     if (gone.length) parts.push(`Hidden by you: ${gone.join(", ")}`);
+    if (topShown) parts.push(`${c.top} top source${c.top === 1 ? "" : "s"} first`);
     if (c.fold) parts.push(`${c.fold} source${c.fold === 1 ? "" : "s"} showing fewer stories`);
     el.innerHTML = `Sorted by time. <button type="button" class="caption-link" id="feedReviewLink">${escapeHtml(parts.join(". "))}</button>`;
   }
@@ -1604,7 +1615,7 @@
     if (!yourFeedState || !main) return;
     const st = yourFeedState;
     const c = feedEditCounts();
-    const tweaks = c.hidden + c.fold + c.muted;
+    const tweaks = c.hidden + c.fold + c.muted + (c.top || 0);
     const started = currentUser && myFeed && myFeed.started
       ? "Started from Headlines on " + new Date(myFeed.started.replace(" ", "T") + "Z").toLocaleDateString(undefined, { month: "short", day: "numeric" }) + "."
       : (currentUser ? "" : "Saved on this device until you sign in.");
@@ -1631,7 +1642,7 @@
       const words = currentMutes();
       body = `
         <div class="card yf-summary">
-          <div class="yf-headline">${tweaks === 0 ? "You haven't changed your feed yet." : `${tweaks} tweak${tweaks === 1 ? "" : "s"}, ${describeQuieter(frac)}.`}</div>
+          <div class="yf-headline">${tweaks === 0 ? "You haven't changed your feed yet." : (c.hidden + c.fold + c.muted === 0 ? `${c.top} top source${c.top === 1 ? "" : "s"}.` : `${tweaks} tweak${tweaks === 1 ? "" : "s"}, ${describeQuieter(frac)}.`)}</div>
           <div class="yf-lines">
             <div>Last 7 days: <strong>${stats.total}</strong> stories</div>
             <div>Showing right away: <strong>${stats.shown}</strong></div>
@@ -1767,7 +1778,7 @@
       if (act) act.textContent = open ? "Hide" : "Show";
       return;
     }
-    if (t.closest("#feedReviewLink")) openYourFeedScreen();
+    if (t.closest("#feedReviewLink") || t.closest("#readFootnoteLink")) openYourFeedScreen();
   });
 
   // Press and hold (touch) or right-click (desktop) on any story opens its
@@ -2085,7 +2096,47 @@
     shown.forEach(d => { if (!res.inCluster.has(d)) entries.push({ d, role: "normal" }); });
     return entries;
   }
-  function readEntries(shown) { return relevanceActive() ? relevanceEntries(shown) : foldEntriesFor(shown, true); }
+  // ----- Top sources: a reader-chosen section above the Classic list. -----
+  // Items from sources the reader marked Top, from the last 24 hours, newest
+  // first, in their own labeled section (max 15 rows). Everything else keeps
+  // its normal order underneath. Nothing is scored; the rule is printed in the
+  // section header and the caption.
+  const TOP_WINDOW_MS = 24 * 3600 * 1000;
+  const TOP_SECTION_MAX = 15;
+  function topSectionAvailable() { return activeTab === "read" && getReadDisplay() === "classic"; }
+  function topSplit(shown) {
+    if (!topSectionAvailable()) return { top: [], rest: shown };
+    const cutoff = Date.now() - TOP_WINDOW_MS;
+    const top = [];
+    const rest = [];
+    for (const d of shown) {
+      const outlet = (d.outlet || d.source || "").trim();
+      const isTop = d._mf && outlet && top.length < TOP_SECTION_MAX && feedModeFor(outlet) === "top" &&
+        new Date(d.date || 0).getTime() >= cutoff;
+      (isTop ? top : rest).push(d);
+    }
+    return { top, rest };
+  }
+  function readEntries(shown) {
+    const { top, rest } = topSplit(shown);
+    const base = (list) => relevanceActive() ? relevanceEntries(list) : foldEntriesFor(list, true);
+    if (!top.length) return base(shown);
+    const names = [];
+    top.forEach(d => { const o = (d.outlet || d.source || "").trim(); if (o && !names.includes(o)) names.push(o); });
+    const entries = [{ role: "group", label: "Your top sources \u00b7 last 24 hours", outlets: names }];
+    top.forEach(d => entries.push({ d, role: "normal" }));
+    if (!relevanceActive()) entries.push({ role: "group", plain: true, label: "Everything else, newest first" });
+    return entries.concat(base(rest));
+  }
+  // The default mute is disclosed here, at the bottom of the list, instead of
+  // in the caption. It links to the Your feed screen, where it can be turned off.
+  function readFootnoteHtml() {
+    if (activeTab !== "read") return "";
+    const c = feedEditCounts();
+    const inDef = c.defs.length > 0 && Array.from(activeSprayKeys).some(k => defaultMuteApplies(k) || feedApplies(k));
+    if (!inDef) return "";
+    return `<div class="read-footnote">* ${c.defs.map(capWord).join(", ")} is muted by default. <button type="button" class="caption-link" id="readFootnoteLink">See or turn off</button></div>`;
+  }
   function relGroupHtml(e) {
     if (e.plain) return `<div class="rel-group plain"><div class="rel-group-label">${escapeHtml(e.label)}</div></div>`;
     const names = e.outlets.slice(0, 5).map(escapeHtml).join(", ") + (e.outlets.length > 5 ? " and others" : "");
@@ -2793,6 +2844,7 @@
       row.querySelector(".mc-open")?.addEventListener("click", () => { mobileClassicSeen.add(row.dataset.id); row.classList.add("seen"); });
     });
     wireSaveButtons(main);
+    main.querySelector(".mc-list")?.insertAdjacentHTML("beforeend", readFootnoteHtml());
   }
 
   function renderReaderFeed(shown, trendingLinks) {
@@ -2892,6 +2944,7 @@
         btn.classList.add("active");
       });
     });
+    feed.insertAdjacentHTML("beforeend", readFootnoteHtml());
   }
 
   // Trending-on-Bluesky link set, used to badge Read-tab cards, AND now
