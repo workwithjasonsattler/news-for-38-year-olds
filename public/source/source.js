@@ -1998,7 +1998,7 @@
   // Keys are in the normalized (lowercase, plural-stripped) form relTerms makes.
   const REL_GENERIC = new Set(("trump doj justice department republican democrat democratic gop congress senate house " +
     "court judge ruling federal president white administration government state law bill lawsuit election vote voter ballot " +
-    "campaign party political politics american america national").split(" "));
+    "campaign party political politics american america national russia russian ukraine ukrainian israel israeli gaza iran china chinese").split(" "));
   function relTerms(text) {
     const out = new Map(); // key -> display form
     const raw = String(text || "").replace(/['\u2019]s\b/g, "").match(/[A-Za-z0-9][A-Za-z0-9-]*/g) || [];

@@ -596,6 +596,27 @@ async function migrateDateFormats() {
   await dbRun(`INSERT INTO bot_state (key, value) VALUES ('date_formats_migrated', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
 }
 
+
+// One-time repair: recent headlines/excerpts saved with undecoded entities
+// (e.g. "Fl&aacute;vio"). Limited to the last 30 days so it stays cheap.
+async function migrateEntityHeadlines() {
+  const done = await dbGet(`SELECT value FROM bot_state WHERE key = 'entity_headlines_migrated'`);
+  if (done) return;
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const rows = await dbAll(`SELECT id, headline, excerpt FROM dispatches WHERE date >= ?`, [cutoff]);
+  let fixed = 0;
+  for (const r of rows) {
+    const h = r.headline && /&[#A-Za-z0-9]+;/.test(r.headline) ? stripHtml(r.headline) : r.headline;
+    const e = r.excerpt && /&[#A-Za-z0-9]+;/.test(r.excerpt) ? stripHtml(r.excerpt) : r.excerpt;
+    if (h !== r.headline || e !== r.excerpt) {
+      await dbRun(`UPDATE dispatches SET headline = ?, excerpt = ? WHERE id = ?`, [h, e, r.id]);
+      fixed++;
+    }
+  }
+  if (fixed) console.log(`Repaired entities in ${fixed} recent dispatch(es).`);
+  await dbRun(`INSERT INTO bot_state (key, value) VALUES ('entity_headlines_migrated', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value`);
+}
+
 // ---------- auto-seed on startup if the database is empty ----------
 const STARTER_DISPATCHES = [
   { name:"Marisa Kabas", outlet:"The Handbasket", beat:"Politics", date:"2026-07-08",
@@ -7072,9 +7093,22 @@ function textOf(field) {
   if (typeof field === "object") return field["#text"] ?? "";
   return String(field);
 }
+const NAMED_ENTITIES = { quot: '"', apos: "'", lt: "<", gt: ">", nbsp: " ", mdash: "—", ndash: "–", hellip: "…",
+  rsquo: "'", lsquo: "'", ldquo: '"', rdquo: '"', eacute: "é", Eacute: "É", egrave: "è", ecirc: "ê", euml: "ë",
+  aacute: "á", Aacute: "Á", agrave: "à", acirc: "â", atilde: "ã", auml: "ä", aring: "å", iacute: "í", Iacute: "Í",
+  igrave: "ì", icirc: "î", iuml: "ï", oacute: "ó", Oacute: "Ó", ograve: "ò", ocirc: "ô", otilde: "õ", ouml: "ö",
+  uacute: "ú", Uacute: "Ú", ugrave: "ù", ucirc: "û", uuml: "ü", ntilde: "ñ", Ntilde: "Ñ", ccedil: "ç", Ccedil: "Ç",
+  szlig: "ß", oslash: "ø", aelig: "æ", copy: "©", reg: "®", trade: "™", middot: "·", bull: "•", laquo: "«", raquo: "»" };
+// Decodes numeric and common named entities. Runs after &amp; so a double-encoded
+// "&amp;aacute;" ends up as "á" instead of leaking "&aacute;" into a headline.
+function decodeMoreEntities(str = "") {
+  return String(str)
+    .replace(/&#x([0-9a-f]{1,6});/gi, (m, h) => { try { return String.fromCodePoint(parseInt(h, 16)); } catch { return m; } })
+    .replace(/&#(\d{1,7});/g, (m, d) => { try { return String.fromCodePoint(parseInt(d, 10)); } catch { return m; } })
+    .replace(/&([A-Za-z]{2,8});/g, (m, name) => (Object.prototype.hasOwnProperty.call(NAMED_ENTITIES, name) ? NAMED_ENTITIES[name] : m));
+}
 function stripHtml(str = "") {
-  return str.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&")
-    .replace(/&#8217;|&rsquo;/g, "'").replace(/&mdash;|&#8212;/g, "—").replace(/&ndash;|&#8211;/g, "–").replace(/&hellip;|&#8230;/g, "…").replace(/&#8220;|&#8221;|&ldquo;|&rdquo;/g, '"')
+  return decodeMoreEntities(str.replace(/<[^>]*>/g, " ").replace(/&amp;/g, "&"))
     .replace(/\s+/g, " ").trim();
 }
 // Podcast show notes often open with sponsor reads, "ad choices" boilerplate,
@@ -7518,6 +7552,7 @@ async function start() {
       await step("migrateFeedUrlNullable", migrateFeedUrlNullable);
       await step("migrateFeedsJsonIfNeeded", migrateFeedsJsonIfNeeded);
       await step("migrateDateFormats", migrateDateFormats);
+      await step("migrateEntityHeadlines", migrateEntityHeadlines);
       await step("autoSeedIfEmpty", autoSeedIfEmpty);
       await step("migrateTopicIdToJoinTable", migrateTopicIdToJoinTable);
       await step("seedYoutubeChannels", seedYoutubeChannels);
