@@ -1412,8 +1412,10 @@
     const c = feedEditCounts();
     const inFull = feedEditsActiveInView();
     const inDef = c.defs.length > 0 && Array.from(activeSprayKeys).some(k => defaultMuteApplies(k) || feedApplies(k));
-    if ((!inFull || (c.hidden === 0 && c.fold === 0 && c.muted === 0)) && !inDef) {
-      el.textContent = "Sorted by time. Nothing hidden.";
+    if (!inFull || (c.hidden === 0 && c.fold === 0 && c.muted === 0)) {
+      // The default mute is listed on the Your feed screen, not on the main page.
+      // While it applies, don't claim "Nothing hidden."
+      el.textContent = inDef ? "Sorted by time." : "Sorted by time. Nothing hidden.";
       return;
     }
     const parts = [];
@@ -1422,7 +1424,6 @@
     if (c.hidden) gone.push(`${c.hidden} source${c.hidden === 1 ? "" : "s"}`);
     if (c.muted) gone.push(`${c.muted} muted word${c.muted === 1 ? "" : "s"}`);
     if (gone.length) parts.push(`Hidden by you: ${gone.join(", ")}`);
-    if (inDef) parts.push(`Muted by default: ${c.defs.map(capWord).join(", ")}`);
     if (c.fold) parts.push(`${c.fold} source${c.fold === 1 ? "" : "s"} showing fewer stories`);
     el.innerHTML = `Sorted by time. <button type="button" class="caption-link" id="feedReviewLink">${escapeHtml(parts.join(". "))}</button>`;
   }
