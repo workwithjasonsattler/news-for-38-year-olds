@@ -414,8 +414,40 @@
 
   // Bottom action row for every card shape. Videos get Save/Support in the
   // top band instead, so only the Follow control stays down here.
-  function cardActionsHtml(d) {
-    return d.is_video ? sprayAddButton(d) : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}${tuneButton(d)}`;
+  function cardActionsHtml(d, withShare) {
+    return d.is_video ? sprayAddButton(d) : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}${withShare ? storyShareButton(d) : ""}${tuneButton(d)}`;
+  }
+
+  // Headlines Only is the one view that shows no excerpt, so a tap on the
+  // headline expands the card in place instead of leaving for the outlet
+  // (same behavior as Classic). The expanded area holds the excerpt, Read,
+  // Share and a button to the SOURCE! story page. Cmd/Ctrl/Shift/Alt-click
+  // and middle-click still open the article natively.
+  function cardExpandHtml(d) {
+    const excerpt = (d.excerpt || "").trim().slice(0, 600);
+    const storyUrl = isStoredId(d.id) ? `/source/?story=${encodeURIComponent(d.id)}` : "";
+    return `<div class="card-expand" hidden>
+      ${excerpt ? `<p class="mc-excerpt">${escapeHtml(excerpt)}</p>` : ""}
+      <div class="mc-actions">
+        ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
+        ${storyShareButton(d)}
+        ${storyUrl ? `<a class="mc-support" href="${storyUrl}">Story page</a>` : ""}
+      </div>
+    </div>`;
+  }
+  function wireCardExpand(root) {
+    root.querySelectorAll(".card-headlines-only .card-link").forEach(a => {
+      a.addEventListener("click", (ev) => {
+        if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button === 1) return;
+        const body = a.parentElement.querySelector(".card-expand");
+        if (!body) return;
+        ev.preventDefault();
+        const open = body.hidden;
+        body.hidden = !open;
+        a.parentElement.classList.toggle("open", open);
+        if (open) a.querySelector(".new-dot")?.remove();
+      });
+    });
   }
 
   // Block-style badge for card lists (mobile cards, matches the visual
@@ -2372,6 +2404,8 @@
       });
       wireSaveButtons(main);
       wireVideoShareButtons(main);
+      wireStoryShareButtons(main);
+      wireCardExpand(main);
     }
   }
 
@@ -3037,7 +3071,7 @@
               ${excerpt ? `<div class="card-scroll-excerpt">${escapeHtml(excerpt)}</div>` : ""}
             </div>
           </a>
-          ${cardActionsHtml(d)}
+          ${cardActionsHtml(d, true)}
           ${discussUrl ? `<a class="card-scroll-discuss" href="${escapeHtml(discussUrl)}" target="_blank" rel="noopener">See the conversation on Bluesky ↗</a>` : ""}
         </div>`;
     }
@@ -3058,7 +3092,8 @@
             <div class="card-title">${newDotHtml(d)}${escapeHtml(title)}</div>
             ${excerpt ? `<div class="card-excerpt">${escapeHtml(excerpt)}</div>` : ""}
           </a>
-          ${cardActionsHtml(d)}
+          ${headlinesOnly && !d.is_video ? cardExpandHtml(d) : ""}
+          ${cardActionsHtml(d, !headlinesOnly)}
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         </div>`;
     }
@@ -3071,6 +3106,7 @@
             <div class="card-meta">${outletChip(d.outlet || d.source)}<span>${relTime(d.date)}</span>${paywallBadgePlaceholder(d.id)}</div>
             <div class="card-title">${newDotHtml(d)}${escapeHtml(title)}</div>
           </a>
+          ${d.is_video ? "" : cardExpandHtml(d)}
           ${cardActionsHtml(d)}
           ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         </div>`;
@@ -3089,7 +3125,7 @@
             ${thumb}
           </div>
         </a>
-        ${cardActionsHtml(d)}
+        ${cardActionsHtml(d, true)}
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
       </div>`;
   }

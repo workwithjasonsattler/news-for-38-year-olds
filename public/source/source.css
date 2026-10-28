@@ -3173,3 +3173,7 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .rel-group.plain .rel-group-label { font-weight: 500; font-size: 13px; color: var(--ink-muted); }
 
 .read-footnote { grid-column: 1 / -1; padding: 18px 14px 28px; font-size: 12px; line-height: 1.4; color: var(--ink-muted); }
+
+/* Headlines Only: tap a headline to expand in place (excerpt, Read, Share, Story page). */
+.card-expand { padding: 4px 0 10px; }
+.card-expand .mc-excerpt { margin: 0 0 10px; }
