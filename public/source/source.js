@@ -2244,15 +2244,63 @@
   // First load of a session: a short brand moment instead of a spinner. It
   // only appears if loading takes more than a quarter second (fast loads
   // never see it), and once shown it stays at least 700ms so it can't flash.
-  const SPLASH_LINES = ["No algorithm in between.", "Asking the outlets directly.", "Newest first."];
+  // A different line every load (never the same one twice in a row on a
+  // device). Voice rules: dry, true to what the app does, no counts, no
+  // "no X, no Y" stacking. Add freely; keep each under ~40 characters.
+  const SPLASH_HEADS = [
+    "You\u2019re going straight to the source.",
+    "Reading the news before it reads you.",
+    "Checking what happened while you slept.",
+    "Putting today in order.",
+    "Knocking on a few hundred newsroom doors.",
+    "Waking up the reporters.",
+    "Here before the outrage.",
+    "Going around the middleman.",
+    "Fresh off the feeds.",
+    "Hold on, the reporters are typing.",
+    "Pulling today\u2019s front page together.",
+    "Nobody has reordered this yet.",
+    "Your morning, back in your hands.",
+    "Getting here before the algorithm does.",
+    "Brewing something factual.",
+    "Sorted by time, and nothing else.",
+    "Opening the wire.",
+    "The news, minus the middle layer.",
+    "Collecting the facts, one feed at a time.",
+    "Asking the outlets directly.",
+    "Reading it in the order it happened.",
+    "Starting your day on purpose.",
+    "Dusting off the front page.",
+    "Almost there. The coffee can wait.",
+  ];
+  const SPLASH_LINES = [
+    "Newest first.", "No algorithm in between.", "Asking the outlets directly.",
+    "Independent newsrooms, one at a time.", "Nothing is boosted.", "Nothing is hidden.",
+    "Real sources, in order.", "Still faster than doomscrolling.", "Checking the wire.",
+    "The order is the clock.", "Your sources, your list.", "Fetching, not feeding.",
+  ];
+  const SPLASH_LAST_KEY = "source_splash_last";
+  function splashPick() {
+    let last = -1;
+    try { last = parseInt(localStorage.getItem(SPLASH_LAST_KEY), 10); } catch (e) { /* storage blocked */ }
+    let h = Math.floor(Math.random() * SPLASH_HEADS.length);
+    if (SPLASH_HEADS.length > 1 && h === last) h = (h + 1 + Math.floor(Math.random() * (SPLASH_HEADS.length - 1))) % SPLASH_HEADS.length;
+    try { localStorage.setItem(SPLASH_LAST_KEY, String(h)); } catch (e) { /* ignore */ }
+    // three distinct sub-lines in a random order for the 1.4s cycle
+    const subs = SPLASH_LINES.slice().sort(() => Math.random() - 0.5).slice(0, 3);
+    return { head: SPLASH_HEADS[h], subs, tilt: (Math.random() * 5 - 2.5).toFixed(1) };
+  }
+  let splashSubs = SPLASH_LINES.slice(0, 3);
   let firstReadLoadDone = false;
   let splashCycle = null;
   function sourceSplashHtml() {
+    const pick = splashPick();
+    splashSubs = pick.subs;
     return `<div class="source-single-col-screen source-splash" role="status" aria-live="polite">
       <div class="splash-mark">SOURCE<span class="splash-bang">!</span></div>
-      <div class="splash-rule"></div>
-      <h2 class="splash-line">You\u2019re going straight to the source.</h2>
-      <p class="splash-sub" id="splashSub">${SPLASH_LINES[0]}</p>
+      <div class="splash-rule" style="transform: rotate(${pick.tilt}deg)"></div>
+      <h2 class="splash-line">${escapeHtml(pick.head)}</h2>
+      <p class="splash-sub" id="splashSub">${escapeHtml(pick.subs[0])}</p>
     </div>`;
   }
   function startSplashCycle() {
@@ -2261,8 +2309,8 @@
     splashCycle = setInterval(() => {
       const el = document.getElementById("splashSub");
       if (!el) { clearInterval(splashCycle); return; }
-      i = (i + 1) % SPLASH_LINES.length;
-      el.textContent = SPLASH_LINES[i];
+      i = (i + 1) % splashSubs.length;
+      el.textContent = splashSubs[i];
     }, 1400);
   }
 
@@ -2283,7 +2331,8 @@
         startSplashCycle();
       }, 250);
     } else {
-      main.innerHTML = stateBlock({ title: "Loading Fresh RSS Feeds", body: "Just posted", spin: true });
+      const again = splashPick();
+      main.innerHTML = stateBlock({ title: again.head, body: again.subs[0], spin: true });
     }
     const endSplash = async () => {
       clearTimeout(splashTimer);
