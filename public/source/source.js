@@ -612,7 +612,11 @@
   // article link as before.
   function isStoredId(id) { return /^\d{1,12}$/.test(String(id ?? "")); }
   function storyShareUrl(d) {
-    return isStoredId(d.id) ? `${location.origin}/source/?story=${encodeURIComponent(d.id)}` : (d.link || "");
+    // Share the real article link (Jason, Oct 29): the story page stays reachable
+    // from its own button, but Share sends the outlet's URL. Fall back to the
+    // story page only when an item has no link.
+    if (d.link) return d.link;
+    return isStoredId(d.id) ? `${location.origin}/source/?story=${encodeURIComponent(d.id)}` : "";
   }
   function shareButton(d) {
     const url = storyShareUrl(d);
@@ -639,7 +643,7 @@
   // drifts between the two surfaces.
   async function doShare(url, title) {
     if (navigator.share) {
-      try { await navigator.share({ title, url }); }
+      try { await navigator.share(title ? { title, text: title, url } : { url }); }
       catch (e) { /* reader cancelled the share sheet — not an error */ }
       return;
     }
