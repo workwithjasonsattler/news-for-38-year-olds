@@ -643,12 +643,14 @@
   // drifts between the two surfaces.
   async function doShare(url, title) {
     if (navigator.share) {
-      try { await navigator.share(title ? { title, text: title, url } : { url }); }
+      // Link goes INSIDE the text and there is no separate url field: many share
+      // targets (Messages, Bluesky, Notes) keep only the text and silently drop url.
+      try { await navigator.share(title ? { title, text: `${title}\n${url}` } : { text: url }); }
       catch (e) { /* reader cancelled the share sheet — not an error */ }
       return;
     }
     try {
-      await navigator.clipboard.writeText(url);
+      await navigator.clipboard.writeText(title ? `${title}\n${url}` : url);
       toast("Link copied");
     } catch (e) {
       toast(url);
