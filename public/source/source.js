@@ -2900,9 +2900,14 @@
     const main = document.getElementById("main");
     main.classList.remove("read-layout", "read-scroll-desktop");
     main.classList.add("read-mobile-classic");
+    // The top story gets its picture up front (if it has one); every other row
+    // keeps loading its image only when opened.
+    let heroDispatch = null;
     main.innerHTML = `<div class="mc-list">` + readEntries(shown).map(e => {
       if (e.role === "group") return relGroupHtml(e);
       const d = e.d;
+      const isHero = !heroDispatch && !!d.link;
+      if (isHero) heroDispatch = d;
       const id = escapeHtml(String(d.id));
       const title = escapeHtml(d.title || d.headline || "");
       const outlet = escapeHtml(d.outlet || d.source || "");
@@ -2914,6 +2919,7 @@
             <span class="mc-meta"><span class="mc-source">${outlet}</span><span class="mc-time">${relTime(d.date)}</span></span>
             <span class="mc-title">${newDotHtml(d)}${title}</span>
           </button>
+          ${isHero ? `<img class="mc-hero" id="hero-${id}" alt="" onload="this.classList.add('loaded')" onerror="this.remove()">` : ""}
           <div class="mc-body" hidden>
             ${d.link ? `<a class="mc-img-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener"><img class="mc-img" id="thumb-${id}" alt="" ${d.image_url ? `data-src="${escapeHtml(d.image_url)}"` : ""} onload="this.classList.add('loaded')" onerror="this.remove()"></a>` : ""}
             ${excerpt ? `<p class="mc-excerpt">${escapeHtml(excerpt)}</p>` : ""}
@@ -2960,6 +2966,27 @@
     wireSaveButtons(main);
     wireStoryShareButtons(main);
     main.querySelector(".mc-list")?.insertAdjacentHTML("beforeend", readFootnoteHtml());
+    loadHeroImage(heroDispatch);
+  }
+
+  // Picture for the top row in mobile Classic. Uses the stored image if there
+  // is one, otherwise asks the server for the article's preview image. Fails
+  // soft: no picture just means no hero.
+  async function loadHeroImage(d) {
+    if (!d) return;
+    const img = document.getElementById(`hero-${d.id}`);
+    if (!img) return;
+    let url = d.image_url || "";
+    if (!url) {
+      try {
+        const map = await api(`/api/dispatches/thumbnails?ids=${encodeURIComponent(d.id)}`);
+        url = (map && map[d.id]) || "";
+      } catch (e) { /* nice-to-have */ }
+    }
+    const live = document.getElementById(`hero-${d.id}`);
+    if (!live) return;
+    if (!url) { live.remove(); return; }
+    live.src = url;
   }
 
   function renderReaderFeed(shown, trendingLinks) {

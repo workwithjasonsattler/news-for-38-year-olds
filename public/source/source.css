@@ -2992,6 +2992,9 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .mc-img-link { display: block; margin: 0 0 10px; }
 .mc-img { display: none; width: 100%; max-height: 240px; object-fit: cover; border-radius: 8px; background: var(--surface); }
 .mc-img.loaded { display: block; }
+.mc-hero { display: none; width: calc(100% - 32px); margin: 0 16px 12px; max-height: 200px; object-fit: cover; border-radius: 8px; background: var(--surface); }
+.mc-hero.loaded { display: block; }
+.mc-row.open .mc-hero { display: none; }
 .mc-title .new-dot { margin-right: 7px; }
 
 /* You tab: "Sources & RSS Packs" entry row is a <button class="card"> */
