@@ -6030,7 +6030,7 @@
   // ---------------------------------------------------------------
   const ONBOARDED_KEY = "source_onboarded";
 
-  const WHATS_THIS_COPY = "SOURCE! gives you the news you need, without the billionaires' algorithms. Choose from handpicked RSS Packs of vetted sources. Or create your own and share it with anyone as its own RSS feed.";
+  const WHATS_THIS_COPY = "SOURCE! gives you the news you need, without the billionaires' algorithms. Control the news, not vice versa: it's newest first unless you change it, and every change is yours to see. Choose from handpicked RSS Packs of vetted sources. Or create your own and share it with anyone as its own RSS feed.";
 
   function showOnboarding() {
     const el = document.createElement("div");
