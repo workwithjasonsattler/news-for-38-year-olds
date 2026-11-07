@@ -5340,7 +5340,12 @@ app.get("/api/dispatches", async (req, res) => {
 
     if (tierRows.length > 0) {
       const tierMap = new Map(tierRows.map(r => [r.outlet, r.tier]));
-      const tierRank = { pinned: 0, normal: 1, less: 2, hidden: 3 };
+      // Rule 1 (reverse-chronological, nothing reordered by a hidden score):
+      // the "pinned" and "less" tiers must NOT move items ahead of or behind
+      // newer ones, so every visible tier ranks the same. Only "hidden"
+      // still filters (below). The table stays so old rows don't break;
+      // per-source "Show fewer" in My Feed is the visible replacement.
+      const tierRank = { pinned: 1, normal: 1, less: 1, hidden: 3 };
       rows = rows
         .filter(r => (tierMap.get(r.outlet) || "normal") !== "hidden")
         .map(r => ({
