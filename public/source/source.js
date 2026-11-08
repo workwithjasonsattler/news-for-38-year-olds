@@ -1029,6 +1029,36 @@
     renderRead();
   }
 
+  // The "+ Add" menu: the three ways to grow your reading list, pinned at
+  // the start of the pill bar instead of three pills hiding at the far end
+  // of a sideways scroll.
+  function closeAddMenu() { const el = document.getElementById("addMenuOverlay"); if (el) el.remove(); }
+  function openAddMenu() {
+    closeAddMenu();
+    const el = document.createElement("div");
+    el.id = "addMenuOverlay";
+    el.className = "spray-picker-overlay";
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head"><span><strong>Add to your reading</strong></span>
+          <button class="spray-picker-close" id="addMenuClose" aria-label="Close">\u00d7</button></div>
+        <button type="button" class="tune-opt" data-act="browse"><span class="tune-opt-title">Browse RSS Packs</span><span class="tune-opt-sub">Ready-made collections of sources. Follow one in a tap.</span></button>
+        <button type="button" class="tune-opt" data-act="feed"><span class="tune-opt-title">Add a feed</span><span class="tune-opt-sub">Paste any site's address. SOURCE! finds its feed.</span></button>
+        <button type="button" class="tune-opt" data-act="create"><span class="tune-opt-title">Create an RSS Pack</span><span class="tune-opt-sub">Build your own collection and share it.</span></button>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => {
+      if (e.target === el || e.target.closest("#addMenuClose")) { closeAddMenu(); return; }
+      const b = e.target.closest("[data-act]");
+      if (!b) return;
+      const act = b.dataset.act;
+      closeAddMenu();
+      if (act === "browse") openPublicPackPicker();
+      else if (act === "feed") jumpToAddFeed();
+      else if (act === "create") { switchTab("sources"); openCreateFlow(); }
+    });
+  }
+
   async function renderSprayToggle() {
     const el = document.getElementById("sprayToggle");
     if (!el) return;
@@ -1041,16 +1071,13 @@
     if (activeTab !== "read" || (getReadDisplay() === "classic" && getLayoutMode() === "desktop")) { el.hidden = true; return; }
     const pills = await getSprayBarPills();
     el.hidden = false;
-    el.innerHTML = pills.map(p => {
+    el.innerHTML = `<button class="spray-pill spray-pill-menu" data-key="__menu" aria-haspopup="dialog">+ Add</button>` + pills.map(p => {
       const active = activeSprayKeys.has(p.key);
       return `
         <button class="spray-pill${active ? " active" : ""}" data-key="${escapeHtml(p.key)}" title="${escapeHtml(p.label)}">
           <span class="spray-pill-label">${escapeHtml(p.label)}</span>${p.removable ? `<span class="spray-pill-remove" data-remove-slug="${escapeHtml(p.key)}" title="Remove from your bar">×</span>` : (active && p.key !== "all" ? `<span class="spray-pill-x" data-key="${escapeHtml(p.key)}">×</span>` : "")}
         </button>`;
-    }).join("")
-      + `<button class="spray-pill spray-pill-create" data-key="__addfeed">+ Add a Feed</button>`
-      + `<button class="spray-pill spray-pill-create" data-key="__browse">+ Browse RSS Packs</button>`
-      + `<button class="spray-pill spray-pill-create" data-key="__create">+ Create an RSS Pack</button>`;
+    }).join("");
     el.querySelectorAll(".spray-pill-x").forEach(x => {
       x.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1065,6 +1092,7 @@
     });
     el.querySelectorAll(".spray-pill").forEach(btn => {
       btn.addEventListener("click", () => {
+        if (btn.dataset.key === "__menu") { openAddMenu(); return; }
         if (btn.dataset.key === "__create") { switchTab("sources"); openCreateFlow(); return; }
         if (btn.dataset.key === "__addfeed") { jumpToAddFeed(); return; }
         if (btn.dataset.key === "__browse") { openPublicPackPicker(); return; }
@@ -2423,7 +2451,41 @@
     }
   }
 
+  // One-time "three things to try" card at the top of Read (phone layouts).
+  // Dismissal lives on the device only; nothing is sent anywhere.
+  function maybeFirstSessionCard() {
+    try {
+      if (activeTab !== "read" || getLayoutMode() === "desktop") return;
+      if (localStorage.getItem("source_first_card") === "1") return;
+      if (document.querySelector(".onboarding") || document.getElementById("firstCard")) return;
+      const main = document.getElementById("main");
+      if (!main || !main.firstChild) return;
+      const el = document.createElement("div");
+      el.id = "firstCard";
+      el.className = "first-card";
+      el.innerHTML = `
+        <div class="first-card-title">Three things to try</div>
+        <ol class="first-card-list">
+          <li><button type="button" class="first-card-link" data-act="browse">Browse RSS Packs</button> and follow one in a tap.</li>
+          <li>Tap the <strong>\u22ef</strong> on any headline to show fewer stories from a source, hide it, or mute a word.</li>
+          <li>Switch on <strong>Sort by relevance</strong> above to see the stories your sources agree on.</li>
+        </ol>
+        <button type="button" class="first-card-done" data-act="done">Got it</button>`;
+      main.insertBefore(el, main.firstChild);
+      el.addEventListener("click", (e) => {
+        const b = e.target.closest("[data-act]");
+        if (!b) return;
+        try { localStorage.setItem("source_first_card", "1"); } catch (_) {}
+        el.remove();
+        if (b.dataset.act === "browse") openPublicPackPicker();
+      });
+    } catch (_) {}
+  }
   function renderReadBody(shown, trendingLinks) {
+    renderReadBodyCore(shown, trendingLinks);
+    maybeFirstSessionCard();
+  }
+  function renderReadBodyCore(shown, trendingLinks) {
     lastShown = shown;
     const main = document.getElementById("main");
     // Classic (see renderReadClassic) is Desktop-only, same trap-
@@ -2939,6 +3001,7 @@
             <span class="mc-meta"><span class="mc-source">${outlet}</span><span class="mc-time">${relTime(d.date)}</span></span>
             <span class="mc-title">${newDotHtml(d)}${title}</span>
           </button>
+          ${tuneButton(d, "mc-more")}
           ${isHero ? `<img class="mc-hero" id="hero-${id}" alt="" onload="this.classList.add('loaded')" onerror="this.remove()">` : ""}
           <div class="mc-body" hidden>
             ${d.link ? `<a class="mc-img-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener"><img class="mc-img" id="thumb-${id}" alt="" ${d.image_url ? `data-src="${escapeHtml(d.image_url)}"` : ""} onload="this.classList.add('loaded')" onerror="this.remove()"></a>` : ""}

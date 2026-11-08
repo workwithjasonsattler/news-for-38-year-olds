@@ -3210,3 +3210,31 @@ body[data-tab="read"] #main > .card-scroll {
 body[data-tab="read"] #main > .card-scroll .card-scroll-media { border-radius: 0; }
 body[data-tab="read"] #main > .card-scroll .card-scroll-body { padding-left: 2px; padding-right: 2px; }
 body[data-tab="read"] #main > .card-scroll .card-scroll-discuss { padding-left: 2px; }
+
+
+/* ---------------------------------------------------------------
+   Discoverability bundle: pinned "+ Add" pill, visible options button
+   on collapsed rows, first-session card.
+   --------------------------------------------------------------- */
+.spray-pill-menu {
+  position: sticky; left: 0; z-index: 2;
+  background: var(--ink); color: #fff; border-color: var(--ink);
+  font-weight: 600;
+}
+.mc-row { position: relative; }
+.mc-row > .mc-more {
+  position: absolute; top: 6px; right: 6px;
+  width: 36px; height: 36px; min-height: 0;
+  border-color: transparent; background: transparent; color: var(--ink-muted);
+}
+.mc-row .mc-head { padding-right: 52px; }
+.mc-row.open > .mc-more { display: none; }
+.first-card {
+  border-top: 2px solid var(--ink); border-bottom: 1px solid var(--line);
+  padding: 14px 2px 16px; margin-bottom: 6px;
+}
+.first-card-title { font-family: var(--display); font-weight: 700; font-size: 18px; margin-bottom: 8px; }
+.first-card-list { margin: 0 0 12px; padding-left: 22px; font-size: 15px; line-height: 1.5; color: var(--ink); }
+.first-card-list li { margin-bottom: 6px; }
+.first-card-link { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent-dim); text-decoration: underline; cursor: pointer; }
+.first-card-done { min-height: 44px; padding: 0 18px; border: 1px solid var(--ink); background: var(--bg); color: var(--ink); font-weight: 600; border-radius: 4px; cursor: pointer; }
