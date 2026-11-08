@@ -2059,7 +2059,19 @@
   // items never count toward "biggest".
   // ---------------------------------------------------------------
   let relevanceOn = false;
-  function relevanceAvailable() { return activeTab === "read" && getReadDisplay() === "classic"; }
+  // The shared list layer: every Read view that draws one flat list (Classic,
+  // plus Headlines Only, Expanded and Scroll on a phone or Scroll on desktop)
+  // builds it from readEntries(), so Top sources, relevance groups and fold
+  // rows behave the same everywhere. Desktop two-pane Headlines/Expanded and
+  // Columns use their own renderers and are not covered yet.
+  function listLayerAvailable() {
+    if (activeTab !== "read") return false;
+    const m = getReadDisplay();
+    if (m === "classic") return true;
+    if (m === "columns") return false;
+    return getLayoutMode() !== "desktop" || m === "scroll";
+  }
+  function relevanceAvailable() { return listLayerAvailable(); }
   function relevanceActive() { return relevanceOn && relevanceAvailable(); }
 
   /* RELEVANCE-BEGIN */
@@ -2167,7 +2179,7 @@
   // section header and the caption.
   const TOP_WINDOW_MS = 24 * 3600 * 1000;
   const TOP_SECTION_MAX = 15;
-  function topSectionAvailable() { return activeTab === "read" && getReadDisplay() === "classic"; }
+  function topSectionAvailable() { return listLayerAvailable(); }
   function topSplit(shown) {
     if (!topSectionAvailable()) return { top: [], rest: shown };
     const cutoff = Date.now() - TOP_WINDOW_MS;
@@ -2181,9 +2193,10 @@
     }
     return { top, rest };
   }
-  function readEntries(shown) {
+  function readEntries(shown, foldOn) {
+    if (foldOn === undefined) foldOn = true;
     const { top, rest } = topSplit(shown);
-    const base = (list) => relevanceActive() ? relevanceEntries(list) : foldEntriesFor(list, true);
+    const base = (list) => relevanceActive() ? relevanceEntries(list) : foldEntriesFor(list, foldOn);
     if (!top.length) return base(shown);
     const names = [];
     top.forEach(d => { const o = (d.outlet || d.source || "").trim(); if (o && !names.includes(o)) names.push(o); });
@@ -2437,9 +2450,11 @@
     main.classList.remove("read-layout");
     main.classList.toggle("read-scroll-desktop", getLayoutMode() === "desktop" && getReadDisplay() === "scroll");
     {
-      main.innerHTML = foldEntriesFor(shown, getReadDisplay() === "headlines").map((e, i) =>
-        foldItemHtml(e, renderDispatchCard(e.d, trendingLinks.has(e.d.link), i === 0, trendingLinks.get(e.d.link))) + (e.role === "head" ? foldToggleHtml(e) : "")
-      ).join("");
+      let cardIdx = 0;
+      main.innerHTML = readEntries(shown, getReadDisplay() === "headlines").map((e) => {
+        if (e.role === "group") return relGroupHtml(e);
+        return foldItemHtml(e, renderDispatchCard(e.d, trendingLinks.has(e.d.link), cardIdx++ === 0, trendingLinks.get(e.d.link))) + (e.role === "head" ? foldToggleHtml(e) : "");
+      }).join("");
       main.querySelectorAll(".buzz-badge").forEach(btn => {
         btn.addEventListener("click", (e) => { e.preventDefault(); switchTab("buzz"); });
       });
