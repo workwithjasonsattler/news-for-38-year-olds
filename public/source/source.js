@@ -809,6 +809,9 @@
 
   function renderActiveTab() {
     const main = document.getElementById("main");
+    // Lets CSS style the Read tab's list (flat hairline rows) without
+    // touching the boxed cards other screens still use.
+    document.body.dataset.tab = activeTab;
     // Every read-mode class that gets ADDED to #main somewhere in the
     // Read display modes above (read-layout, read-scroll-desktop,
     // read-classic, read-columns) needs to be removed here — leaving one

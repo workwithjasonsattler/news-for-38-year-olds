@@ -3182,3 +3182,31 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .card-expand .mc-excerpt { margin: 0 0 10px; }
 
 .story-tune { width: auto; min-height: 44px; }
+
+
+/* ---------------------------------------------------------------
+   Control Room pass 2 (Read tab only): flat hairline rows instead of
+   boxed, rounded cards. Other tabs keep their cards. Scroll stays the
+   deliberate poster-style exception: full-bleed image, big type, one
+   heavy rule between stories.
+   --------------------------------------------------------------- */
+body[data-tab="read"] #main > .card:not(.card-scroll) {
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+  border-radius: 0;
+  margin-bottom: 0;
+  padding: 14px 2px;
+}
+body[data-tab="read"] #main > .card:not(.card-scroll):active { background: var(--surface); }
+body[data-tab="read"] #main > .card-scroll {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid var(--ink);
+  border-radius: 0;
+  margin-bottom: 28px;
+  padding-bottom: 8px;
+}
+body[data-tab="read"] #main > .card-scroll .card-scroll-media { border-radius: 0; }
+body[data-tab="read"] #main > .card-scroll .card-scroll-body { padding-left: 2px; padding-right: 2px; }
+body[data-tab="read"] #main > .card-scroll .card-scroll-discuss { padding-left: 2px; }
