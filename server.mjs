@@ -5419,6 +5419,8 @@ app.get("/api/dispatches/thumbnails", async (req, res) => {
       }
       const url = await fetchOgImage(row.link);
       dispatchThumbCache.set(row.link, { url, ts: Date.now() });
+      // Remember it on the item so nobody has to look it up again.
+      if (url) { dbRun(`UPDATE dispatches SET image_url = ? WHERE id = ? AND (image_url IS NULL OR image_url = '')`, [url, row.id]).catch(() => {}); }
       return [row.id, url];
     })
   );
@@ -7217,7 +7219,42 @@ function pickBeat(text, beatKeywords = {}, fallbackBeat = "General") {
   }
   return fallbackBeat;
 }
-function extractImage(it, summaryHtml) {
+// Clean up an image address found in a feed: resolve relative and
+// protocol-relative URLs against the article link, and drop things that are
+// not article pictures (data URIs, tracking pixels, emoji, avatars).
+function cleanImageUrl(raw, base) {
+  if (!raw) return null;
+  let u = String(raw).trim().replace(/&amp;/g, "&");
+  if (!u || /^data:/i.test(u)) return null;
+  try { u = new URL(u, base || undefined).href; } catch { return null; }
+  if (!/^https?:\/\//i.test(u)) return null;
+  if (/(pixel|tracking|beacon|spacer|1x1|blank\.gif|feedburner|\/emoji\/|gravatar\.com|doubleclick|googleads|\.svg(\?|$))/i.test(u)) return null;
+  return u;
+}
+
+// First real <img> in a chunk of HTML (skips 1-pixel and tiny images).
+function firstImgIn(html, base) {
+  const re = /<img\b[^>]*>/gi;
+  let m;
+  while ((m = re.exec(html || ""))) {
+    const tag = m[0];
+    const w = parseInt((tag.match(/\bwidth=["']?(\d+)/i) || [])[1] || "", 10);
+    const h = parseInt((tag.match(/\bheight=["']?(\d+)/i) || [])[1] || "", 10);
+    if ((w && w < 60) || (h && h < 60)) continue;
+    const src = (tag.match(/\bsrc=["']([^"']+)["']/i) || [])[1]
+      || (tag.match(/\bdata-src=["']([^"']+)["']/i) || [])[1];
+    const url = cleanImageUrl(src, base);
+    if (url) return url;
+  }
+  return null;
+}
+
+function extractImage(it, summaryHtml, baseLink) {
+  const found = extractImageRaw(it, summaryHtml, baseLink);
+  return found ? (cleanImageUrl(found, baseLink) || null) : null;
+}
+
+function extractImageRaw(it, summaryHtml, baseLink) {
   const mediaContent = it["media:content"];
   const mediaList = Array.isArray(mediaContent) ? mediaContent : (mediaContent ? [mediaContent] : []);
   const mediaImg = mediaList.find(m => (m["@_medium"] === "image") || (m["@_type"] || "").startsWith("image"));
@@ -7235,10 +7272,13 @@ function extractImage(it, summaryHtml) {
   const itunesUrl = Array.isArray(itunes) ? itunes[0]?.["@_href"] : itunes?.["@_href"];
   if (itunesUrl) return itunesUrl;
 
-  const imgMatch = (summaryHtml || "").match(/<img[^>]+src=["']([^"']+)["']/i);
-  if (imgMatch) return imgMatch[1];
-
-  return null;
+  // Many WordPress and Substack feeds keep the picture in the full-content
+  // field, not in the short description, so look in both.
+  const fromSummary = firstImgIn(summaryHtml, baseLink);
+  if (fromSummary) return fromSummary;
+  const full = it["content:encoded"] ?? it.content;
+  const fullHtml = typeof full === "string" ? full : (full && typeof full === "object" ? (full["#text"] || "") : "");
+  return firstImgIn(fullHtml, baseLink);
 }
 
 function extractItems(parsed) {
@@ -7252,7 +7292,7 @@ function extractItems(parsed) {
         pubDate: textOf(it.pubDate ?? it["dc:date"]),
         author: textOf(it["dc:creator"] ?? it.author),
         summary: summaryHtml,
-        image: extractImage(it, summaryHtml),
+        image: extractImage(it, summaryHtml, textOf(it.link)),
         isAudio: /^audio\//i.test(String((Array.isArray(it.enclosure) ? it.enclosure[0] : it.enclosure)?.["@_type"] || "")),
       };
     });
@@ -7268,7 +7308,7 @@ function extractItems(parsed) {
         pubDate: textOf(it["dc:date"] ?? it.pubDate),
         author: textOf(it["dc:creator"] ?? it.author),
         summary: summaryHtml,
-        image: extractImage(it, summaryHtml),
+        image: extractImage(it, summaryHtml, textOf(it.link)),
         isAudio: false,
       };
     });
@@ -7283,7 +7323,7 @@ function extractItems(parsed) {
         title: textOf(e.title), link: (linkField && linkField["@_href"]) || textOf(linkField),
         pubDate: textOf(e.updated ?? e.published), author: textOf(e.author?.name),
         summary: summaryHtml,
-        image: extractImage(e, summaryHtml),
+        image: extractImage(e, summaryHtml, (linkField && linkField["@_href"]) || textOf(linkField)),
       };
     });
   }
@@ -7458,9 +7498,40 @@ async function importAllFeeds() {
   return { added, errors };
 }
 
+// Fill in pictures for the newest items that arrived without one, by reading
+// each article's own preview image. Small and bounded on purpose: at most a
+// few lookups per run, only items from the last day, never the same link twice
+// in six hours, so it adds little database traffic and never slows an import.
+const imageFillTried = new Map(); // link -> timestamp
+const IMAGE_FILL_MAX = Number(process.env.IMAGE_FILL_MAX || 8);
+async function fillMissingImages() {
+  if (IMAGE_FILL_MAX <= 0) return 0;
+  try {
+    const now = Date.now();
+    for (const [k, t] of imageFillTried) if (now - t > 6 * 3600 * 1000) imageFillTried.delete(k);
+    const cutoff = new Date(now - 24 * 3600 * 1000).toISOString();
+    const rows = await dbAll(
+      `SELECT id, link FROM dispatches WHERE date >= ? AND (image_url IS NULL OR image_url = '') ORDER BY date DESC LIMIT 40`,
+      [cutoff]
+    );
+    const todo = rows.filter((r) => r.link && !imageFillTried.has(r.link)).slice(0, IMAGE_FILL_MAX);
+    let filled = 0;
+    await Promise.all(todo.map(async (r) => {
+      imageFillTried.set(r.link, now);
+      const url = await fetchOgImage(r.link);
+      if (url) {
+        await dbRun(`UPDATE dispatches SET image_url = ? WHERE id = ? AND (image_url IS NULL OR image_url = '')`, [url, r.id]);
+        filled++;
+      }
+    }));
+    return filled;
+  } catch { return 0; }
+}
+
 app.post("/api/import-feeds", requireAdmin, async (req, res) => {
   const result = await importAllFeeds();
   res.json(result);
+  fillMissingImages().then((n) => { if (n) console.log(`Image fill: added ${n} picture(s).`); });
 });
 
 // ---------- scheduled auto-import ----------
@@ -7469,6 +7540,7 @@ if (AUTO_IMPORT_MINUTES > 0) {
   setInterval(async () => {
     const result = await importAllFeeds();
     console.log(`Auto-import: added ${result.added} dispatch(es).` + (result.errors.length ? ` Errors: ${result.errors.join("; ")}` : ""));
+    fillMissingImages().then((n) => { if (n) console.log(`Image fill: added ${n} picture(s).`); });
   }, AUTO_IMPORT_MINUTES * 60 * 1000);
 }
 
