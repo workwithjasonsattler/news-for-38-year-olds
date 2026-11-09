@@ -2346,22 +2346,29 @@
   function sourceSplashHtml() {
     const pick = splashPick();
     splashSubs = pick.subs;
+    // Styled after the promo video: white screen, one plain line at a time
+    // fading in and out above the red eye, which blinks while we wait.
+    splashSubs = [pick.head].concat(pick.subs);
     return `<div class="source-single-col-screen source-splash" role="status" aria-live="polite">
-      <div class="splash-mark">SOURCE<span class="splash-bang">!</span></div>
-      <div class="splash-rule" style="transform: rotate(${pick.tilt}deg)"></div>
-      <h2 class="splash-line">${escapeHtml(pick.head)}</h2>
-      <p class="splash-sub" id="splashSub">${escapeHtml(pick.subs[0])}</p>
+      <h2 class="splash-line" id="splashLine">${escapeHtml(pick.head)}</h2>
+      <img class="splash-eye" src="icons/icon-192.png" alt="" width="112" height="112">
     </div>`;
   }
   function startSplashCycle() {
     let i = 0;
     clearInterval(splashCycle);
     splashCycle = setInterval(() => {
-      const el = document.getElementById("splashSub");
+      const el = document.getElementById("splashLine");
       if (!el) { clearInterval(splashCycle); return; }
       i = (i + 1) % splashSubs.length;
-      el.textContent = splashSubs[i];
-    }, 1400);
+      el.classList.add("out");
+      setTimeout(() => {
+        const again = document.getElementById("splashLine");
+        if (!again) return;
+        again.textContent = splashSubs[i];
+        again.classList.remove("out");
+      }, 320);
+    }, 1900);
   }
 
   async function renderRead() {
