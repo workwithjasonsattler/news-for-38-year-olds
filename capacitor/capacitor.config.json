@@ -11,5 +11,16 @@
   },
   "android": {
     "allowMixedContent": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "launchFadeOutDuration": 300,
+      "backgroundColor": "#FF3E1D",
+      "showSpinner": false,
+      "splashFullScreen": true,
+      "splashImmersive": false
+    }
   }
 }
