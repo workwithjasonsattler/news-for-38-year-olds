@@ -18,5 +18,8 @@
 
     <style name="AppTheme.NoActionBarLaunch" parent="Theme.SplashScreen">
         <item name="android:background">@drawable/splash</item>
+        <!-- Android 12+ system splash: brand orange with the white eye. -->
+        <item name="windowSplashScreenBackground">#FF3E1D</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/splash_logo</item>
     </style>
 </resources>
