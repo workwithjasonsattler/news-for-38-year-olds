@@ -3234,3 +3234,39 @@ body[data-tab="read"] #main > .card-scroll .card-scroll-discuss { padding-left: 
 .first-card-list li { margin-bottom: 6px; }
 .first-card-link { background: none; border: 0; padding: 0; font: inherit; font-weight: 600; color: var(--accent-dim); text-decoration: underline; cursor: pointer; }
 .first-card-done { min-height: 44px; padding: 0 18px; border: 1px solid var(--ink); background: var(--bg); color: var(--ink); font-weight: 600; border-radius: 4px; cursor: pointer; }
+
+/* ---------------------------------------------------------------
+   BRIDGE: brand orange as the app's header band and its one accent.
+   --live (#FF3E1D) fills the header with a white wordmark; --live-ink is
+   the darker orange for small text on white (about 5.7:1, passes AA).
+   White type on the band is only used large (the wordmark); the tagline
+   and amber rule come out of the band. Follow stays blue and danger stays
+   crimson (--alert), on purpose. Amber keeps only its small jobs
+   (featured star, corporate marker, soft tints).
+   --------------------------------------------------------------- */
+:root { --live-ink: #C42A0E; }
+
+.source-header { background: var(--live); border-bottom: 0; }
+.source-header .wordmark,
+.source-header .wordmark-bang { color: #fff; }
+.source-header .wordmark-rule,
+.source-header .tagline { display: none; }
+.source-header .icon-btn,
+.source-header .view-menu-btn {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.6);
+  color: #fff;
+}
+.source-header .icon-btn:active { background: rgba(255, 255, 255, 0.32); }
+
+/* Tab bar: orange rule on top of the active tab, dark-orange label */
+.tab-btn.active { color: var(--live-ink); }
+body:not([data-layout="desktop"]) .tab-btn.active { box-shadow: inset 0 3px 0 var(--live); }
+
+/* "+ Add" pill and Support links move from amber/ink to orange */
+.spray-pill-menu { background: #fff; color: var(--live-ink); border: 1.5px solid var(--live); }
+.tip-badge { color: var(--live-ink); border-color: var(--live); }
+.chip-support { color: var(--live-ink); }
+.video-support-btn { color: var(--live-ink); border-color: var(--live); }
+.video-support-btn:hover { background: var(--live); color: #fff; }
+.mc-support { color: var(--live-ink); border-color: var(--live); }
