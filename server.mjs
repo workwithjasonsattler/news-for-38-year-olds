@@ -1656,7 +1656,7 @@ app.get(["/source", "/source/", "/source/index.html"], async (req, res, next) =>
       ? `${req.get("x-forwarded-proto") || "https"}://${req.get("host")}`
       : SITE_URL;
     const url = `${base}/source/?pack=${encodeURIComponent(slug)}`;
-    const img = `${base}/home/og.png`;
+    const img = `${base}/source/pack-og.png`; // brand-orange card (white eye, promise line)
     const t = escAttr(title), d = escAttr(desc);
     html = html
       .replace(/<title>[^<]*<\/title>/, `<title>${t}</title>`)
