@@ -3270,3 +3270,13 @@ body:not([data-layout="desktop"]) .tab-btn.active { box-shadow: inset 0 3px 0 va
 .video-support-btn { color: var(--live-ink); border-color: var(--live); }
 .video-support-btn:hover { background: var(--live); color: #fff; }
 .mc-support { color: var(--live-ink); border-color: var(--live); }
+
+
+/* Pack page (?pack=<slug>): orange where it carries meaning. A heavy orange
+   rule on top (same device as the homepage cards), the curator badge and
+   RSS link in dark orange, "Make your own" as an orange outline. Follow keeps
+   its own color on purpose; danger and amber meanings are untouched. */
+.pack-page .manage-screen-head { border-top: 4px solid var(--live); padding-top: 14px; }
+.pack-page .tile-sheet-badge { background: #fff; color: var(--live-ink); border: 1px solid var(--live); }
+.pack-page #packMakeOwnBtn { color: var(--live-ink); border: 1.5px solid var(--live); background: #fff; }
+.pack-page .tile-sheet-rss { color: var(--live-ink); }

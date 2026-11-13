@@ -6428,7 +6428,7 @@
     const following = (sprayBarData?.sprays || []).some(x => x.slug === mix.slug);
     const followLabel = !currentUser ? "Sign in to follow" : following ? "In your Read toggle ✓" : "Follow this RSS Pack";
     main.innerHTML = `
-      <div class="source-single-col-screen">
+      <div class="source-single-col-screen pack-page">
         <div class="manage-screen-head">
           ${mix.curator ? `<div class="tile-sheet-badge">Curated by ${escapeHtml(mix.curator)}</div>` : ""}
           <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
