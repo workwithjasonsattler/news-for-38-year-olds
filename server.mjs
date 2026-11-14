@@ -566,7 +566,7 @@ async function migrateFeedsJsonIfNeeded() {
 // with no feeds row still count as eligible, same as the old COALESCE.
 const WIRE_OK_SQL = `d.outlet NOT IN (SELECT outlet FROM feeds WHERE wire_eligible = 0 AND outlet IS NOT NULL)`;
 // Max rows GET /api/dispatches returns. It used to return the entire table.
-const WIRE_MAX_ROWS = 1500;
+const WIRE_MAX_ROWS = Math.min(Math.max(Number(process.env.WIRE_MAX_ROWS) || 1500, 200), 1500); // env lets the cap be lowered on Render without a deploy
 // Eligible outlets that actually have dispatches, driven from the ~255-row
 // feeds table with an index probe each, instead of SELECT DISTINCT over 64K rows.
 const WIRE_OUTLETS_SQL = `SELECT f.outlet FROM feeds f

@@ -1,5 +1,5 @@
-const SHELL_CACHE = "source-app-shell-v119";
-const DATA_CACHE = "source-app-data-v119";
+const SHELL_CACHE = "source-app-shell-v120";
+const DATA_CACHE = "source-app-data-v120";
 
 const SHELL_ASSETS = [
   "/source/",
@@ -71,7 +71,7 @@ self.addEventListener("fetch", (event) => {
   // of blocking on a fresh round-trip every single time, at the cost of
   // being up to one refresh cycle stale — an acceptable tradeoff for
   // news content that's already cached server-side for a while anyway.
-  if (url.origin === self.location.origin && SWR_PATHS.has(url.pathname) && !url.search) {
+  if (url.origin === self.location.origin && SWR_PATHS.has(url.pathname) && !url.search && req.cache !== "no-cache" && req.cache !== "reload") {
     event.respondWith(
       caches.open(DATA_CACHE).then(async (cache) => {
         const cached = await cache.match(req);

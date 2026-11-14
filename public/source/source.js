@@ -19,12 +19,15 @@
 
   // The service worker answers these data endpoints from its cache straight away and only
   // refreshes the cache for the NEXT request, so a plain re-fetch shows the previous copy.
-  // The Refresh button turns forceFresh on, and a query string makes the worker step aside
+  // The Refresh button turns forceFresh on, and a no-cache request makes the worker step aside
   // and let the request go to the network.
   const SWR_DATA_PATHS = new Set(["/api/dispatches", "/api/actions-feed", "/api/nerve-center/bluesky", "/api/nerve-center/chatter", "/api/sources", "/api/video-feed"]);
   let forceFresh = false;
   async function api(path, opts = {}) {
-    if (forceFresh && SWR_DATA_PATHS.has(path) && !opts.method) path += "?fresh=" + Date.now();
+    // Revalidate instead of busting the URL: the service worker steps aside for a
+    // no-cache request and the browser sends the ETag, so a Refresh with nothing new
+    // costs a 304 with no body instead of a full re-download of the wire.
+    if (forceFresh && SWR_DATA_PATHS.has(path) && !opts.method) opts = Object.assign({}, opts, { cache: "no-cache" });
     const headers = Object.assign({}, opts.headers || {});
     const token = getToken();
     if (token) headers["Authorization"] = "Bearer " + token;
