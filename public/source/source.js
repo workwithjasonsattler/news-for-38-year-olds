@@ -835,7 +835,7 @@
     // reminder of the Read tab's core promise and should hold across every
     // display mode, so its visibility is keyed on the tab alone.
     const promiseCaption = document.getElementById("readPromiseCaption");
-    if (promiseCaption) promiseCaption.hidden = activeTab !== "read";
+    if (promiseCaption) promiseCaption.hidden = activeTab !== "read" && activeTab !== "videos";
     refreshFeedCaption();
     renderDesktopSidePanel();
     if (activeTab === "read") return renderRead();
@@ -862,7 +862,7 @@
     main.innerHTML = stateBlock({ title: "Loading Videos", body: "Best of YouTube", spin: true });
     try {
       const items = await fetchItemsForSprayKey("__youtube");
-      const shown = items.slice().sort((a, b) => new Date(b.date) - new Date(a.date));
+      const shown = items.slice().sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0));
       if (shown.length === 0) {
         main.innerHTML = stateBlock({ glyph: "∅", title: "NO SIGNAL", body: "No videos available right now." });
         return;
@@ -1230,6 +1230,22 @@
   // already applied server-side.
   function tagFeedItems(key, items) {
     if (!Array.isArray(items)) return items;
+    if (key === "__youtube") {
+      // Videos use the same mute list as Read (default words plus the reader's
+      // own), matched against titles only. Per-channel edits are not built yet.
+      const regsV = muteRegexes();
+      if (!regsV.length) return items;
+      return items.filter(d => {
+        const hit = mutedWordsIn(d, regsV);
+        if (!hit.length) return true;
+        hit.forEach(w => {
+          const arr = mutedCaught.get(w) || [];
+          if (!arr.some(x => x.link === d.link)) arr.push(d);
+          mutedCaught.set(w, arr);
+        });
+        return false;
+      });
+    }
     const full = feedApplies(key);
     const defOnly = !full && defaultMuteApplies(key) && activeDefaultMutes().length > 0;
     if (!full && !defOnly) return items;
@@ -1516,6 +1532,15 @@
   function refreshFeedCaptionBase() {
     const el = document.getElementById("readPromiseCaption");
     if (!el) return;
+    if (activeTab === "videos") {
+      const own = feedEditCounts().muted;
+      if (own > 0) {
+        el.innerHTML = `Your videos. As they come out. <button type="button" class="caption-link" id="feedReviewLink">Hidden by you: ${own} muted word${own === 1 ? "" : "s"}</button>`;
+      } else {
+        el.textContent = "Your videos. As they come out.";
+      }
+      return;
+    }
     const c = feedEditCounts();
     const inFull = feedEditsActiveInView();
     const inDef = c.defs.length > 0 && Array.from(activeSprayKeys).some(k => defaultMuteApplies(k) || feedApplies(k));
@@ -2242,11 +2267,12 @@
   // The default mute is disclosed here, at the bottom of the list, instead of
   // in the caption. It links to the Your feed screen, where it can be turned off.
   function readFootnoteHtml() {
-    if (activeTab !== "read") return "";
+    if (activeTab !== "read" && activeTab !== "videos") return "";
     const c = feedEditCounts();
-    const inDef = c.defs.length > 0 && Array.from(activeSprayKeys).some(k => defaultMuteApplies(k) || feedApplies(k));
+    const onVideos = activeTab === "videos";
+    const inDef = c.defs.length > 0 && (onVideos || Array.from(activeSprayKeys).some(k => defaultMuteApplies(k) || feedApplies(k)));
     if (!inDef) return "";
-    return `<div class="read-footnote">* ${c.defs.map(capWord).join(", ")} is muted by default. <button type="button" class="caption-link" id="readFootnoteLink">See or turn off</button></div>`;
+    return `<div class="read-footnote">* ${c.defs.map(capWord).join(", ")} is muted by default${onVideos ? " in video titles" : ""}. <button type="button" class="caption-link" id="readFootnoteLink">See or turn off</button></div>`;
   }
   function relGroupHtml(e) {
     if (e.plain) return `<div class="rel-group plain"><div class="rel-group-label">${escapeHtml(e.label)}</div></div>`;
