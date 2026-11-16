@@ -3280,3 +3280,7 @@ body:not([data-layout="desktop"]) .tab-btn.active { box-shadow: inset 0 3px 0 va
 .pack-page .tile-sheet-badge { background: #fff; color: var(--live-ink); border: 1px solid var(--live); }
 .pack-page #packMakeOwnBtn { color: var(--live-ink); border: 1.5px solid var(--live); background: #fff; }
 .pack-page .tile-sheet-rss { color: var(--live-ink); }
+
+/* Video tweaks review sheet */
+.vr-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.vr-row .vr-restore { flex: 0 0 auto; }

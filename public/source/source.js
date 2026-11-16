@@ -418,7 +418,7 @@
   // Bottom action row for every card shape. Videos get Save/Support in the
   // top band instead, so only the Follow control stays down here.
   function cardActionsHtml(d, withShare) {
-    return d.is_video ? sprayAddButton(d) : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}${withShare ? storyShareButton(d) : ""}${tuneButton(d)}`;
+    return d.is_video ? tuneButton(d, "video-tune") : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}${withShare ? storyShareButton(d) : ""}${tuneButton(d)}`;
   }
 
   // Headlines Only is the one view that shows no excerpt, so a tap on the
@@ -857,32 +857,206 @@
   // a browse-and-watch list, not a full reading surface with its own
   // reader pane.
   // ---------------------------------------------------------------
-  async function renderVideos() {
+  // ----- Video tweaks: saved on this device only, never on the shared list. -----
+  const VIDEO_EDITS_KEY = "source_video_edits";
+  const VIDEO_TOP_CAP = 10;
+  let videoTopShown = false;
+  function readVideoEdits() {
+    try { const v = JSON.parse(localStorage.getItem(VIDEO_EDITS_KEY) || "{}"); return v && typeof v === "object" && !Array.isArray(v) ? v : {}; } catch (e) { return {}; }
+  }
+  function writeVideoEdits(m) { try { localStorage.setItem(VIDEO_EDITS_KEY, JSON.stringify(m)); } catch (e) { /* storage blocked */ } }
+  function videoModeFor(ch) { return readVideoEdits()[ch] || "on"; }
+  function videoEditCounts() {
+    const v = Object.values(readVideoEdits());
+    return { hidden: v.filter(m => m === "hidden").length, fold: v.filter(m => m === "fold").length, top: v.filter(m => m === "top").length };
+  }
+  function setVideoMode(ch, mode) {
+    const m = readVideoEdits();
+    if (mode === "on") delete m[ch];
+    else {
+      if (mode === "top" && m[ch] !== "top" && Object.values(m).filter(x => x === "top").length >= VIDEO_TOP_CAP) {
+        toast(`You can have up to ${VIDEO_TOP_CAP} top channels. Turn one off first.`);
+        return false;
+      }
+      m[ch] = mode;
+    }
+    writeVideoEdits(m);
+    return true;
+  }
+  function afterVideoChange() {
+    if (activeTab === "videos") renderVideos({ quiet: true });
+    refreshFeedCaption();
+  }
+  function videoChannelOf(d) { return (d.outlet || d.source || "").trim(); }
+  const VIDEO_MODE_LABEL = { top: "Top channel", fold: "Showing fewer", hidden: "Hidden" };
+
+  async function applyVideoMode(src, mode) {
+    const ch = src.outlet || src.label || "";
+    const prev = videoModeFor(ch);
+    closeTuneSheet();
+    if (prev === mode) return;
+    if (!setVideoMode(ch, mode)) return;
+    let msg;
+    if (mode === "hidden") msg = `${ch} hidden from your videos.`;
+    else if (mode === "top") msg = `${ch} is a top channel. Its last 24 hours go first.`;
+    else if (mode === "fold") msg = `Showing fewer videos from ${ch}.`;
+    else msg = `Showing all videos from ${ch}.`;
+    toastAction(msg, "Undo", () => { setVideoMode(ch, prev); afterVideoChange(); });
+    afterVideoChange();
+  }
+
+  function openVideoTuneSheet(src) {
+    closeTuneSheet();
+    const ch = src.outlet || src.label || "this channel";
+    const cur = videoModeFor(ch);
+    const el = document.createElement("div");
+    el.id = "tuneOverlay";
+    el.className = "spray-picker-overlay";
+    const opt = (mode, title, sub) => `<button type="button" class="tune-opt${cur === mode ? " on" : ""}" data-mode="${mode}"><span class="tune-opt-title">${title}${cur === mode ? " \u2713" : ""}</span><span class="tune-opt-sub">${sub}</span></button>`;
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span><strong>${escapeHtml(ch)}</strong> in your videos</span>
+          <button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button>
+        </div>
+        <p class="spray-picker-sub">Changes only your own videos. Saved on this device.</p>
+        ${opt("top", "Top channel", "Their videos from the last 24 hours go first, in their own labeled section.")}
+        ${opt("on", "Show all their videos", "Everything they post, newest first.")}
+        ${opt("fold", "Show fewer", "Their newest video each day shows. The rest fold into one row.")}
+        ${opt("hidden", "Hide " + escapeHtml(ch), "Never shown here. Bring it back from the line under the header.")}
+        <div class="tune-mute">
+          <div class="tune-opt-title" style="margin-top:14px;">Mute a word</div>
+          <div class="spray-picker-newrow">
+            <input type="text" id="tuneMuteInput" placeholder="Word or phrase" maxlength="40" autocomplete="off">
+            <button class="btn" id="tuneMuteBtn" type="button">Mute</button>
+          </div>
+          <div class="tune-opt-sub">Leaves out videos with that whole word in the title. The same list as your stories.</div>
+        </div>
+        <button type="button" class="tune-opt" id="tunePackBtn" style="margin-top:12px;"><span class="tune-opt-title">Add to an RSS Pack</span><span class="tune-opt-sub">Put this channel in one of your own RSS Packs.</span></button>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
+    el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
+    el.querySelectorAll(".tune-opt[data-mode]").forEach(b => b.addEventListener("click", () => applyVideoMode(src, b.dataset.mode)));
+    const mi = el.querySelector("#tuneMuteInput");
+    const doMute = async () => {
+      const word = await addMute(mi.value);
+      if (!word) return;
+      closeTuneSheet();
+      toastAction(`Muted \u201c${word}\u201d in video titles.`, "Undo", () => removeMute(word));
+    };
+    el.querySelector("#tuneMuteBtn").addEventListener("click", doMute);
+    mi.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doMute(); } });
+    el.querySelector("#tunePackBtn").addEventListener("click", () => {
+      closeTuneSheet();
+      const plain = Object.assign({}, src); delete plain.video;
+      openSprayPicker(plain);
+    });
+  }
+
+  function openVideoReviewSheet() {
+    closeTuneSheet();
+    const rows = Object.entries(readVideoEdits());
+    const el = document.createElement("div");
+    el.id = "tuneOverlay";
+    el.className = "spray-picker-overlay";
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span><strong>Your videos</strong></span>
+          <button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button>
+        </div>
+        <p class="spray-picker-sub">Only what you changed. Saved on this device. Everything else shows newest first.</p>
+        ${rows.length ? rows.map(([ch, mode]) => `<div class="vr-row"><span><strong>${escapeHtml(ch)}</strong><br><span class="tune-opt-sub">${escapeHtml(VIDEO_MODE_LABEL[mode] || mode)}</span></span><button type="button" class="btn vr-restore" data-ch="${escapeHtml(ch)}">Restore</button></div>`).join("") : `<p class="tune-opt-sub">No channels changed.</p>`}
+        <button type="button" class="tune-opt" id="vrWords" style="margin-top:12px;"><span class="tune-opt-title">Muted words</span><span class="tune-opt-sub">See, peek at and remove the words you muted.</span></button>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
+    el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
+    el.querySelectorAll(".vr-restore").forEach(b => b.addEventListener("click", () => {
+      setVideoMode(b.dataset.ch, "on");
+      afterVideoChange();
+      openVideoReviewSheet();
+    }));
+    el.querySelector("#vrWords").addEventListener("click", () => { closeTuneSheet(); openYourFeedScreen(); });
+  }
+
+  // Splits a newest-first list into normal / head / folded entries for channels set to "Show fewer".
+  function videoFoldEntries(list) {
+    const firstOfDay = new Map();
+    const groups = new Map();
+    const folded = new Set();
+    for (const d of list) {
+      const ch = videoChannelOf(d);
+      if (!ch || videoModeFor(ch) !== "fold") continue;
+      const k = ch + "|" + new Date(d.date || 0).toDateString();
+      if (!firstOfDay.has(k)) { firstOfDay.set(k, d); continue; }
+      const head = firstOfDay.get(k);
+      if (!groups.has(head)) groups.set(head, []);
+      groups.get(head).push(d);
+      folded.add(d);
+    }
+    const out = [];
+    for (const d of list) {
+      if (folded.has(d)) continue;
+      const g = groups.get(d);
+      out.push({ d, role: g ? "head" : "normal", count: g ? g.length : 0, headKey: String(d.id) });
+      if (g) g.forEach(f => out.push({ d: f, role: "folded", headKey: String(d.id) }));
+    }
+    return out;
+  }
+
+  async function renderVideos(opts) {
+    const quiet = !!(opts && opts.quiet);
     const main = document.getElementById("main");
-    main.innerHTML = stateBlock({ title: "Loading Videos", body: "Best of YouTube", spin: true });
+    const keepY = quiet ? (window.scrollY || 0) : 0;
+    if (!quiet) main.innerHTML = stateBlock({ title: "Loading Videos", body: "Best of YouTube", spin: true });
     try {
       const items = await fetchItemsForSprayKey("__youtube");
-      const shown = items.slice().sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0));
-      if (shown.length === 0) {
-        main.innerHTML = stateBlock({ glyph: "∅", title: "NO SIGNAL", body: "No videos available right now." });
+      if (activeTab !== "videos") return;
+      const edits = readVideoEdits();
+      const sorted = items
+        .filter(d => edits[videoChannelOf(d)] !== "hidden")
+        .sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0));
+      if (items.length === 0) {
+        videoTopShown = false;
+        main.innerHTML = stateBlock({ glyph: "\u2205", title: "NO SIGNAL", body: "No videos available right now." });
+        refreshFeedCaption();
         return;
       }
-      main.innerHTML = `<div class="source-single-col-screen">`
-        + shown.map((d, i) => renderDispatchCard(d, false, i === 0, null)).join("")
-        + `</div>`;
-      main.querySelectorAll(".spray-add-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const source = JSON.parse(btn.dataset.spraySource);
-          if (btn.dataset.removeSlug) {
-            quickRemoveFromActiveSpray(source, btn.dataset.removeSlug, btn, () => renderVideos());
-          } else {
-            openSprayPicker(source);
-          }
-        });
-      });
+      if (sorted.length === 0) {
+        videoTopShown = false;
+        main.innerHTML = stateBlock({ glyph: "\u2205", title: "NOTHING SHOWING", body: "Every video is hidden by your changes. Tap the line under the header to restore." });
+        refreshFeedCaption();
+        return;
+      }
+      const DAY = 24 * 60 * 60 * 1000;
+      const topSet = new Set(Object.keys(edits).filter(k => edits[k] === "top"));
+      const topItems = sorted.filter(d => topSet.has(videoChannelOf(d)) && Date.now() - (Date.parse(d.date) || 0) <= DAY).slice(0, 15);
+      const topIds = new Set(topItems);
+      const rest = sorted.filter(d => !topIds.has(d));
+      const entries = [];
+      videoTopShown = topItems.length > 0;
+      if (topItems.length) {
+        const names = []; topItems.forEach(d => { const c = videoChannelOf(d); if (c && !names.includes(c)) names.push(c); });
+        entries.push({ role: "group", label: "Your top channels \u00b7 last 24 hours", outlets: names });
+        topItems.forEach(d => entries.push({ d, role: "normal" }));
+        entries.push({ role: "group", plain: true, label: "Everything else, newest first" });
+      }
+      videoFoldEntries(rest).forEach(e => entries.push(e));
+      let n = 0;
+      const html = entries.map(e => {
+        if (e.role === "group") return relGroupHtml(e);
+        const card = renderDispatchCard(e.d, false, n++ === 0, null);
+        if (e.role === "folded") return foldItemHtml(e, card);
+        return e.role === "head" ? card + foldToggleHtml(e) : card;
+      }).join("");
+      main.innerHTML = `<div class="source-single-col-screen">${html}</div>`;
       wireSaveButtons(main);
       wireVideoShareButtons(main);
       main.insertAdjacentHTML("beforeend", readFootnoteHtml());
+      refreshFeedCaption();
+      if (quiet) window.scrollTo(0, keepY);
     } catch (e) {
       main.innerHTML = stateBlock({ glyph: "!", title: "TRANSMISSION FAILED", body: e.message || "Could not load videos." });
     }
@@ -1312,7 +1486,8 @@
   function tuneButton(d, cls) {
     const src = sprayableSource(d);
     if (!src) return "";
-    const name = escapeHtml(src.label || "this source");
+    if (d.is_video) src.video = true;
+    const name = escapeHtml(src.label || (d.is_video ? "this channel" : "this source"));
     return `<button type="button" class="tune-btn src-menu-btn${cls ? " " + cls : ""}" data-tune='${escapeHtml(JSON.stringify(src))}' aria-label="Options for ${name}" title="Options for ${name}">${DOTS_SVG}</button>`;
   }
 
@@ -1415,6 +1590,7 @@
   function afterFeedChange() {
     selectedDispatch = null;
     if (activeTab === "read") renderRead();
+    if (activeTab === "videos") renderVideos({ quiet: true });
     refreshFeedCaption();
     refreshYourFeedScreen();
   }
@@ -1534,8 +1710,16 @@
     if (!el) return;
     if (activeTab === "videos") {
       const own = feedEditCounts().muted;
-      if (own > 0) {
-        el.innerHTML = `Your videos. As they come out. <button type="button" class="caption-link" id="feedReviewLink">Hidden by you: ${own} muted word${own === 1 ? "" : "s"}</button>`;
+      const v = videoEditCounts();
+      const gone = [];
+      if (v.hidden) gone.push(`${v.hidden} channel${v.hidden === 1 ? "" : "s"}`);
+      if (own) gone.push(`${own} muted word${own === 1 ? "" : "s"}`);
+      const parts = [];
+      if (gone.length) parts.push(`Hidden by you: ${gone.join(", ")}`);
+      if (v.top && videoTopShown) parts.push(`${v.top} top channel${v.top === 1 ? "" : "s"} first`);
+      if (v.fold) parts.push(`${v.fold} channel${v.fold === 1 ? "" : "s"} showing fewer videos`);
+      if (parts.length) {
+        el.innerHTML = `Your videos. As they come out. <button type="button" class="caption-link" id="feedReviewLink">${escapeHtml(parts.join(". "))}</button>`;
       } else {
         el.textContent = "Your videos. As they come out.";
       }
@@ -1888,7 +2072,7 @@
     const tune = t.closest(".tune-btn");
     if (tune) {
       e.preventDefault(); e.stopPropagation();
-      try { openTuneSheet(JSON.parse(tune.dataset.tune)); } catch (err) { /* ignore malformed */ }
+      try { const ts = JSON.parse(tune.dataset.tune); if (ts && ts.video) openVideoTuneSheet(ts); else openTuneSheet(ts); } catch (err) { /* ignore malformed */ }
       return;
     }
     const fold = t.closest(".fold-toggle");
@@ -1901,7 +2085,8 @@
       if (act) act.textContent = open ? "Hide" : "Show";
       return;
     }
-    if (t.closest("#feedReviewLink") || t.closest("#readFootnoteLink")) openYourFeedScreen();
+    if (t.closest("#feedReviewLink")) { if (activeTab === "videos") openVideoReviewSheet(); else openYourFeedScreen(); return; }
+    if (t.closest("#readFootnoteLink")) openYourFeedScreen();
   });
 
   // Press and hold (touch) or right-click (desktop) on any story opens its
