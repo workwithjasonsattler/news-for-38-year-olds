@@ -3092,12 +3092,12 @@ body:not([data-layout="desktop"]).kb-open .tab-bar { display: none; }
 .opml-title { font-weight: 600; font-size: 15px; }
 .opml-sub { font-size: 12.5px; color: var(--ink-muted); line-height: 1.45; margin: 4px 0 10px; }
 
-/* First-load brand moment: styled after the promo video. White screen, one
-   centered line at a time fading in and out, the red eye below it blinking. */
+/* First-load brand moment: white screen, the red eye blinking. No text. */
 .source-splash { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 60vh; text-align: center; padding: 0 24px; background: #fff; }
-.splash-line { font-family: var(--display); font-size: 22px; font-weight: 500; line-height: 1.3; margin: 0 0 4px; max-width: 15em; min-height: 2.7em; display: flex; align-items: flex-end; justify-content: center; transition: opacity 0.3s ease; color: var(--ink); }
-.splash-line.out { opacity: 0; }
 .splash-eye { display: block; width: 112px; height: 112px; transform-origin: center; }
+.source-splash { min-height: 60vh; }
+.eye-loading { display: flex; align-items: center; justify-content: center; padding: 56px 0; }
+.eye-loading .splash-eye { width: 88px; height: 88px; }
 @media (prefers-reduced-motion: no-preference) {
   .splash-eye { animation: splashBlink 2.4s ease-in-out infinite; }
   .source-splash.pre { opacity: 0; animation: splashAppear 0.01s linear 0.3s forwards; }

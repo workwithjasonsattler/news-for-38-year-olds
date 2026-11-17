@@ -704,7 +704,10 @@
   }
 
   function stateBlock({ glyph, title, body, spin }) {
-    return `<div class="state-block"><div class="terminal-glyph${spin ? " spin" : ""}">${glyph || ">_"}</div>
+    // Every loading state is the blinking eye and nothing else. The label is for
+    // screen readers only.
+    if (spin) return `<div class="state-block eye-loading" role="status" aria-label="Loading"><img class="splash-eye" src="icons/icon-192.png" alt="" width="88" height="88"></div>`;
+    return `<div class="state-block"><div class="terminal-glyph">${glyph || ">_"}</div>
       <h3>${escapeHtml(title)}</h3><p>${escapeHtml(body)}</p></div>`;
   }
 
@@ -2505,84 +2508,15 @@
     localStorage.setItem(LIVE_LAST_SEEN_KEY, String(Date.now()));
   }
 
-  // First load of a session: a short brand moment instead of a spinner. It
-  // only appears if loading takes more than a quarter second (fast loads
-  // never see it), and once shown it stays at least 700ms so it can't flash.
-  // A different line every load (never the same one twice in a row on a
-  // device). Voice rules: dry, true to what the app does, no counts, no
-  // "no X, no Y" stacking. Add freely; keep each under ~40 characters.
-  const SPLASH_HEADS = [
-    "You\u2019re going straight to the source.",
-    "Reading the news before it reads you.",
-    "Checking what happened while you slept.",
-    "Putting today in order.",
-    "Knocking on a few hundred newsroom doors.",
-    "Waking up the reporters.",
-    "Here before the outrage.",
-    "Going around the middleman.",
-    "Fresh off the feeds.",
-    "Hold on, the reporters are typing.",
-    "Pulling today\u2019s front page together.",
-    "Nobody has reordered this yet.",
-    "Your morning, back in your hands.",
-    "Getting here before the algorithm does.",
-    "Brewing something factual.",
-    "Sorted by time, and nothing else.",
-    "Opening the wire.",
-    "The news, minus the middle layer.",
-    "Collecting the facts, one feed at a time.",
-    "Asking the outlets directly.",
-    "Reading it in the order it happened.",
-    "Starting your day on purpose.",
-    "Dusting off the front page.",
-    "Almost there. The coffee can wait.",
-  ];
-  const SPLASH_LINES = [
-    "Newest first.", "No algorithm in between.", "Asking the outlets directly.",
-    "Independent newsrooms, one at a time.", "Nothing is boosted.", "Nothing is hidden.",
-    "Real sources, in order.", "Still faster than doomscrolling.", "Checking the wire.",
-    "The order is the clock.", "Your sources, your list.", "Fetching, not feeding.",
-  ];
-  const SPLASH_LAST_KEY = "source_splash_last";
-  function splashPick() {
-    let last = -1;
-    try { last = parseInt(localStorage.getItem(SPLASH_LAST_KEY), 10); } catch (e) { /* storage blocked */ }
-    let h = Math.floor(Math.random() * SPLASH_HEADS.length);
-    if (SPLASH_HEADS.length > 1 && h === last) h = (h + 1 + Math.floor(Math.random() * (SPLASH_HEADS.length - 1))) % SPLASH_HEADS.length;
-    try { localStorage.setItem(SPLASH_LAST_KEY, String(h)); } catch (e) { /* ignore */ }
-    // three distinct sub-lines in a random order for the 1.4s cycle
-    const subs = SPLASH_LINES.slice().sort(() => Math.random() - 0.5).slice(0, 3);
-    return { head: SPLASH_HEADS[h], subs, tilt: (Math.random() * 5 - 2.5).toFixed(1) };
-  }
-  let splashSubs = SPLASH_LINES.slice(0, 3);
+  // First load of a session: the blinking eye on a white screen instead of a
+  // spinner or any message. It only appears if loading takes more than a
+  // quarter second (fast loads never see it), and once shown it stays at least
+  // 700ms so it can't flash.
   let firstReadLoadDone = false;
-  let splashCycle = null;
   function sourceSplashHtml() {
-    const pick = splashPick();
-    splashSubs = pick.subs;
-    // Styled after the promo video: white screen, one plain line at a time
-    // fading in and out above the red eye, which blinks while we wait.
-    splashSubs = [pick.head].concat(pick.subs);
-    return `<div class="source-single-col-screen source-splash" role="status" aria-live="polite">
-      <h2 class="splash-line" id="splashLine">${escapeHtml(pick.head)}</h2>
+    return `<div class="source-single-col-screen source-splash" role="status" aria-label="Loading">
       <img class="splash-eye" src="icons/icon-192.png" alt="" width="112" height="112">
     </div>`;
-  }
-  function startSplashCycle() {
-    let i = 0;
-    clearInterval(splashCycle);
-    splashCycle = setInterval(() => {
-      const el = document.getElementById("splashLine");
-      if (!el) { clearInterval(splashCycle); return; }
-      i = (i + 1) % splashSubs.length;
-      el.classList.add("out");
-      setTimeout(() => {
-        const again = document.getElementById("splashLine");
-        if (!again) return;
-        again.textContent = splashSubs[i];
-        again.classList.remove("out");
-      }, 320);
-    }, 1900);
   }
 
   async function renderRead() {
@@ -2599,11 +2533,9 @@
       splashTimer = setTimeout(() => {
         splashShownAt = Date.now();
         main.innerHTML = sourceSplashHtml();
-        startSplashCycle();
       }, 250);
     } else {
-      const again = splashPick();
-      main.innerHTML = stateBlock({ title: again.head, body: again.subs[0], spin: true });
+      main.innerHTML = stateBlock({ spin: true });
     }
     const endSplash = async () => {
       clearTimeout(splashTimer);
@@ -2611,7 +2543,6 @@
         const left = 700 - (Date.now() - splashShownAt);
         if (left > 0) await new Promise(r => setTimeout(r, left));
       }
-      clearInterval(splashCycle);
       firstReadLoadDone = true;
     };
     try {
