@@ -2526,6 +2526,9 @@ async function addCustomToMyFeed(userId, customSourceId) {
   try {
     const mix = await dbGet(`SELECT id FROM feed_mixes WHERE creator_user_id = ? AND is_my_feed = 1 ORDER BY id ASC LIMIT 1`, [userId]);
     if (!mix || !customSourceId) return;
+    // YouTube channels live on Videos, never in the Read wire or My Feed.
+    const cs = await dbGet(`SELECT feed_url FROM user_custom_sources WHERE id = ?`, [customSourceId]);
+    if (cs && isYoutubeRssUrl(cs.feed_url)) return;
     const have = await dbGet(`SELECT id FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'custom' AND custom_source_id = ?`, [mix.id, customSourceId]);
     if (have) return;
     const n = (await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [mix.id])).n;
@@ -2600,7 +2603,7 @@ app.get("/api/my/custom-sources", async (req, res) => {
     `SELECT id, name, feed_url, submission_status, created_at FROM user_custom_sources WHERE user_id = ? ORDER BY created_at DESC`,
     [user.id]
   );
-  res.json(rows);
+  res.json(rows.map((r) => ({ ...r, is_video: isYoutubeRssUrl(r.feed_url) })));
 });
 
 app.post("/api/my/custom-sources", async (req, res) => {
@@ -2619,6 +2622,10 @@ app.post("/api/my/custom-sources", async (req, res) => {
 
   const existing = await dbGet(`SELECT id FROM user_custom_sources WHERE user_id = ? AND feed_url = ?`, [user.id, feedUrl]);
   if (existing) return res.status(409).json({ error: "You've already added that source." });
+  const isVideo = isYoutubeRssUrl(feedUrl);
+  if (isVideo && (await countVideoChannels(user.id)) >= VIDEO_CHANNEL_CAP) {
+    return res.status(400).json({ error: `You've added ${VIDEO_CHANNEL_CAP} channels, the most you can have. Remove one to add another.` });
+  }
 
   try {
     // fast-xml-parser doesn't reject non-RSS HTML/XML outright — it just
@@ -2631,6 +2638,13 @@ app.post("/api/my/custom-sources", async (req, res) => {
   }
 
   let sourceName = name;
+  if (!sourceName && isVideo) {
+    // A pasted YouTube channel feed: name it after the channel, not "youtube.com".
+    try {
+      const cid = feedUrl.slice(YT_RSS_PREFIX.length);
+      if (YT_CHANNEL_ID_RE.test(cid)) sourceName = (await fetchYoutubeChannelFeed(cid)).channelTitle.slice(0, 80);
+    } catch { /* fall back to the host name below */ }
+  }
   if (!sourceName) {
     try { sourceName = new URL(feedUrl).hostname.replace(/^www\./, ""); }
     catch { sourceName = feedUrl; }
@@ -2641,7 +2655,7 @@ app.post("/api/my/custom-sources", async (req, res) => {
     [user.id, sourceName, feedUrl]
   );
   await addCustomToMyFeed(user.id, Number(info.lastInsertRowid));
-  res.json({ id: info.lastInsertRowid, name: sourceName, feed_url: feedUrl });
+  res.json({ id: info.lastInsertRowid, name: sourceName, feed_url: feedUrl, is_video: isVideo });
 });
 
 app.delete("/api/my/custom-sources/:id", async (req, res) => {
@@ -2649,6 +2663,193 @@ app.delete("/api/my/custom-sources/:id", async (req, res) => {
   if (!user) return res.status(401).json({ error: "not signed in" });
   await dbRun(`DELETE FROM user_custom_sources WHERE id = ? AND user_id = ?`, [req.params.id, user.id]);
   res.json({ ok: true });
+});
+
+// ---------- Videos: reader-added YouTube channels (slice 3a) ----------
+// A reader pastes a channel link or @handle. The server resolves it to a
+// channel ID (UC + 22 chars), BUILDS the public RSS URL itself from that
+// validated ID, and stores it as an ordinary user_custom_sources row. That
+// gets caps, privacy, account deletion and OPML export for free. The server
+// never fetches a reader-supplied URL for this feature: the only hosts it
+// talks to are www.youtube.com (fixed path shapes) and googleapis.com, so
+// the SSRF guard question does not arise. YouTube's RSS carries view
+// statistics (media:community); they are never read or returned.
+const YT_RSS_PREFIX = "https://www.youtube.com/feeds/videos.xml?channel_id=";
+const VIDEO_CHANNEL_CAP = 25; // inside the 50-source CUSTOM_SOURCE_CAP
+const VIDEO_PER_CHANNEL = 5; // matches the curated list
+const VIDEO_CHANNEL_CACHE_TTL_MS = 30 * 60 * 1000;
+const youtubeChannelFeedCache = new Map(); // channelId -> { data, fetchedAt }
+const videoChannelChecks = new Map(); // userId -> [timestamps] (in-memory limiter)
+const YT_CHANNEL_ID_RE = /^UC[A-Za-z0-9_-]{22}$/;
+
+function isYoutubeRssUrl(u) {
+  return typeof u === "string" && u.startsWith(YT_RSS_PREFIX);
+}
+function youtubeRssUrl(channelId) { return YT_RSS_PREFIX + channelId; }
+
+// -> { kind: "id"|"handle"|"user"|"custom", value } or null
+function parseYoutubeChannelInput(raw) {
+  let s = String(raw || "").trim().slice(0, 300);
+  if (!s) return null;
+  if (YT_CHANNEL_ID_RE.test(s)) return { kind: "id", value: s };
+  if (/^@[A-Za-z0-9._-]{3,30}$/.test(s)) return { kind: "handle", value: s.slice(1) };
+  if (!/^https?:\/\//i.test(s)) {
+    if (/^(www\.|m\.)?youtube\.com\//i.test(s)) s = "https://" + s;
+    else return null;
+  }
+  let u;
+  try { u = new URL(s); } catch { return null; }
+  if (!/^(www\.|m\.)?youtube\.com$/i.test(u.hostname)) return null;
+  const parts = u.pathname.split("/").filter(Boolean).map((p) => { try { return decodeURIComponent(p); } catch { return p; } });
+  if (parts.length === 0) return null;
+  if (parts[0] === "channel" && YT_CHANNEL_ID_RE.test(parts[1] || "")) return { kind: "id", value: parts[1] };
+  if (/^@[A-Za-z0-9._-]{3,30}$/.test(parts[0])) return { kind: "handle", value: parts[0].slice(1) };
+  if (parts[0] === "user" && /^[A-Za-z0-9._-]{1,50}$/.test(parts[1] || "")) return { kind: "user", value: parts[1] };
+  if (parts[0] === "c" && /^[A-Za-z0-9._-]{1,50}$/.test(parts[1] || "")) return { kind: "custom", value: parts[1] };
+  return null;
+}
+
+// Last resort when there is no API key (or the API finds nothing): read the
+// channel page the SERVER builds from validated characters and pull the ID.
+async function scrapeYoutubeChannelId(path) {
+  try {
+    const resp = await fetch(`https://www.youtube.com${path}`, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; n38-cms/1.0)", "Accept-Language": "en" },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return null;
+    const html = (await resp.text()).slice(0, 600 * 1024);
+    const m = html.match(/<link rel="canonical" href="https:\/\/www\.youtube\.com\/channel\/(UC[A-Za-z0-9_-]{22})"/)
+      || html.match(/"channelId":"(UC[A-Za-z0-9_-]{22})"/)
+      || html.match(/"externalId":"(UC[A-Za-z0-9_-]{22})"/);
+    return m ? m[1] : null;
+  } catch { return null; }
+}
+
+async function resolveYoutubeChannelId(parsed) {
+  if (parsed.kind === "id") return parsed.value;
+  if (YOUTUBE_API_KEY && (parsed.kind === "handle" || parsed.kind === "user")) {
+    try {
+      const qs = parsed.kind === "handle" ? `forHandle=${encodeURIComponent(parsed.value)}` : `forUsername=${encodeURIComponent(parsed.value)}`;
+      const resp = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=id&${qs}&key=${YOUTUBE_API_KEY}`, { signal: AbortSignal.timeout(8000) });
+      if (resp.ok) {
+        const id = (await resp.json()).items?.[0]?.id;
+        if (id && YT_CHANNEL_ID_RE.test(id)) return id;
+      }
+    } catch { /* fall through to the page */ }
+  }
+  const path = parsed.kind === "handle" ? `/@${parsed.value}` : parsed.kind === "user" ? `/user/${parsed.value}` : `/c/${parsed.value}`;
+  return scrapeYoutubeChannelId(path);
+}
+
+// Public RSS -> { channelTitle, videos[] }, cached 30 min per channel.
+async function fetchYoutubeChannelFeed(channelId) {
+  const cached = youtubeChannelFeedCache.get(channelId);
+  if (cached && Date.now() - cached.fetchedAt < VIDEO_CHANNEL_CACHE_TTL_MS) return cached.data;
+  const resp = await fetch(youtubeRssUrl(channelId), {
+    headers: { "User-Agent": "n38-cms/1.0 (+https://news-for-38-year-olds.onrender.com)" },
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const parsed = xmlParser.parse(await resp.text());
+  const feed = parsed?.feed;
+  if (!feed) throw new Error("not a channel feed");
+  const entries = feed.entry ? (Array.isArray(feed.entry) ? feed.entry : [feed.entry]) : [];
+  const videos = [];
+  for (const e of entries) {
+    const videoId = String(textOf(e["yt:videoId"]) || "").trim();
+    const title = stripHtml(textOf(e.title));
+    if (!/^[A-Za-z0-9_-]{11}$/.test(videoId) || !title) continue;
+    const thumbRaw = e["media:group"]?.["media:thumbnail"];
+    const thumbUrl = (Array.isArray(thumbRaw) ? thumbRaw[0] : thumbRaw)?.["@_url"];
+    videos.push({
+      title,
+      thumbnail: /^https:\/\/i\d?\.ytimg\.com\//.test(thumbUrl || "") ? thumbUrl : `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+      url: `https://www.youtube.com/watch?v=${videoId}`,
+      published_at: textOf(e.published) || null,
+    });
+  }
+  videos.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+  const data = { channelTitle: stripHtml(textOf(feed.title)) || "YouTube channel", videos: videos.slice(0, VIDEO_PER_CHANNEL) };
+  if (data.videos.length === 0 && entries.length === 0 && !feed.title) throw new Error("empty feed");
+  youtubeChannelFeedCache.set(channelId, { data, fetchedAt: Date.now() });
+  return data;
+}
+
+function videoChannelCheckAllowed(userId) {
+  const now = Date.now();
+  const list = (videoChannelChecks.get(userId) || []).filter((t) => now - t < 10 * 60 * 1000);
+  if (list.length >= 20) { videoChannelChecks.set(userId, list); return false; }
+  list.push(now);
+  videoChannelChecks.set(userId, list);
+  return true;
+}
+
+async function countVideoChannels(userId) {
+  return (await dbGet(`SELECT COUNT(*) AS n FROM user_custom_sources WHERE user_id = ? AND feed_url LIKE ?`, [userId, YT_RSS_PREFIX + "%"])).n;
+}
+
+// Check (no confirm) or add (confirm:true) a channel.
+app.post("/api/my/video-channels", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const parsed = parseYoutubeChannelInput(req.body?.input);
+  if (!parsed) {
+    const looksVideo = /youtu\.be\/|[?&]v=|\/watch|\/shorts\//i.test(String(req.body?.input || ""));
+    return res.status(400).json({ error: looksVideo ? "That's a link to one video. Paste the channel's link or @handle instead." : "Paste a YouTube channel link or an @handle." });
+  }
+  if (!videoChannelCheckAllowed(user.id)) return res.status(429).json({ error: "Slow down a little and try again in a few minutes." });
+  try {
+    const videoCount = await countVideoChannels(user.id);
+    const total = (await dbGet(`SELECT COUNT(*) AS n FROM user_custom_sources WHERE user_id = ?`, [user.id])).n;
+    const channelId = await resolveYoutubeChannelId(parsed);
+    if (!channelId) return res.status(404).json({ error: "We couldn't find that channel." });
+    const rssUrl = youtubeRssUrl(channelId);
+    const existing = await dbGet(`SELECT id, name FROM user_custom_sources WHERE user_id = ? AND feed_url = ?`, [user.id, rssUrl]);
+    if (existing) return res.status(409).json({ error: "You've already added that channel.", id: existing.id, name: existing.name });
+    if (videoCount >= VIDEO_CHANNEL_CAP) return res.status(400).json({ error: `You've added ${VIDEO_CHANNEL_CAP} channels, the most you can have. Remove one to add another.` });
+    if (total >= CUSTOM_SOURCE_CAP) return res.status(400).json({ error: `You've reached the ${CUSTOM_SOURCE_CAP}-source limit for your own feeds.` });
+    let feed;
+    try { feed = await fetchYoutubeChannelFeed(channelId); }
+    catch { return res.status(502).json({ error: "Videos from that channel aren't available right now." }); }
+    if (req.body?.confirm !== true) {
+      return res.json({ ok: true, channel_id: channelId, title: feed.channelTitle, newest_title: feed.videos[0]?.title || null });
+    }
+    const name = feed.channelTitle.slice(0, 80);
+    const info = await dbRun(
+      `INSERT INTO user_custom_sources (user_id, name, feed_url, validated, submission_status) VALUES (?, ?, ?, 1, 'pending')`,
+      [user.id, name, rssUrl]
+    );
+    res.json({ ok: true, id: Number(info.lastInsertRowid), name, channel_id: channelId });
+  } catch (e) {
+    console.error("video channel add failed:", e?.message || e);
+    res.status(500).json({ error: "Couldn't add that channel. Try again." });
+  }
+});
+
+// The reader's own channels, same item shape as /api/video-feed. Cached per
+// channel (not per reader), so cost scales with distinct channels.
+app.get("/api/my/video-feed", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const rows = await dbAll(
+    `SELECT id, name, feed_url FROM user_custom_sources WHERE user_id = ? AND feed_url LIKE ? ORDER BY id ASC`,
+    [user.id, YT_RSS_PREFIX + "%"]
+  );
+  const results = await Promise.allSettled(rows.map(async (r) => {
+    const channelId = r.feed_url.slice(YT_RSS_PREFIX.length);
+    if (!YT_CHANNEL_ID_RE.test(channelId)) return [];
+    const feed = await fetchYoutubeChannelFeed(channelId);
+    return feed.videos.map((v) => ({
+      channel: r.name, channelThumbnail: "", title: v.title, thumbnail: v.thumbnail, url: v.url,
+      published_at: v.published_at, tip_url: null, subscribe_url: null,
+      reader_added: true, custom_source_id: r.id,
+    }));
+  }));
+  results.filter((r) => r.status === "rejected").forEach((r) => console.error("My video channel fetch failed:", r.reason?.message || r.reason));
+  const all = results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value);
+  all.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+  res.json(all);
 });
 
 // ---------- Feed Autodiscovery ----------
@@ -4074,7 +4275,7 @@ async function ensureMyFeedInner(user) {
   }
   try {
     const outlets = await dbAll(WIRE_OUTLETS_SQL);
-    const customs = await dbAll(`SELECT id FROM user_custom_sources WHERE user_id = ? ORDER BY id ASC`, [user.id]);
+    const customs = await dbAll(`SELECT id FROM user_custom_sources WHERE user_id = ? AND feed_url NOT LIKE ? ORDER BY id ASC`, [user.id, YT_RSS_PREFIX + "%"]);
     const rows = [
       ...outlets.map((o) => ["admin_outlet", o.outlet, null]),
       ...customs.map((c) => ["custom", null, c.id]),
@@ -5299,7 +5500,7 @@ app.get("/api/dispatches", async (req, res) => {
   // the wire. Only blended into the main unfiltered wire, not a beat-
   // filtered view — custom sources aren't categorized into a beat.
   if (user && !beat) {
-    const customSources = await dbAll(`SELECT id, name, feed_url FROM user_custom_sources WHERE user_id = ?`, [user.id]);
+    const customSources = await dbAll(`SELECT id, name, feed_url FROM user_custom_sources WHERE user_id = ? AND feed_url NOT LIKE ?`, [user.id, YT_RSS_PREFIX + "%"]);
     if (customSources.length > 0) {
       const results = await Promise.allSettled(
         customSources.map(async (cs) => {
