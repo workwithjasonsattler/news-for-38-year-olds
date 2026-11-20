@@ -935,7 +935,9 @@
           </div>
           <div class="tune-opt-sub">Leaves out videos with that whole word in the title. The same list as your stories.</div>
         </div>
-        <button type="button" class="tune-opt" id="tunePackBtn" style="margin-top:12px;"><span class="tune-opt-title">Add to an RSS Pack</span><span class="tune-opt-sub">Put this channel in one of your own RSS Packs.</span></button>
+        ${src.reader_added
+          ? `<button type="button" class="tune-opt" id="tuneRemoveBtn" style="margin-top:12px;"><span class="tune-opt-title">Remove channel</span><span class="tune-opt-sub">Takes ${escapeHtml(ch)} out of your videos for good. You can add it again any time.</span></button>`
+          : `<button type="button" class="tune-opt" id="tunePackBtn" style="margin-top:12px;"><span class="tune-opt-title">Add to an RSS Pack</span><span class="tune-opt-sub">Put this channel in one of your own RSS Packs.</span></button>`}
       </div>`;
     document.body.appendChild(el);
     el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
@@ -950,11 +952,84 @@
     };
     el.querySelector("#tuneMuteBtn").addEventListener("click", doMute);
     mi.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doMute(); } });
-    el.querySelector("#tunePackBtn").addEventListener("click", () => {
+    const packBtn = el.querySelector("#tunePackBtn");
+    if (packBtn) packBtn.addEventListener("click", () => {
       closeTuneSheet();
       const plain = Object.assign({}, src); delete plain.video;
       openSprayPicker(plain);
     });
+    const rmBtn = el.querySelector("#tuneRemoveBtn");
+    if (rmBtn) rmBtn.addEventListener("click", () => removeVideoChannel(src.custom_source_id, ch));
+  }
+
+  // ----- Reader-added YouTube channels (private to the reader) -----
+  async function removeVideoChannel(id, name) {
+    if (!id) return;
+    if (!confirm(`Remove ${name} from your videos?`)) return;
+    closeTuneSheet();
+    try {
+      await api(`/api/my/custom-sources/${encodeURIComponent(id)}`, { method: "DELETE" });
+      setVideoMode(name, "on"); // drop any leftover tweak for it
+      toast(`${name} removed from your videos.`);
+      afterVideoChange();
+    } catch (e) { toast(e.message || "Couldn't remove that channel."); }
+  }
+
+  // One field, a Check step that shows what was found, then Add.
+  function openAddChannelSheet(prefill) {
+    closeTuneSheet();
+    const el = document.createElement("div");
+    el.id = "tuneOverlay";
+    el.className = "spray-picker-overlay";
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span><strong>Add a channel</strong></span>
+          <button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button>
+        </div>
+        <p class="spray-picker-sub">Paste a YouTube channel link or @handle. It joins your videos, newest first. Only you see it.</p>
+        <div class="spray-picker-newrow">
+          <input type="text" id="addChInput" placeholder="Channel link or @handle" maxlength="300" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
+          <button class="btn" id="addChCheck" type="button">Check</button>
+        </div>
+        <div id="addChResult" class="tune-opt-sub" style="margin-top:12px;" aria-live="polite"></div>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
+    el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
+    const input = el.querySelector("#addChInput");
+    const check = el.querySelector("#addChCheck");
+    const out = el.querySelector("#addChResult");
+    let found = null;
+    const run = async () => {
+      const value = input.value.trim();
+      if (!value) { out.textContent = "Paste a channel link or @handle first."; return; }
+      check.disabled = true; input.disabled = true; found = null;
+      out.textContent = "Checking\u2026";
+      try {
+        const r = await api("/api/my/video-channels", { method: "POST", body: JSON.stringify({ input: value }) });
+        found = value;
+        out.innerHTML = `<strong>${escapeHtml(r.title)}</strong>${r.newest_title ? `<br>Newest: ${escapeHtml(r.newest_title)}` : ""}<div style="margin-top:10px;"><button class="btn" id="addChConfirm" type="button">Add ${escapeHtml(r.title)}</button></div>`;
+        el.querySelector("#addChConfirm").addEventListener("click", async (ev) => {
+          ev.target.disabled = true;
+          try {
+            const added = await api("/api/my/video-channels", { method: "POST", body: JSON.stringify({ input: found, confirm: true }) });
+            closeTuneSheet();
+            toast(`${added.name} added to your videos.`);
+            afterVideoChange();
+          } catch (err) { ev.target.disabled = false; out.textContent = err.message || "Couldn't add that channel."; }
+        });
+      } catch (err) {
+        out.textContent = err.message || "We couldn't find that channel.";
+      } finally { check.disabled = false; input.disabled = false; }
+    };
+    check.addEventListener("click", run);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
+    if (prefill) { input.value = prefill; run(); } else { setTimeout(() => { try { input.focus(); } catch (e) { /* ignore */ } }, 50); }
+  }
+  function startAddChannel(prefill) {
+    if (!requireSignIn("Sign in to add a channel.", () => openAddChannelSheet(prefill))) return;
+    openAddChannelSheet(prefill);
   }
 
   function openVideoReviewSheet() {
@@ -971,6 +1046,7 @@
         </div>
         <p class="spray-picker-sub">Only what you changed. Saved on this device. Everything else shows newest first.</p>
         ${rows.length ? rows.map(([ch, mode]) => `<div class="vr-row"><span><strong>${escapeHtml(ch)}</strong><br><span class="tune-opt-sub">${escapeHtml(VIDEO_MODE_LABEL[mode] || mode)}</span></span><button type="button" class="btn vr-restore" data-ch="${escapeHtml(ch)}">Restore</button></div>`).join("") : `<p class="tune-opt-sub">No channels changed.</p>`}
+        <div id="vrChannels"></div>
         <button type="button" class="tune-opt" id="vrWords" style="margin-top:12px;"><span class="tune-opt-title">Muted words</span><span class="tune-opt-sub">See, peek at and remove the words you muted.</span></button>
       </div>`;
     document.body.appendChild(el);
@@ -982,6 +1058,15 @@
       openVideoReviewSheet();
     }));
     el.querySelector("#vrWords").addEventListener("click", () => { closeTuneSheet(); openYourFeedScreen(); });
+    if (currentUser) {
+      api("/api/my/custom-sources").then((list) => {
+        const mine = (Array.isArray(list) ? list : []).filter(c => c.is_video);
+        const box = el.querySelector("#vrChannels");
+        if (!box || !mine.length) return;
+        box.innerHTML = `<div class="tune-opt-title" style="margin-top:14px;">Your channels</div>` + mine.map(c => `<div class="vr-row"><span><strong>${escapeHtml(c.name)}</strong></span><button type="button" class="btn vr-restore" data-rm="${escapeHtml(String(c.id))}" data-name="${escapeHtml(c.name)}">Remove</button></div>`).join("");
+        box.querySelectorAll("[data-rm]").forEach(b => b.addEventListener("click", () => removeVideoChannel(b.dataset.rm, b.dataset.name)));
+      }).catch(() => { /* the list is optional */ });
+    }
   }
 
   // Splits a newest-first list into normal / head / folded entries for channels set to "Show fewer".
@@ -1009,6 +1094,14 @@
     return out;
   }
 
+  function addChannelBarHtml() {
+    return `<div class="vid-add-bar"><button type="button" class="btn vid-add-btn" id="vidAddChannel">+ Add a channel</button></div>`;
+  }
+  function wireAddChannelBar(root) {
+    const b = root.querySelector("#vidAddChannel");
+    if (b) b.addEventListener("click", () => startAddChannel());
+  }
+
   async function renderVideos(opts) {
     const quiet = !!(opts && opts.quiet);
     const main = document.getElementById("main");
@@ -1023,7 +1116,8 @@
         .sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0));
       if (items.length === 0) {
         videoTopShown = false;
-        main.innerHTML = stateBlock({ glyph: "\u2205", title: "NO SIGNAL", body: "No videos available right now." });
+        main.innerHTML = `<div class="source-single-col-screen">${addChannelBarHtml()}</div>` + stateBlock({ glyph: "\u2205", title: "NO SIGNAL", body: "No videos available right now." });
+        wireAddChannelBar(main);
         refreshFeedCaption();
         return;
       }
@@ -1054,7 +1148,8 @@
         if (e.role === "folded") return foldItemHtml(e, card);
         return e.role === "head" ? card + foldToggleHtml(e) : card;
       }).join("");
-      main.innerHTML = `<div class="source-single-col-screen">${html}</div>`;
+      main.innerHTML = `<div class="source-single-col-screen">${addChannelBarHtml()}${html}</div>`;
+      wireAddChannelBar(main);
       wireSaveButtons(main);
       wireVideoShareButtons(main);
       main.insertAdjacentHTML("beforeend", readFootnoteHtml());
@@ -1490,6 +1585,7 @@
     const src = sprayableSource(d);
     if (!src) return "";
     if (d.is_video) src.video = true;
+    if (d.is_video && d.reader_added) { src.reader_added = true; src.custom_source_id = d.custom_source_id; }
     const name = escapeHtml(src.label || (d.is_video ? "this channel" : "this source"));
     return `<button type="button" class="tune-btn src-menu-btn${cls ? " " + cls : ""}" data-tune='${escapeHtml(JSON.stringify(src))}' aria-label="Options for ${name}" title="Options for ${name}">${DOTS_SVG}</button>`;
   }
@@ -2155,9 +2251,13 @@
 
   async function fetchItemsForSprayKeyRaw(key) {
     if (key === "__youtube") {
-      const videos = await api("/api/video-feed");
-      return (Array.isArray(videos) ? videos : []).map((v, i) => ({
-        id: `yt-${i}`,
+      const [videos, mine] = await Promise.all([
+        api("/api/video-feed"),
+        // The reader's own channels (signed in only). A failure here never hides the curated list.
+        currentUser ? api("/api/my/video-feed").catch(() => []) : Promise.resolve([]),
+      ]);
+      const toItem = (v, id) => ({
+        id,
         title: v.title,
         link: v.url,
         image_url: v.thumbnail,
@@ -2167,7 +2267,13 @@
         is_video: true,
         tip_url: v.tip_url || null,
         subscribe_url: v.subscribe_url || null,
-      }));
+        reader_added: !!v.reader_added,
+        custom_source_id: v.custom_source_id || null,
+      });
+      const out = (Array.isArray(videos) ? videos : []).map((v, i) => toItem(v, `yt-${i}`));
+      const seen = new Set(out.map(d => d.link));
+      (Array.isArray(mine) ? mine : []).forEach((v, i) => { if (!seen.has(v.url)) out.push(toItem(v, `ytm-${i}`)); });
+      return out;
     }
     if (key === "__bluesky") {
       const posts = await fetchBlueskyPopularCached();
@@ -4244,6 +4350,14 @@
     const value = input.value.trim();
     if (!value) { toast("Paste a site or feed URL first."); return; }
 
+    // A YouTube channel belongs on Videos, not in the reading list.
+    if (/^(https?:\/\/)?((www|m)\.)?youtube\.com\//i.test(value) && !/feeds\/videos\.xml/i.test(value)) {
+      input.value = "";
+      switchTab("videos");
+      startAddChannel(value);
+      return;
+    }
+
     if (/\.(xml|rss|atom)(\?.*)?$/i.test(value)) {
       await addCustomSourceDirect(value, input, btn);
       return;
@@ -4280,6 +4394,11 @@
     try {
       const created = await api("/api/my/custom-sources", { method: "POST", body: JSON.stringify({ feed_url: feedUrl }) });
       if (input) input.value = "";
+      if (created.is_video) {
+        toast(`"${created.name || feedUrl}" added to your videos.`);
+        switchTab("videos");
+        return;
+      }
       toast(`"${created.name || feedUrl}" added — it's already in your reading list.`);
       // Optional next step, not required: offer to fold it straight into
       // an existing RSS Pack (or start a new one) via the same picker every
