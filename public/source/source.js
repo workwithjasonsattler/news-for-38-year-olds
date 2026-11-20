@@ -1644,8 +1644,10 @@
     }
     selectedDispatch = null;
     if (activeTab === "read") renderRead();
+    if (activeTab === "buzz") renderBuzz();
     refreshFeedCaption();
     refreshYourFeedScreen();
+    refreshTopPublications();
     return true;
   }
   // First edit: News now points at My Feed (server did that). Move a reader who
@@ -5264,20 +5266,6 @@
   // signed in or not — signing in just carries that choice across
   // devices, same pattern as the Read-tab RSS Pack bar and Edit Layout.
   // ---------------------------------------------------------------
-  const MIDTERM_DATE = new Date("2026-11-03T00:00:00");
-  const IRAN_WAR_START = new Date("2026-02-28T00:00:00");
-
-  const PANEL_MODULE_DEFS = [
-    { key: "midterms", label: "Days to midterms" },
-    { key: "iranwar", label: "Day of Iran War" },
-    { key: "gas", label: "Gas price" },
-    { key: "co2", label: "CO2 (ppm)" },
-    { key: "tempanomaly", label: "Global temp anomaly" },
-    { key: "seaice", label: "Arctic sea ice extent" },
-    { key: "disasters", label: "Billion-dollar disasters" },
-    { key: "topbluesky", label: "Top post on Bluesky" },
-  ];
-
   const PANEL_MODULES_KEY = "source_panel_hidden_modules";
 
   // Today panel width — replaces the old "Hide this panel" checkbox
@@ -5404,117 +5392,6 @@
     } catch (e) { /* fail soft — local state already applied regardless */ }
   }
 
-  let desktopPanelDataCache = null; // resolved {gas, co2, temp, ice, disasters, topPost} — fetched once per page load
-  async function fetchPanelData() {
-    const [gasR, co2R, tempR, iceR, disR, bskyR] = await Promise.allSettled([
-      api("/api/gas-price"),
-      api("/api/co2-ppm"),
-      api("/api/temp-anomaly"),
-      api("/api/sea-ice"),
-      api("/api/climate-disasters"),
-      fetchBlueskyPopularCached(),
-    ]);
-    return {
-      gas: gasR.status === "fulfilled" ? gasR.value.price : null,
-      co2: co2R.status === "fulfilled" ? co2R.value.ppm : null,
-      co2PreIndustrial: co2R.status === "fulfilled" ? co2R.value.preIndustrial : 280,
-      temp: tempR.status === "fulfilled" ? tempR.value.anomaly : null,
-      ice: iceR.status === "fulfilled" ? iceR.value.extent : null,
-      disasters: disR.status === "fulfilled" ? disR.value.count : null,
-      topPost: (bskyR.status === "fulfilled" && Array.isArray(bskyR.value) && bskyR.value.length) ? bskyR.value[0] : null,
-    };
-  }
-
-  // Each returns an HTML string, or null if there's nothing to show —
-  // callers skip the module entirely on null rather than rendering an
-  // empty/broken state.
-  function renderPanelModule(key, data) {
-    switch (key) {
-      case "midterms": {
-        const days = Math.ceil((MIDTERM_DATE - new Date()) / 86400000);
-        return `<div class="panel-stat"><span class="panel-stat-value">${days}</span><span class="panel-stat-label">days to the midterms</span></div>`;
-      }
-      case "iranwar": {
-        const day = Math.floor((new Date() - IRAN_WAR_START) / 86400000) + 1;
-        return `<div class="panel-stat"><span class="panel-stat-value">${day}</span><span class="panel-stat-label">day of the Iran War</span></div>`;
-      }
-      case "gas":
-        if (!data.gas) return null;
-        return `<div class="panel-stat"><span class="panel-stat-value">$${Number(data.gas).toFixed(2)}</span><span class="panel-stat-label">/gal natl avg gas price</span></div>`;
-      case "co2":
-        if (!data.co2) return null;
-        return `<div class="panel-stat"><span class="panel-stat-value">${data.co2}</span><span class="panel-stat-label">ppm CO₂ · pre-industrial was ${data.co2PreIndustrial}</span></div>`;
-      case "tempanomaly": {
-        if (data.temp === null || data.temp === undefined) return null;
-        const tempF = Math.round(data.temp * 9 / 5 * 100) / 100;
-        return `<div class="panel-stat"><span class="panel-stat-value">${tempF > 0 ? "+" : ""}${tempF}°F</span><span class="panel-stat-label">global temp vs. 1951–1980 avg</span></div>`;
-      }
-      case "seaice":
-        if (!data.ice) return null;
-        return `<div class="panel-stat"><span class="panel-stat-value">${data.ice}M km²</span><span class="panel-stat-label">Arctic sea ice extent</span></div>`;
-      case "disasters":
-        if (!data.disasters) return null;
-        return `<div class="panel-stat"><span class="panel-stat-value">${data.disasters}</span><span class="panel-stat-label">billion-dollar disasters this year</span></div>`;
-      case "topbluesky":
-        if (!data.topPost) return null;
-        return `<div class="panel-stat-label" style="margin-bottom:6px;">Top on Bluesky</div>${renderBluePost(data.topPost, "panel-top-post")}`;
-      default:
-        return null;
-    }
-  }
-
-  function renderPanelSettings() {
-    const hidden = getHiddenModules();
-    return `
-      <div class="panel-settings" id="panelSettings">
-        <button class="icon-btn panel-settings-btn" id="panelSettingsBtn" aria-haspopup="true" aria-expanded="false" title="Customize panel">⚙</button>
-        <div class="panel-settings-list" id="panelSettingsList" hidden>
-          ${PANEL_MODULE_DEFS.map(m => `
-            <label class="panel-settings-item">
-              <input type="checkbox" class="panel-module-toggle" data-key="${m.key}" ${hidden.has(m.key) ? "" : "checked"}>
-              ${escapeHtml(m.label)}
-            </label>`).join("")}
-          ${!currentUser ? `<div class="panel-signin-hint">Signed in, this'll follow you across devices — <a href="#" id="panelSignInLink">Sign in</a></div>` : ""}
-        </div>
-      </div>`;
-  }
-
-  function wirePanelSettingsEvents() {
-    const btn = document.getElementById("panelSettingsBtn");
-    const list = document.getElementById("panelSettingsList");
-    if (!btn || !list) return;
-    btn.addEventListener("click", (e) => {
-      e.stopPropagation();
-      const opening = list.hidden;
-      list.hidden = !opening;
-      btn.setAttribute("aria-expanded", String(opening));
-    });
-    document.querySelectorAll(".panel-module-toggle").forEach(cb => {
-      cb.addEventListener("change", () => {
-        const set = getHiddenModules();
-        if (cb.checked) set.delete(cb.dataset.key); else set.add(cb.dataset.key);
-        setHiddenModules(set);
-        savePanelPrefsToAccount();
-        renderDesktopSidePanel();
-      });
-    });
-    const signInLink = document.getElementById("panelSignInLink");
-    if (signInLink) {
-      signInLink.addEventListener("click", (e) => {
-        e.preventDefault();
-        switchTab("you");
-      });
-    }
-  }
-
-  function panelDateLabel() {
-    return new Date().toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "long",
-      day: "numeric",
-    });
-  }
-
   // Desktop-only side panel: fills the dead space beyond the centered
   // main column on wide screens. Fetches once per page load (cached);
   // only fetches when the layout is actually Desktop, since CSS hides
@@ -5570,23 +5447,58 @@
       return;
     }
 
-    if (!desktopPanelDataCache) {
-      el.innerHTML = `<div class="panel-head"><div class="panel-head-text"><span class="desktop-bsky-rail-head">Today</span><span class="panel-date">${panelDateLabel()}</span></div>${renderPanelSettings()}</div><div class="state-block-mini">Loading…</div>`;
-      wirePanelSettingsEvents();
-      desktopPanelDataCache = await fetchPanelData();
+    const rows = await topPublicationRows();
+    el.innerHTML = `<div class="panel-head"><div class="panel-head-text"><span class="desktop-bsky-rail-head">Your top publications</span></div></div>${topPublicationsBodyHtml(rows)}`;
+  }
+
+  // ---------------------------------------------------------------
+  // Your top publications: the sources the reader marked "Top source"
+  // (up to 10), each with its newest story, most recent first. The order
+  // is printed under the title. Nothing is scored; no counts of any kind.
+  // Lives in the desktop right rail and on top of Buzz on phones. The
+  // choice itself is the existing per-source mode (held on the device when
+  // signed out, in My Feed when signed in), so no new data is stored.
+  // ---------------------------------------------------------------
+  function topPublicationNames() {
+    const modes = currentUser ? (myFeed ? Array.from(myFeed.modes.entries()) : []) : Object.entries(readHeldFeedEdits());
+    return modes.filter(([, m]) => m === "top").map(([o]) => o);
+  }
+  let topPubWireCache = null; // { at, items }
+  async function topPublicationWire() {
+    if (topPubWireCache && Date.now() - topPubWireCache.at < 60000) return topPubWireCache.items;
+    let items = [];
+    try { items = await api("/api/dispatches"); } catch (e) { items = []; }
+    topPubWireCache = { at: Date.now(), items: Array.isArray(items) ? items : [] };
+    return topPubWireCache.items;
+  }
+  async function topPublicationRows() {
+    const names = topPublicationNames();
+    if (!names.length) return [];
+    const wire = await topPublicationWire();
+    const newest = new Map();
+    for (const d of wire) {
+      const o = (d.outlet || d.source || "").trim();
+      if (!names.includes(o)) continue;
+      const t = new Date(d.date || 0).getTime();
+      if (!newest.has(o) || t > new Date(newest.get(o).date || 0).getTime()) newest.set(o, d);
     }
-
-    const hidden = getHiddenModules();
-    const moduleHtml = PANEL_MODULE_DEFS
-      .filter(m => !hidden.has(m.key))
-      .map(m => renderPanelModule(m.key, desktopPanelDataCache))
-      .filter(Boolean)
-      .join("");
-
-    el.innerHTML = `
-      <div class="panel-head"><div class="panel-head-text"><span class="desktop-bsky-rail-head">Today</span><span class="panel-date">${panelDateLabel()}</span></div>${renderPanelSettings()}</div>
-      ${moduleHtml || `<div class="state-block-mini">Nothing to show — everything's hidden or unavailable right now.</div>`}`;
-    wirePanelSettingsEvents();
+    const rows = names.map((o) => ({ outlet: o, d: newest.get(o) || null }));
+    rows.sort((a, b) => new Date(b.d ? b.d.date || 0 : 0) - new Date(a.d ? a.d.date || 0 : 0));
+    return rows;
+  }
+  function topPublicationsBodyHtml(rows) {
+    if (!rows.length) {
+      return `<p class="top-pub-empty">Pick up to ${TOP_CAP} top publications with the \u22ef on any headline. Their newest stories will show up here.</p>`;
+    }
+    return `<p class="top-pub-sub">Newest story from each, most recent first.</p>` + rows.map((r) => {
+      if (!r.d) return `<div class="top-pub-row"><div class="top-pub-main"><span class="top-pub-outlet">${escapeHtml(r.outlet)}</span><span class="top-pub-quiet">Nothing new lately</span></div></div>`;
+      const link = r.d.link ? ` href="${escapeHtml(r.d.link)}" target="_blank" rel="noopener"` : "";
+      return `<div class="top-pub-row"><a class="top-pub-main"${link}><span class="top-pub-outlet">${escapeHtml(r.outlet)} <span class="top-pub-time">${escapeHtml(relTime(r.d.date))}</span></span><span class="top-pub-headline">${escapeHtml(r.d.headline || r.d.title || "")}</span></a>${tuneButton(r.d)}</div>`;
+    }).join("");
+  }
+  function refreshTopPublications() {
+    topPubWireCache = null;
+    renderDesktopSidePanel();
   }
 
   let actionsExpanded = false;
@@ -5606,12 +5518,22 @@
     const posts = postsResult.status === "fulfilled" && Array.isArray(postsResult.value) ? postsResult.value : [];
     const stories = chatterResult.status === "fulfilled" && Array.isArray(chatterResult.value) ? chatterResult.value : [];
 
+    // Phones get the reader's top publications at the top of Buzz (desktop has
+    // them in the right rail). They show even when the chatter feeds are quiet.
+    const topPubsHtml = getLayoutMode() !== "desktop"
+      ? `<div class="section-label">YOUR TOP PUBLICATIONS</div><div class="top-pubs">${topPublicationsBodyHtml(await topPublicationRows())}</div>`
+      : "";
     if (actions.length === 0 && posts.length === 0 && stories.length === 0) {
-      main.innerHTML = stateBlock({ glyph: "∅", title: "QUIET RIGHT NOW", body: "No chatter picked up in the current window." });
+      if (!topPubsHtml) {
+        main.innerHTML = stateBlock({ glyph: "∅", title: "QUIET RIGHT NOW", body: "No chatter picked up in the current window." });
+        return;
+      }
+      main.innerHTML = `<div class="source-single-col-screen">${topPubsHtml}</div>` + stateBlock({ glyph: "∅", title: "QUIET RIGHT NOW", body: "No chatter picked up in the current window." });
       return;
     }
 
     let html = `<div class="source-single-col-screen">`;
+    html += topPubsHtml;
     if (actions.length > 0) {
       html += `<div class="section-label">WHAT YOU CAN DO</div>` + renderActionsSection(actions);
     }
