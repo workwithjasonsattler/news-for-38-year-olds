@@ -22,6 +22,7 @@ function linkIdHash(link) {
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import sanitizeHtml from "sanitize-html";
+import { Resvg } from "@resvg/resvg-js";
 import dns from "node:dns/promises";
 import net from "node:net";
 
@@ -1656,7 +1657,10 @@ app.get(["/source", "/source/", "/source/index.html"], async (req, res, next) =>
       ? `${req.get("x-forwarded-proto") || "https"}://${req.get("host")}`
       : SITE_URL;
     const url = `${base}/source/?pack=${encodeURIComponent(slug)}`;
-    const img = `${base}/source/pack-og.png`; // brand-orange card (white eye, promise line)
+    let img = `${base}/source/pack-og.png`; // brand-orange card (white eye, promise line)
+    if (mix && mix.is_public && !mix.admin_hidden && !mix.is_my_feed && !mix.auto_sync) {
+      img = `${base}/source/pack-card/${encodeURIComponent(slug)}.png`; // the list's own publication names
+    }
     const t = escAttr(title), d = escAttr(desc);
     html = html
       .replace(/<title>[^<]*<\/title>/, `<title>${t}</title>`)
@@ -1672,6 +1676,93 @@ app.get(["/source", "/source/", "/source/index.html"], async (req, res, next) =>
     res.type("html").send(html);
   } catch (e) {
     next();
+  }
+});
+
+// ---------- Pack share image: the list's own publication names ----------
+// GET /source/pack-card/<slug>.png renders a 1200x630 orange card for a PUBLIC,
+// non-hidden Pack: its title (for "Publications I Support": "<byline> backs N
+// publications.") and up to 8 publication names. Names and a source count
+// only; no follower counts. Cached 10 minutes per slug. Private, hidden or
+// missing Packs get a 404, and the share page keeps the generic card.
+const PACK_CARD_FONT = path.join(__dirname, "public", "source", "fonts", "SpaceGrotesk-Bold.ttf");
+const packCardCache = new Map();
+function xmlEsc(t) {
+  return String(t == null ? "" : t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+function clipText(t, n) {
+  t = String(t || "").trim();
+  return t.length > n ? t.slice(0, n - 1).trimEnd() + "\u2026" : t;
+}
+function wrapTitle(t, perLine, maxLines) {
+  const words = String(t || "").split(/\s+/).filter(Boolean);
+  const lines = [];
+  let cur = "";
+  for (const w of words) {
+    if ((cur + " " + w).trim().length > perLine && cur) { lines.push(cur); cur = w; } else cur = (cur + " " + w).trim();
+  }
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines) { lines.length = maxLines; lines[maxLines - 1] = clipText(lines[maxLines - 1] + "\u2026", perLine); }
+  return lines;
+}
+function packCardSvg({ title, names, more, footer }) {
+  const tl = wrapTitle(title, 28, 2);
+  const titleSvg = tl.map((l, i) => `<text x="72" y="${196 + i * 72}" font-size="64" fill="#fff">${xmlEsc(l)}</text>`).join("");
+  const top = 196 + (tl.length - 1) * 72 + 70;
+  const col = (arr, x) => arr.map((n, i) => `<text x="${x}" y="${top + i * 52}" font-size="38" fill="#fff">${xmlEsc(clipText(n, 22))}</text>`).join("");
+  const left = names.slice(0, 4), right = names.slice(4, 8);
+  const moreSvg = more > 0 ? `<text x="72" y="560" font-size="28" fill="#fff" fill-opacity="0.9">and ${more} more</text>` : "";
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Space Grotesk">
+<rect width="1200" height="630" fill="#FF3E1D"/>
+<rect x="72" y="60" width="150" height="6" fill="#fff"/>
+<text x="72" y="116" font-size="34" fill="#fff" letter-spacing="1">SOURCE!</text>
+${titleSvg}${col(left, 72)}${col(right, 640)}${moreSvg}
+<text x="1128" y="580" font-size="28" fill="#fff" text-anchor="end">${xmlEsc(footer)}</text>
+</svg>`;
+}
+app.get("/source/pack-card/:file", async (req, res) => {
+  try {
+    const m = /^([A-Za-z0-9_-]{1,120})\.png$/.exec(req.params.file || "");
+    if (!m) return res.status(404).end();
+    const slug = m[1];
+    const hit = packCardCache.get(slug);
+    if (hit && Date.now() - hit.at < 10 * 60 * 1000) {
+      res.set("Cache-Control", "public, max-age=600");
+      return res.type("png").send(hit.png);
+    }
+    const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [slug]);
+    if (!mix || !mix.is_public || mix.admin_hidden || mix.is_my_feed) return res.status(404).end();
+    const isSupport = /^\s*publications i support\s*$/i.test(mix.name || "");
+    let names = [];
+    if (!mix.auto_sync) {
+      const rows = await dbAll(
+        `SELECT outlet FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'admin_outlet' AND outlet IS NOT NULL ORDER BY sort_order ASC, id ASC`,
+        [mix.id]
+      );
+      names = rows.map((r) => r.outlet);
+      if (isSupport) {
+        const extra = await dbAll(`SELECT name FROM feed_mix_listed WHERE mix_id = ? ORDER BY sort_order ASC, id ASC`, [mix.id]);
+        names = names.concat(extra.map((r) => r.name));
+      }
+    }
+    const total = names.length;
+    const by = packCurator(mix);
+    const title = isSupport && total > 0
+      ? `${by ? by + " backs" : "A reader backs"} ${total} publication${total === 1 ? "" : "s"}.`
+      : (mix.name || "RSS Pack");
+    const svg = packCardSvg({
+      title,
+      names: names.slice(0, 8),
+      more: Math.max(0, total - 8),
+      footer: isSupport ? "Make your own list on SOURCE!" : "Newest first. No algorithm.",
+    });
+    const png = new Resvg(svg, { font: { fontFiles: [PACK_CARD_FONT], loadSystemFonts: false, defaultFontFamily: "Space Grotesk" } }).render().asPng();
+    if (packCardCache.size > 200) packCardCache.clear();
+    packCardCache.set(slug, { png, at: Date.now() });
+    res.set("Cache-Control", "public, max-age=600");
+    res.type("png").send(png);
+  } catch (e) {
+    res.status(404).end();
   }
 });
 app.use(express.static(path.join(__dirname, "public"), {
