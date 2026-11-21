@@ -3299,3 +3299,12 @@ body:not([data-layout="desktop"]) .tab-btn.active { box-shadow: inset 0 3px 0 va
 .top-pub-quiet { font-size: 13px; color: var(--muted, #5b6068); }
 a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 .top-pub-row .tune-btn { flex: 0 0 auto; }
+
+/* Top publications picker */
+.top-pub-edit { min-height: 36px; padding: 4px 12px; font-size: 13px; margin-left: 8px; border-color: var(--live-ink, #C42A0E); color: var(--live-ink, #C42A0E); background: #fff; }
+.top-pick-search { width: 100%; box-sizing: border-box; min-height: 44px; padding: 8px 12px; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; margin: 6px 0 8px; }
+.top-pick-list { max-height: 50vh; overflow-y: auto; }
+.top-pick-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); }
+.top-pick-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
+.top-pick-btn { min-height: 40px; min-width: 76px; flex: 0 0 auto; }
+.top-pick-btn.on { background: var(--live-ink, #C42A0E); color: #fff; border-color: var(--live-ink, #C42A0E); }

@@ -5449,7 +5449,7 @@
     }
 
     const rows = await topPublicationRows();
-    el.innerHTML = `<div class="panel-head"><div class="panel-head-text"><span class="desktop-bsky-rail-head">Your top publications</span></div></div>${topPublicationsBodyHtml(rows)}`;
+    el.innerHTML = `<div class="panel-head"><div class="panel-head-text"><span class="desktop-bsky-rail-head">Your top publications</span></div><button type="button" class="btn top-pub-edit">Edit</button></div>${topPublicationsBodyHtml(rows)}`;
   }
 
   // ---------------------------------------------------------------
@@ -5489,7 +5489,7 @@
   }
   function topPublicationsBodyHtml(rows) {
     if (!rows.length) {
-      return `<p class="top-pub-empty">Pick up to ${TOP_CAP} top publications with the \u22ef on any headline. Their newest stories will show up here.</p>`;
+      return `<p class="top-pub-empty">Pick up to ${TOP_CAP} top publications. Their newest stories will show up here. You can also use the \u22ef on any headline.</p>`;
     }
     return `<p class="top-pub-sub">Newest story from each, most recent first.</p>` + rows.map((r) => {
       if (!r.d) return `<div class="top-pub-row"><div class="top-pub-main"><span class="top-pub-outlet">${escapeHtml(r.outlet)}</span><span class="top-pub-quiet">Nothing new lately</span></div></div>`;
@@ -5501,6 +5501,73 @@
     topPubWireCache = null;
     renderDesktopSidePanel();
   }
+
+  // Edit your top publications: search the registry and tap to add or remove.
+  // Same per-source "top" mode the three-dot sheet sets, so nothing new is stored.
+  function closeTopPicker() { const el = document.getElementById("topPickOverlay"); if (el) el.remove(); }
+  async function openTopPicker() {
+    closeTopPicker();
+    if (!sourcesRegistryCache) {
+      try {
+        const reg = await api("/api/sources");
+        sourcesRegistryCache = (Array.isArray(reg) ? reg : []).filter(r => r.feed_type !== "journalist");
+      } catch (e) { sourcesRegistryCache = []; }
+    }
+    const seen = new Set();
+    const outlets = [];
+    for (const r of sourcesRegistryCache) {
+      const o = (r.outlet || "").trim();
+      if (!o || seen.has(o)) continue;
+      seen.add(o); outlets.push(o);
+    }
+    outlets.sort((a, b) => a.localeCompare(b));
+    const el = document.createElement("div");
+    el.id = "topPickOverlay";
+    el.className = "spray-picker-overlay";
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span><strong>Your top publications</strong></span>
+          <button class="spray-picker-close" id="topPickClose" aria-label="Close">\u00d7</button>
+        </div>
+        <p class="spray-picker-sub" id="topPickCount"></p>
+        <input type="text" id="topPickSearch" class="top-pick-search" placeholder="Search publications" autocomplete="off">
+        <div id="topPickList" class="top-pick-list"></div>
+      </div>`;
+    document.body.appendChild(el);
+    const listEl = el.querySelector("#topPickList");
+    const countEl = el.querySelector("#topPickCount");
+    const input = el.querySelector("#topPickSearch");
+    function paint() {
+      const q = input.value.trim().toLowerCase();
+      const names = topPublicationNames();
+      countEl.textContent = `${names.length} of ${TOP_CAP} chosen. Their newest stories sit at the top of your list.`;
+      let rows = outlets.filter(o => !q || o.toLowerCase().includes(q));
+      if (!q) rows = [...rows.filter(o => names.includes(o)), ...rows.filter(o => !names.includes(o))];
+      rows = rows.slice(0, 80);
+      listEl.innerHTML = rows.length ? rows.map(o => {
+        const on = names.includes(o);
+        return `<div class="top-pick-row"><span class="top-pick-name">${escapeHtml(o)}</span><button type="button" class="btn top-pick-btn${on ? " on" : ""}" data-outlet="${escapeHtml(o)}" aria-pressed="${on}">${on ? "\u2713 Top" : "+ Add"}</button></div>`;
+      }).join("") : `<p class="top-pub-empty">No match. Add a feed from the + Add menu on Read.</p>`;
+    }
+    listEl.addEventListener("click", async (e) => {
+      const b = e.target.closest(".top-pick-btn");
+      if (!b) return;
+      const o = b.dataset.outlet;
+      const on = topPublicationNames().includes(o);
+      b.disabled = true;
+      await setFeedMode({ source_type: "admin_outlet", outlet: o }, o, on ? "on" : "top");
+      paint();
+    });
+    input.addEventListener("input", paint);
+    el.addEventListener("click", (e) => { if (e.target === el) closeTopPicker(); });
+    el.querySelector("#topPickClose").addEventListener("click", closeTopPicker);
+    paint();
+    input.focus();
+  }
+  document.addEventListener("click", (e) => {
+    if (e.target.closest && e.target.closest(".top-pub-edit")) openTopPicker();
+  });
 
   let actionsExpanded = false;
   let onTrendExpanded = false;
@@ -5522,7 +5589,7 @@
     // Phones get the reader's top publications at the top of Buzz (desktop has
     // them in the right rail). They show even when the chatter feeds are quiet.
     const topPubsHtml = getLayoutMode() !== "desktop"
-      ? `<div class="section-label">YOUR TOP PUBLICATIONS</div><div class="top-pubs">${topPublicationsBodyHtml(await topPublicationRows())}</div>`
+      ? `<div class="section-label">YOUR TOP PUBLICATIONS <button type="button" class="btn top-pub-edit">Edit</button></div><div class="top-pubs">${topPublicationsBodyHtml(await topPublicationRows())}</div>`
       : "";
     if (actions.length === 0 && posts.length === 0 && stories.length === 0) {
       if (!topPubsHtml) {
