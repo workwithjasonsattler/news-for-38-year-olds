@@ -3308,3 +3308,10 @@ a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 .top-pick-name { font-weight: 600; min-width: 0; overflow-wrap: anywhere; }
 .top-pick-btn { min-height: 40px; min-width: 76px; flex: 0 0 auto; }
 .top-pick-btn.on { background: var(--live-ink, #C42A0E); color: #fff; border-color: var(--live-ink, #C42A0E); }
+.top-suggest { padding: 6px 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.top-suggest-switch { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-height: 44px; background: none; border: 0; padding: 0; font: inherit; text-align: left; cursor: pointer; }
+.top-suggest-label { font-weight: 600; }
+.top-suggest-sub { font-size: 13px; color: var(--muted, #5b6068); line-height: 1.4; margin: 2px 0 6px; }
+.top-suggest-why { display: block; font-weight: 400; font-size: 13px; color: var(--muted, #5b6068); line-height: 1.35; }
+.top-suggest-switch[aria-checked="true"] .rel-switch { background: var(--ink); border-color: var(--ink); }
+.top-suggest-switch[aria-checked="true"] .rel-switch .rel-knob { transform: translateX(16px); }

@@ -5502,6 +5502,75 @@
     renderDesktopSidePanel();
   }
 
+  // Suggest from what I read. OFF by default. When on, the app keeps a small
+  // count on THIS device only (local storage, never sent anywhere): stories you
+  // expand or open in the Classic list, and stories you save, per publication,
+  // for the last 30 days. It only ever suggests; you tap to add. It never
+  // changes the order of anything.
+  const READ_ON_KEY = "source_suggest_on";
+  const READ_COUNTS_KEY = "source_read_counts";
+  const READ_WINDOW_DAYS = 30;
+  const READ_MIN = 3;
+  function suggestOn() { try { return localStorage.getItem(READ_ON_KEY) === "1"; } catch (_) { return false; } }
+  function readCounts() {
+    try { const o = JSON.parse(localStorage.getItem(READ_COUNTS_KEY) || "{}"); return o && typeof o === "object" ? o : {}; } catch (_) { return {}; }
+  }
+  function writeCounts(o) { try { localStorage.setItem(READ_COUNTS_KEY, JSON.stringify(o)); } catch (_) {} }
+  function localDayKey(offsetDays) {
+    const d = new Date(Date.now() - (offsetDays || 0) * 86400000);
+    return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+  }
+  function pruneCounts(o) {
+    const cutoff = localDayKey(READ_WINDOW_DAYS);
+    for (const name of Object.keys(o)) {
+      for (const day of Object.keys(o[name] || {})) if (day < cutoff) delete o[name][day];
+      if (!Object.keys(o[name] || {}).length) delete o[name];
+    }
+    const names = Object.keys(o);
+    if (names.length > 200) {
+      names.sort((a, b) => readTotal(o[a]) - readTotal(o[b]));
+      names.slice(0, names.length - 200).forEach(n => delete o[n]);
+    }
+    return o;
+  }
+  function readTotal(days) { return Object.values(days || {}).reduce((a, b) => a + (Number(b) || 0), 0); }
+  function bumpRead(outlet) {
+    outlet = (outlet || "").trim();
+    if (!outlet) return;
+    const o = readCounts();
+    const day = localDayKey(0);
+    o[outlet] = o[outlet] || {};
+    o[outlet][day] = (o[outlet][day] || 0) + 1;
+    writeCounts(pruneCounts(o));
+  }
+  function readSuggestions(registryOutlets, chosen) {
+    const o = pruneCounts(readCounts());
+    const reg = new Set(registryOutlets);
+    return Object.keys(o)
+      .filter(n => reg.has(n) && !chosen.includes(n) && feedModeFor(n) !== "hidden" && readTotal(o[n]) >= READ_MIN)
+      .map(n => ({ outlet: n, n: readTotal(o[n]) }))
+      .sort((a, b) => b.n - a.n || a.outlet.localeCompare(b.outlet))
+      .slice(0, 5);
+  }
+  document.addEventListener("click", (e) => {
+    if (!suggestOn()) return;
+    const t = e.target && e.target.closest ? e.target : null;
+    if (!t) return;
+    const save = t.closest(".save-btn");
+    if (save) {
+      try { bumpRead((JSON.parse(save.dataset.savePayload) || {}).outlet); } catch (_) {}
+      return;
+    }
+    const head = t.closest(".mc-head");
+    const open = t.closest(".mc-open, .mc-img-link");
+    if (!head && !open) return;
+    if (head && head.getAttribute("aria-expanded") === "true") return; // closing a row is not reading it
+    const holder = t.closest(".mc-row");
+    const tb = holder && holder.querySelector(".tune-btn");
+    if (!tb) return;
+    try { const sx = JSON.parse(tb.dataset.tune); if (sx && sx.source_type !== "custom") bumpRead(sx.outlet); } catch (_) {}
+  }, true);
+
   // Edit your top publications: search the registry and tap to add or remove.
   // Same per-source "top" mode the three-dot sheet sets, so nothing new is stored.
   function closeTopPicker() { const el = document.getElementById("topPickOverlay"); if (el) el.remove(); }
@@ -5531,6 +5600,14 @@
           <button class="spray-picker-close" id="topPickClose" aria-label="Close">\u00d7</button>
         </div>
         <p class="spray-picker-sub" id="topPickCount"></p>
+        <div class="top-suggest">
+          <button type="button" class="top-suggest-switch" id="topSuggestSwitch" role="switch" aria-checked="false">
+            <span class="top-suggest-label">Suggest from what I read</span>
+            <span class="rel-switch" aria-hidden="true"><span class="rel-knob"></span></span>
+          </button>
+          <p class="top-suggest-sub" id="topSuggestSub"></p>
+          <div id="topSuggestList"></div>
+        </div>
         <input type="text" id="topPickSearch" class="top-pick-search" placeholder="Search publications" autocomplete="off">
         <div id="topPickList" class="top-pick-list"></div>
       </div>`;
@@ -5538,9 +5615,28 @@
     const listEl = el.querySelector("#topPickList");
     const countEl = el.querySelector("#topPickCount");
     const input = el.querySelector("#topPickSearch");
+    const sw = el.querySelector("#topSuggestSwitch");
+    const subEl = el.querySelector("#topSuggestSub");
+    const sugEl = el.querySelector("#topSuggestList");
+    function paintSuggest(names) {
+      const on = suggestOn();
+      sw.setAttribute("aria-checked", on ? "true" : "false");
+      sw.classList.toggle("on", on);
+      if (!on) {
+        subEl.textContent = "Off. When on, SOURCE! counts the stories you open or save on this device only, and suggests publications you read a lot. Nothing is sent anywhere, and nothing is added unless you tap.";
+        sugEl.innerHTML = "";
+        return;
+      }
+      const sug = readSuggestions(outlets, names);
+      subEl.innerHTML = sug.length
+        ? `Counted on this device for the last ${READ_WINDOW_DAYS} days. <button type="button" class="caption-link" id="topSuggestClear">Clear what it\u2019s counted</button>`
+        : `Counting on this device. Nothing to suggest yet; open a few stories in the Classic list. <button type="button" class="caption-link" id="topSuggestClear">Clear what it\u2019s counted</button>`;
+      sugEl.innerHTML = sug.map(x => `<div class="top-pick-row"><span class="top-pick-name">${escapeHtml(x.outlet)}<span class="top-suggest-why">You opened or saved ${x.n} stor${x.n === 1 ? "y" : "ies"} from them in the last ${READ_WINDOW_DAYS} days.</span></span><button type="button" class="btn top-pick-btn" data-outlet="${escapeHtml(x.outlet)}">+ Add</button></div>`).join("");
+    }
     function paint() {
       const q = input.value.trim().toLowerCase();
       const names = topPublicationNames();
+      paintSuggest(names);
       countEl.textContent = `${names.length} of ${TOP_CAP} chosen. Their newest stories sit at the top of your list.`;
       let rows = outlets.filter(o => !q || o.toLowerCase().includes(q));
       if (!q) rows = [...rows.filter(o => names.includes(o)), ...rows.filter(o => !names.includes(o))];
@@ -5550,6 +5646,24 @@
         return `<div class="top-pick-row"><span class="top-pick-name">${escapeHtml(o)}</span><button type="button" class="btn top-pick-btn${on ? " on" : ""}" data-outlet="${escapeHtml(o)}" aria-pressed="${on}">${on ? "\u2713 Top" : "+ Add"}</button></div>`;
       }).join("") : `<p class="top-pub-empty">No match. Add a feed from the + Add menu on Read.</p>`;
     }
+    sw.addEventListener("click", () => {
+      try { localStorage.setItem(READ_ON_KEY, suggestOn() ? "0" : "1"); } catch (_) {}
+      paint();
+    });
+    el.addEventListener("click", (e) => {
+      if (e.target.closest && e.target.closest("#topSuggestClear")) {
+        try { localStorage.removeItem(READ_COUNTS_KEY); } catch (_) {}
+        toast("Cleared. Nothing is counted until you read more.");
+        paint();
+      }
+    });
+    sugEl.addEventListener("click", async (e) => {
+      const b = e.target.closest(".top-pick-btn");
+      if (!b) return;
+      b.disabled = true;
+      await setFeedMode({ source_type: "admin_outlet", outlet: b.dataset.outlet }, b.dataset.outlet, "top");
+      paint();
+    });
     listEl.addEventListener("click", async (e) => {
       const b = e.target.closest(".top-pick-btn");
       if (!b) return;
