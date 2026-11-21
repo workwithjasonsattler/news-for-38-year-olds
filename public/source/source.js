@@ -5608,6 +5608,12 @@
           <p class="top-suggest-sub" id="topSuggestSub"></p>
           <div id="topSuggestList"></div>
         </div>
+        <div class="top-share">
+          <div class="top-share-title">Share this list</div>
+          <input type="text" id="topShareBy" class="top-pick-search" maxlength="40" placeholder="Name on the card (blank = anonymous)" autocomplete="off">
+          <button type="button" class="btn top-share-btn" id="topShareBtn">Share my top publications</button>
+          <p class="top-suggest-sub" id="topShareSub">Shares a snapshot of the publications above, as a link and a card. Only the names are shared.</p>
+        </div>
         <input type="text" id="topPickSearch" class="top-pick-search" placeholder="Search publications" autocomplete="off">
         <div id="topPickList" class="top-pick-list"></div>
       </div>`;
@@ -5646,6 +5652,40 @@
         return `<div class="top-pick-row"><span class="top-pick-name">${escapeHtml(o)}</span><button type="button" class="btn top-pick-btn${on ? " on" : ""}" data-outlet="${escapeHtml(o)}" aria-pressed="${on}">${on ? "\u2713 Top" : "+ Add"}</button></div>`;
       }).join("") : `<p class="top-pub-empty">No match. Add a feed from the + Add menu on Read.</p>`;
     }
+    // Share this list: a stored public snapshot (names + optional byline).
+    const shBy = el.querySelector("#topShareBy");
+    const shBtn = el.querySelector("#topShareBtn");
+    const shSub = el.querySelector("#topShareSub");
+    let sharedList = null;
+    function paintShare() {
+      shBtn.textContent = sharedList && sharedList.is_public ? "Update and share again" : "Share my top publications";
+      shSub.innerHTML = sharedList && sharedList.is_public
+        ? `Shared. Changes you make above don\u2019t reach the link until you update it. <button type="button" class="caption-link" id="topShareStop">Stop sharing</button>`
+        : "Shares a snapshot of the publications above, as a link and a card. Only the names are shared.";
+    }
+    if (currentUser) {
+      api("/api/my/top-list").then(r => { sharedList = r && r.list; if (sharedList) shBy.value = sharedList.byline || ""; paintShare(); }).catch(() => {});
+    }
+    shBtn.addEventListener("click", async () => {
+      if (!requireSignIn("Sign in to share your list.", () => shBtn.click())) return;
+      const names = topPublicationNames();
+      if (!names.length) { toast("Add at least one top publication first."); return; }
+      shBtn.disabled = true;
+      try {
+        const r = await api("/api/my/top-list", { method: "PUT", body: JSON.stringify({ names, is_public: true, byline: shBy.value }) });
+        sharedList = r.list;
+        paintShare();
+        const url = location.origin + "/source/?top=" + sharedList.slug;
+        const text = "The publications I read first:\n" + url;
+        if (navigator.share) { try { await navigator.share({ text }); } catch (_) {} }
+        else { try { await navigator.clipboard.writeText(text); toast("Link copied."); } catch (_) { toast(url); } }
+      } catch (e) { toast((e && e.message) || "Couldn\u2019t share the list."); }
+      shBtn.disabled = false;
+    });
+    el.addEventListener("click", async (e) => {
+      if (!(e.target.closest && e.target.closest("#topShareStop"))) return;
+      try { const r = await api("/api/my/top-list", { method: "PUT", body: JSON.stringify({ is_public: false }) }); sharedList = r.list; paintShare(); toast("Stopped sharing. The link no longer works."); } catch (_) { toast("Couldn\u2019t stop sharing. Try again."); }
+    });
     sw.addEventListener("click", () => {
       try { localStorage.setItem(READ_ON_KEY, suggestOn() ? "0" : "1"); } catch (_) {}
       paint();
@@ -6849,6 +6889,34 @@
   // a normal tab — this renders read-only, straight into #main, same
   // "?spray=<slug> auto-opens on load" pattern spray.html already uses
   // for its own shareable links.
+  async function renderPublicTopList(slug) {
+    const main = document.getElementById("main");
+    main.innerHTML = `<div class="source-single-col-screen"><div class="card"><div class="card-meta">Loading list\u2026</div></div></div>`;
+    let data;
+    try { data = await api(`/api/top-lists/${encodeURIComponent(slug)}`); }
+    catch (e) {
+      main.innerHTML = `<div class="source-single-col-screen"><div class="card"><div class="card-meta">This list isn\u2019t shared (or doesn\u2019t exist).</div></div><a href="/source/" class="ob-whats-this" style="display:block; margin-top:16px;">\u2190 Back to SOURCE!</a></div>`;
+      return;
+    }
+    const names = data.names || [];
+    main.innerHTML = `
+      <div class="source-single-col-screen pack-page">
+        <div class="pack-page-head">
+          <div class="pack-page-title">${data.byline ? escapeHtml(data.byline) + " reads these first" : "A reader reads these first"}</div>
+          <div class="manage-screen-stat">${names.length} publication${names.length === 1 ? "" : "s"}</div>
+        </div>
+        <div>${names.map(n => `<div class="top-pick-row"><span class="top-pick-name">${escapeHtml(n.name)}</span>${/^https?:\/\//i.test(n.support_url || "") ? `<a class="chip-support" href="${escapeHtml(n.support_url)}" target="_blank" rel="noopener noreferrer">Support</a>` : ""}</div>`).join("")}</div>
+        <button type="button" class="btn top-share-btn" id="topPageMake">Make your own list of top publications</button>
+        <a href="/source/" class="ob-whats-this" style="display:block; margin-top:16px;">\u2190 Back to SOURCE!</a>
+      </div>`;
+    const mk = document.getElementById("topPageMake");
+    if (mk) mk.addEventListener("click", () => {
+      try { history.replaceState(null, "", "/source/"); } catch (_) {}
+      renderActiveTab();
+      openTopPicker();
+    });
+  }
+
   async function renderPublicSaves(slug) {
     const main = document.getElementById("main");
     main.innerHTML = `<div class="source-single-col-screen"><div class="card"><div class="card-meta">Loading saved items…</div></div></div>`;
@@ -7200,11 +7268,14 @@
     const bootParams = new URLSearchParams(location.search);
     const sharedSavesSlug = bootParams.get("saves");
     const sharedPackSlug = bootParams.get("pack");
+    const sharedTopSlug = bootParams.get("top");
     const sharedStoryId = bootParams.get("story");
     if (sharedSavesSlug) {
       renderPublicSaves(sharedSavesSlug);
     } else if (sharedStoryId && /^\d{1,12}$/.test(sharedStoryId)) {
       renderPublicStory(sharedStoryId, sessionPromise);
+    } else if (sharedTopSlug && /^[a-f0-9]{10}$/.test(sharedTopSlug)) {
+      renderPublicTopList(sharedTopSlug);
     } else if (sharedPackSlug) {
       renderPublicPack(sharedPackSlug, sessionPromise);
     } else {

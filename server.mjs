@@ -301,6 +301,16 @@ async function initSchema() {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(user_id, word)
     )`,
+    // A reader's shareable "top publications" list: a stored snapshot (names only),
+    // public only when the reader shares it. One row per reader.
+    `CREATE TABLE IF NOT EXISTS user_top_lists (
+      user_id INTEGER PRIMARY KEY,
+      slug TEXT NOT NULL UNIQUE,
+      names_json TEXT NOT NULL DEFAULT '[]',
+      byline TEXT,
+      is_public INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )`,
     // Default mutes (e.g. "yglesias") apply to every reader until they turn one
     // off. Only the turned-off ones are stored.
     `CREATE TABLE IF NOT EXISTS user_mute_defaults_off (
@@ -1705,19 +1715,22 @@ function wrapTitle(t, perLine, maxLines) {
   if (lines.length > maxLines) { lines.length = maxLines; lines[maxLines - 1] = clipText(lines[maxLines - 1] + "\u2026", perLine); }
   return lines;
 }
-function packCardSvg({ title, names, more, footer }) {
+function packCardSvg({ title, names, more, footer, light }) {
+  const fg = light ? "#14161B" : "#fff";
+  const bg = light ? "#FFFFFF" : "#FF3E1D";
+  const rule = light ? "#FF3E1D" : "#fff";
   const tl = wrapTitle(title, 28, 2);
-  const titleSvg = tl.map((l, i) => `<text x="72" y="${196 + i * 72}" font-size="64" fill="#fff">${xmlEsc(l)}</text>`).join("");
+  const titleSvg = tl.map((l, i) => `<text x="72" y="${196 + i * 72}" font-size="64" fill="${fg}">${xmlEsc(l)}</text>`).join("");
   const top = 196 + (tl.length - 1) * 72 + 70;
-  const col = (arr, x) => arr.map((n, i) => `<text x="${x}" y="${top + i * 52}" font-size="38" fill="#fff">${xmlEsc(clipText(n, 22))}</text>`).join("");
+  const col = (arr, x) => arr.map((n, i) => `<text x="${x}" y="${top + i * 52}" font-size="38" fill="${fg}">${xmlEsc(clipText(n, 22))}</text>`).join("");
   const left = names.slice(0, 4), right = names.slice(4, 8);
-  const moreSvg = more > 0 ? `<text x="72" y="560" font-size="28" fill="#fff" fill-opacity="0.9">and ${more} more</text>` : "";
+  const moreSvg = more > 0 ? `<text x="72" y="560" font-size="28" fill="${fg}" fill-opacity="0.9">and ${more} more</text>` : "";
   return `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="Space Grotesk">
-<rect width="1200" height="630" fill="#FF3E1D"/>
-<rect x="72" y="60" width="150" height="6" fill="#fff"/>
-<text x="72" y="116" font-size="34" fill="#fff" letter-spacing="1">SOURCE!</text>
+<rect width="1200" height="630" fill="${bg}"/>
+<rect x="72" y="60" width="150" height="6" fill="${rule}"/>
+<text x="72" y="116" font-size="34" fill="${fg}" letter-spacing="1">SOURCE!</text>
 ${titleSvg}${col(left, 72)}${col(right, 640)}${moreSvg}
-<text x="1128" y="580" font-size="28" fill="#fff" text-anchor="end">${xmlEsc(footer)}</text>
+<text x="1128" y="580" font-size="28" fill="${fg}" text-anchor="end">${xmlEsc(footer)}</text>
 </svg>`;
 }
 app.get("/source/pack-card/:file", async (req, res) => {
@@ -1726,7 +1739,7 @@ app.get("/source/pack-card/:file", async (req, res) => {
     if (!m) return res.status(404).end();
     const slug = m[1];
     const hit = packCardCache.get(slug);
-    if (hit && Date.now() - hit.at < 10 * 60 * 1000) {
+    if (hit && Date.now() - hit.at < 2 * 60 * 1000) {
       res.set("Cache-Control", "public, max-age=600");
       return res.type("png").send(hit.png);
     }
@@ -1764,6 +1777,142 @@ app.get("/source/pack-card/:file", async (req, res) => {
   } catch (e) {
     res.status(404).end();
   }
+});
+
+// ---------- Shareable "top publications" list ----------
+// A reader's top publications (their Top source picks) can be shared as a
+// stored snapshot: names only, public only while the reader shares it.
+const TOP_LIST_CAP = 10;
+function cleanTopByline(v) {
+  const t = String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
+  return t;
+}
+async function topListFor(userId) {
+  const r = await dbGet(`SELECT * FROM user_top_lists WHERE user_id = ?`, [userId]);
+  if (!r) return null;
+  let names = [];
+  try { names = JSON.parse(r.names_json || "[]"); } catch (_) {}
+  return { slug: r.slug, names, byline: r.byline || "", is_public: !!r.is_public, updated_at: r.updated_at };
+}
+app.get("/api/my/top-list", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  res.json({ list: await topListFor(user.id) });
+});
+app.put("/api/my/top-list", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const body = req.body || {};
+  const existing = await dbGet(`SELECT * FROM user_top_lists WHERE user_id = ?`, [user.id]);
+  let names = null;
+  if (Array.isArray(body.names)) {
+    const wanted = [...new Set(body.names.map((n) => String(n || "").trim()).filter((n) => n && n.length <= 120))].slice(0, TOP_LIST_CAP);
+    if (wanted.length) {
+      const ph = wanted.map(() => "?").join(",");
+      const rows = await dbAll(`SELECT DISTINCT outlet FROM feeds WHERE submission_status = 'approved' AND outlet IN (${ph})`, wanted);
+      const ok = new Set(rows.map((r) => r.outlet));
+      names = wanted.filter((n) => ok.has(n));
+    } else names = [];
+  }
+  let byline = existing ? existing.byline || "" : "";
+  if (typeof body.byline === "string") {
+    byline = cleanTopByline(body.byline);
+    if (/^source!?$/i.test(byline)) return res.status(400).json({ error: "That name is reserved." });
+  }
+  const finalNames = names !== null ? names : (existing ? JSON.parse(existing.names_json || "[]") : []);
+  const isPublic = typeof body.is_public === "boolean" ? body.is_public : !!(existing && existing.is_public);
+  if (isPublic && !finalNames.length) return res.status(400).json({ error: "Add at least one top publication first." });
+  if (existing) {
+    await dbRun(`UPDATE user_top_lists SET names_json = ?, byline = ?, is_public = ?, updated_at = datetime('now') WHERE user_id = ?`,
+      [JSON.stringify(finalNames), byline || null, isPublic ? 1 : 0, user.id]);
+  } else {
+    await dbRun(`INSERT INTO user_top_lists (user_id, slug, names_json, byline, is_public) VALUES (?, ?, ?, ?, ?)`,
+      [user.id, randomBytes(5).toString("hex"), JSON.stringify(finalNames), byline || null, isPublic ? 1 : 0]);
+  }
+  topCardCache.clear();
+  res.json({ list: await topListFor(user.id) });
+});
+async function publicTopList(slug) {
+  if (!/^[a-f0-9]{10}$/.test(slug || "")) return null;
+  const r = await dbGet(`SELECT * FROM user_top_lists WHERE slug = ? AND is_public = 1`, [slug]);
+  if (!r) return null;
+  let names = [];
+  try { names = JSON.parse(r.names_json || "[]"); } catch (_) {}
+  return { names, byline: r.byline || "", updated_at: r.updated_at };
+}
+app.get("/api/top-lists/:slug", async (req, res) => {
+  const list = await publicTopList(String(req.params.slug || ""));
+  if (!list) return res.status(404).json({ error: "not found" });
+  let support = {};
+  if (list.names.length) {
+    const ph = list.names.map(() => "?").join(",");
+    const rows = await dbAll(`SELECT outlet, tip_url, subscribe_url, is_corporate FROM feeds WHERE submission_status = 'approved' AND outlet IN (${ph})`, list.names);
+    for (const r of rows) {
+      if (r.is_corporate) continue;
+      const u = [r.tip_url, r.subscribe_url].find((x) => /^https?:\/\//i.test(x || ""));
+      if (u && !support[r.outlet]) support[r.outlet] = u;
+    }
+  }
+  res.set("Cache-Control", "no-cache");
+  res.json({ byline: list.byline, updated_at: list.updated_at, names: list.names.map((n) => ({ name: n, support_url: support[n] || null })) });
+});
+const topCardCache = new Map();
+app.get("/source/top-card/:file", async (req, res) => {
+  try {
+    const m = /^([a-f0-9]{10})\.png$/.exec(req.params.file || "");
+    if (!m) return res.status(404).end();
+    const hit = topCardCache.get(m[1]);
+    if (hit && Date.now() - hit.at < 10 * 60 * 1000) {
+      res.set("Cache-Control", "public, max-age=600");
+      return res.type("png").send(hit.png);
+    }
+    const list = await publicTopList(m[1]);
+    if (!list) return res.status(404).end();
+    const svg = packCardSvg({
+      title: `${list.byline ? list.byline + " reads" : "A reader reads"} these first.`,
+      names: list.names.slice(0, 8), more: Math.max(0, list.names.length - 8),
+      footer: "Make your own list on SOURCE!", light: true,
+    });
+    const png = new Resvg(svg, { font: { fontFiles: [PACK_CARD_FONT], loadSystemFonts: false, defaultFontFamily: "Space Grotesk" } }).render().asPng();
+    if (topCardCache.size > 200) topCardCache.clear();
+    topCardCache.set(m[1], { png, at: Date.now(), v: 1 });
+    res.set("Cache-Control", "public, max-age=600");
+    res.type("png").send(png);
+  } catch (e) { res.status(404).end(); }
+});
+// /source/?top=<slug>: the shared top-publications page with its own share tags.
+app.get(["/source", "/source/", "/source/index.html"], async (req, res, next) => {
+  const slug = typeof req.query.top === "string" ? req.query.top.trim().slice(0, 20) : "";
+  if (!slug || req.query.pack || req.query.story) return next();
+  try {
+    let html = await readFile(path.join(__dirname, "public", "source", "index.html"), "utf8");
+    let title = "A reader's top publications on SOURCE!";
+    let desc = "The publications they read first. Newest first, no algorithm.";
+    let img = "/source/pack-og.png";
+    const list = await publicTopList(slug);
+    const base = /localhost|127\.0\.0\.1/.test(SITE_URL) && req.get("host") && !/localhost|127\.0\.0\.1/.test(req.get("host"))
+      ? `${req.get("x-forwarded-proto") || "https"}://${req.get("host")}`
+      : SITE_URL;
+    if (list && list.names.length) {
+      title = `${list.byline ? list.byline + " reads" : "A reader reads"} these first \u2014 SOURCE!`;
+      desc = `${list.names.slice(0, 4).join(", ")}${list.names.length > 4 ? ` and ${list.names.length - 4} more` : ""} \u00b7 Make your own list on SOURCE!`;
+      img = `/source/top-card/${slug}.png`;
+    }
+    const url = `${base}/source/?top=${encodeURIComponent(slug)}`;
+    const t = escAttr(title), d = escAttr(desc), im = escAttr(base + img);
+    html = html
+      .replace(/<title>[^<]*<\/title>/, `<title>${t}</title>`)
+      .replace(/(<meta name="description" content=")[^"]*(")/, `$1${d}$2`)
+      .replace(/(<meta property="og:title" content=")[^"]*(")/, `$1${t}$2`)
+      .replace(/(<meta property="og:description" content=")[^"]*(")/, `$1${d}$2`)
+      .replace(/(<meta property="og:image" content=")[^"]*(")/, `$1${im}$2`)
+      .replace(/(<meta property="og:url" content=")[^"]*(")/, `$1${escAttr(url)}$2`)
+      .replace(/(<meta name="twitter:title" content=")[^"]*(")/, `$1${t}$2`)
+      .replace(/(<meta name="twitter:description" content=")[^"]*(")/, `$1${d}$2`)
+      .replace(/(<meta name="twitter:image" content=")[^"]*(")/, `$1${im}$2`);
+    res.set("Cache-Control", "no-cache");
+    res.type("html").send(html);
+  } catch (e) { next(); }
 });
 app.use(express.static(path.join(__dirname, "public"), {
   // Images and video get a 1-day freshness window (promo.mp4 is 2.4 MB and
@@ -2180,6 +2329,7 @@ app.delete("/api/my/account", async (req, res) => {
     await dbRun(`DELETE FROM user_spray_bar WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM user_news_pref WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM user_mutes WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_top_lists WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM user_mute_defaults_off WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM feed_thumbs WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM sessions WHERE user_id = ?`, [user.id]);

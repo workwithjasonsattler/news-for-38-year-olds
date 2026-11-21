@@ -3315,3 +3315,6 @@ a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 .top-suggest-why { display: block; font-weight: 400; font-size: 13px; color: var(--muted, #5b6068); line-height: 1.35; }
 .top-suggest-switch[aria-checked="true"] .rel-switch { background: var(--ink); border-color: var(--ink); }
 .top-suggest-switch[aria-checked="true"] .rel-switch .rel-knob { transform: translateX(16px); }
+.top-share { padding: 8px 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
+.top-share-title { font-weight: 600; margin-bottom: 4px; }
+.top-share-btn { min-height: 44px; width: 100%; border-color: var(--live-ink, #C42A0E); color: var(--live-ink, #C42A0E); background: #fff; font-weight: 600; margin-top: 4px; }
