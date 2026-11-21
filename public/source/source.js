@@ -2735,9 +2735,10 @@
       el.addEventListener("click", (e) => {
         const b = e.target.closest("[data-act]");
         if (!b) return;
+        // Only "Got it" dismisses. Tapping the Browse link keeps the card up.
+        if (b.dataset.act === "browse") { openPublicPackPicker(); return; }
         try { localStorage.setItem("source_first_card", "1"); } catch (_) {}
         el.remove();
-        if (b.dataset.act === "browse") openPublicPackPicker();
       });
     } catch (_) {}
   }
