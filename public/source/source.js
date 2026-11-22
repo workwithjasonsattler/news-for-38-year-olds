@@ -4843,10 +4843,11 @@
             : "No sources yet";
           return `
             <div class="spray-picker-row" style="justify-content:space-between;align-items:flex-start;">
-              <a href="/source/?pack=${encodeURIComponent(p.slug)}" class="pack-row-link" style="min-width:0;color:inherit;text-decoration:none;">
+              <a href="/source/?pack=${encodeURIComponent(p.slug)}" class="pack-row-link" style="min-width:0;color:inherit;text-decoration:none;display:flex;gap:12px;align-items:flex-start;">
+                ${packCoverHtml(p.slug, p.name, 56)}<span style="min-width:0;">
                 <span style="display:block;">${p.featured ? "⭐ " : ""}${escapeHtml(p.name)}${p.location_label ? ` <span style="color:var(--ink-muted);font-weight:400;">· ${escapeHtml(p.location_label)}</span>` : ""}</span>
                 <span class="spray-picker-source-preview">${previewLine}</span>
-              </a>
+              </span></a>
               <button class="btn" data-slug="${escapeHtml(p.slug)}" style="flex:0 0 auto;">${following ? "Following ✓" : "+ Follow"}</button>
             </div>`;
         }).join("") + `</div>`;
@@ -6793,6 +6794,20 @@
     btn.addEventListener("click", () => doShare(packShareUrl(mix.slug), `${mix.name} — RSS Pack on SOURCE!`));
   }
 
+  // Generated Pack cover: a square in one of three brand colors (picked from the
+  // slug, so it never changes) with the Pack name, or initials when small.
+  // No artwork to source, and nothing here says anything about popularity.
+  function packCoverHtml(slug, name, size) {
+    const colors = ["#FF3E1D", "#14161B", "#2E5F82"];
+    let h = 0;
+    for (const ch of String(slug || name || "")) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+    const bg = colors[h % colors.length];
+    const small = size < 80;
+    const words = String(name || "").replace(/[^\p{L}\p{N}\s]/gu, " ").split(/\s+/).filter(Boolean);
+    const label = small ? (words.slice(0, 2).map(w => w[0]).join("").toUpperCase() || "P") : String(name || "").slice(0, 44);
+    return `<div class="pack-cover${small ? " sm" : ""}" aria-hidden="true" style="width:${size}px;height:${size}px;background:${bg};font-size:${small ? 22 : 21}px;">${escapeHtml(label)}</div>`;
+  }
+
   async function renderPublicPack(slug, sessionPromise) {
     const main = document.getElementById("main");
     main.classList.remove("read-layout", "read-scroll-desktop", "read-mobile-classic");
@@ -6808,7 +6823,7 @@
     const CHIP_CAP = 24;
     const sources = mix.sources || [];
     const chips = sources.slice(0, CHIP_CAP).map(s => `
-      <span class="tile-sheet-chip">${escapeHtml(s.outlet || s.name || "Custom source")}${s.is_corporate ? `<span class="source-corporate-mark" title="${escapeHtml(s.parent_company || "Corporate/conglomerate-owned")}">*</span>` : ""}${/^https?:\/\//i.test(s.support_url || "") ? `<a class="chip-support" href="${escapeHtml(s.support_url)}" target="_blank" rel="noopener noreferrer">Support</a>` : ""}</span>`).join("");
+      <div class="top-pick-row"><span class="top-pick-name">${escapeHtml(s.outlet || s.name || "Custom source")}${s.is_corporate ? `<span class="source-corporate-mark" title="${escapeHtml(s.parent_company || "Corporate/conglomerate-owned")}">*</span>` : ""}</span>${/^https?:\/\//i.test(s.support_url || "") ? `<a class="chip-support" href="${escapeHtml(s.support_url)}" target="_blank" rel="noopener noreferrer">Support</a>` : ""}</div>`).join("");
     const more = sources.length > CHIP_CAP ? `<div class="manage-screen-stat" style="margin-top:8px;">+ ${sources.length - CHIP_CAP} more</div>` : "";
     // Publications the curator backs that have no RSS feed: plain links, never fetched by SOURCE!.
     const listed = Array.isArray(mix.listed) ? mix.listed : [];
@@ -6839,18 +6854,26 @@
     main.innerHTML = `
       <div class="source-single-col-screen pack-page">
         <div class="manage-screen-head">
-          ${mix.curator ? `<div class="tile-sheet-badge">Curated by ${escapeHtml(mix.curator)}</div>` : ""}
+          <div class="pack-head-row">
+            ${packCoverHtml(mix.slug, mix.name, 132)}
+            <div class="pack-head-meta">
+              ${mix.curator ? `<div class="tile-sheet-badge">Curated by ${escapeHtml(mix.curator)}</div>` : ""}
+              <div class="manage-screen-stat">${sources.length + listed.length} ${listed.length ? "publication" : "source"}${sources.length + listed.length === 1 ? "" : "s"}${mix.auto_sync ? " right now" : ""}${mix.location_label ? " \u00b7 " + escapeHtml(mix.location_label) : ""}${updatedLabel}</div>
+            </div>
+          </div>
           <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
-          <div class="manage-screen-stat">${sources.length + listed.length} ${listed.length ? "publication" : "source"}${sources.length + listed.length === 1 ? "" : "s"}${mix.auto_sync ? " right now" : ""}${mix.location_label ? " · " + escapeHtml(mix.location_label) : ""}${updatedLabel}</div>
+          ${mix.forked_from ? `<div class="manage-screen-stat">Based on <a href="/source/?pack=${encodeURIComponent(mix.forked_from.slug)}">${escapeHtml(mix.forked_from.name)}</a></div>` : ""}
         </div>
         ${mix.is_public ? "" : `<div class="manage-screen-hidden-notice"><span>🔒</span><span><strong>Private.</strong> Only you can see this page. Make the Pack public in Feeds to share it.</span></div>`}
         <div class="manage-screen-field">
-          <div class="create-flow-label">Sources</div>
-          <div class="tile-sheet-sources">${chips}</div>${more}
+          <div class="create-flow-label">In this Pack</div>
+          <div class="pack-source-rows">${chips}</div>${more}
         </div>
         ${listedHtml}
-        <button class="btn primary" id="packFollowBtn" style="width:100%; margin-top:14px;">${followLabel}</button>
-        ${packShareButtonHtml(mix)}
+        <div class="pack-actions">
+          <button class="btn primary" id="packFollowBtn">${followLabel}</button>
+          ${packShareButtonHtml(mix)}
+        </div>
         ${mix.is_public && !mix.auto_sync && sources.some(s => s.source_type === "admin_outlet") ? `<button class="btn" id="packCopyBtn" style="width:100%; margin-top:10px;">Copy and customize</button>` : ""}
         <button class="btn" id="packMakeOwnBtn" style="width:100%; margin-top:10px;">${isSupportList ? "Make your own list of publications you support" : "Make your own RSS Pack"}</button>
         <a href="${location.origin}/api/mixes/${encodeURIComponent(mix.slug)}/rss" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>

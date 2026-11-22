@@ -3318,3 +3318,12 @@ a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 .top-share { padding: 8px 0 10px; border-bottom: 1px solid var(--line); margin-bottom: 6px; }
 .top-share-title { font-weight: 600; margin-bottom: 4px; }
 .top-share-btn { min-height: 44px; width: 100%; border-color: var(--live-ink, #C42A0E); color: var(--live-ink, #C42A0E); background: #fff; font-weight: 600; margin-top: 4px; }
+/* Pack cover + page layout (store look) */
+.pack-cover { display: flex; align-items: flex-end; box-sizing: border-box; padding: 10px; color: #fff; font-family: var(--display, "Space Grotesk", sans-serif); font-weight: 700; line-height: 1.05; overflow: hidden; flex: 0 0 auto; overflow-wrap: anywhere; }
+.pack-cover.sm { align-items: center; justify-content: center; padding: 0; border-radius: 6px; }
+.pack-head-row { display: flex; gap: 14px; align-items: flex-end; margin-bottom: 12px; }
+.pack-head-meta { min-width: 0; }
+.pack-actions { display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+.pack-actions .btn { flex: 1 1 140px; width: auto !important; margin: 0 !important; min-height: 44px; }
+.pack-source-rows .top-pick-row:first-child { border-top: 0; }
+.pack-page .top-pick-name .source-corporate-mark { margin-left: 4px; }
