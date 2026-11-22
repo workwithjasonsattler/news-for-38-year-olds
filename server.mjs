@@ -1130,6 +1130,40 @@ const PUBLIC_MEDIA_PACK = {
   ],
 };
 
+// House Pack descriptions. Fills a description ONLY where a house Pack's is
+// empty, matched by exact name, so it never overwrites copy edited in admin.
+// Safe to leave in the boot sequence. Outlet names appear only where the
+// outlet is stable; counts are left out so the copy does not go stale.
+const HOUSE_PACK_DESCRIPTIONS = [
+  ["Headlines: Best in the World", "The reporting we would read first today, pulled live from independent outlets across the site and listed newest first."],
+  ["Public Media Around the World", "News from public broadcasters in several countries, including the BBC, NPR, PBS NewsHour, DW and CBC. See how the rest of the world covers the day."],
+  ["Progressive Podcasts", "Progressive podcasts in one list. New episodes appear as they are published."],
+  ["Horror", "Horror news, reviews and interviews from the genre's own outlets."],
+  ["Awards / Oscars-Prestige", "Awards-season and prestige film coverage from IndieWire, Variety, Deadline and The Hollywood Reporter."],
+  ["Blockbusters / Franchise", "What is opening, what is coming and what fans are arguing about, from ScreenRant, Collider, MovieWeb and ComingSoon.net."],
+  ["Indie / A24-type", "Independent and festival film coverage from Film Comment, Filmmaker Magazine, Film Threat and IndieWire."],
+  ["Streaming & TV", "TV and streaming news, recaps and what to watch next, from TVLine, Decider, TV Insider and The A.V. Club."],
+  ["Hip-Hop/R&B", "Rap and R&B news, interviews and releases."],
+  ["Pop", "Pop music news, charts and releases from the outlets that cover them every day."],
+  ["Rock/Alternative", "Rock, metal and alternative music news and reviews from Stereogum, Consequence, Loudwire and BrooklynVegan."],
+  ["Country", "Country music news and reviews from Taste of Country, Whiskey Riff and Saving Country Music."],
+  ["Indie/Underground", "Independent and underground music from Gorilla vs. Bear, Aquarium Drunkard and Obscure Sound."],
+  ["NFL", "NFL news, analysis and transactions as they happen."],
+  ["NBA", "NBA news, analysis and transactions as they happen."],
+  ["MLB", "Baseball news, trade rumors and analysis from MLB Trade Rumors, FanGraphs and Baseball Prospectus."],
+  ["Soccer (Premier League/global)", "Premier League and global soccer coverage, including The Guardian and The Athletic."],
+];
+async function seedPackDescriptions() {
+  let filled = 0;
+  for (const [name, desc] of HOUSE_PACK_DESCRIPTIONS) {
+    const r = await dbRun(
+      `UPDATE feed_mixes SET description = ? WHERE name = ? AND creator_user_id = 0 AND (description IS NULL OR description = '')`,
+      [desc, name]
+    );
+    filled += Number(r.rowsAffected || 0);
+  }
+  if (filled) console.log(`Pack descriptions: filled ${filled} house Pack(s).`);
+}
 async function seedPublicMediaPack() {
   const existingFeeds = await dbAll(`SELECT id, outlet, feed_url FROM feeds`);
   const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
@@ -8193,6 +8227,7 @@ async function start() {
       await step("seedPopCulturePacks", seedPopCulturePacks);
       await step("seedProgressivePodcasts", seedProgressivePodcasts);
       await step("seedPublicMediaPack", seedPublicMediaPack);
+      await step("seedPackDescriptions", seedPackDescriptions);
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Same "kick shortly after boot, not just on the interval" pattern as
       // the Bluesky bot below — a fresh deploy shouldn't have to wait up to
