@@ -309,6 +309,7 @@ async function initSchema() {
       names_json TEXT NOT NULL DEFAULT '[]',
       byline TEXT,
       is_public INTEGER NOT NULL DEFAULT 0,
+      admin_hidden INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )`,
     // Default mutes (e.g. "yglesias") apply to every reader until they turn one
@@ -445,6 +446,7 @@ async function initSchema() {
     `ALTER TABLE feed_mixes ADD COLUMN clone_count INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE feed_mixes ADD COLUMN forked_from_id INTEGER`,
     `ALTER TABLE feed_mixes ADD COLUMN description TEXT`,
+    `ALTER TABLE user_top_lists ADD COLUMN admin_hidden INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE feed_mixes ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0`,
     // auto_sync is split out from is_official (see the note above
     // seedOfficialHeadlinesSpray()) so a real, editor-curated official Pack
@@ -1833,7 +1835,7 @@ async function topListFor(userId) {
   if (!r) return null;
   let names = [];
   try { names = JSON.parse(r.names_json || "[]"); } catch (_) {}
-  return { slug: r.slug, names, byline: r.byline || "", is_public: !!r.is_public, updated_at: r.updated_at };
+  return { slug: r.slug, names, byline: r.byline || "", is_public: !!r.is_public, hidden: !!r.admin_hidden, updated_at: r.updated_at };
 }
 app.get("/api/my/top-list", async (req, res) => {
   const user = await getCurrentUser(req);
@@ -1875,7 +1877,7 @@ app.put("/api/my/top-list", async (req, res) => {
 });
 async function publicTopList(slug) {
   if (!/^[a-f0-9]{10}$/.test(slug || "")) return null;
-  const r = await dbGet(`SELECT * FROM user_top_lists WHERE slug = ? AND is_public = 1`, [slug]);
+  const r = await dbGet(`SELECT * FROM user_top_lists WHERE slug = ? AND is_public = 1 AND admin_hidden = 0`, [slug]);
   if (!r) return null;
   let names = [];
   try { names = JSON.parse(r.names_json || "[]"); } catch (_) {}
@@ -1896,6 +1898,29 @@ app.get("/api/top-lists/:slug", async (req, res) => {
   }
   res.set("Cache-Control", "no-cache");
   res.json({ byline: list.byline, updated_at: list.updated_at, names: list.names.map((n) => ({ name: n, support_url: support[n] || null })) });
+});
+// Admin moderation for shared top lists (same idea as hiding a Pack): hide
+// unlists the page and its share card without deleting the reader's list.
+app.get("/api/admin/top-lists", requireAdmin, async (req, res) => {
+  const rows = await dbAll(
+    `SELECT t.slug, t.names_json, t.byline, t.admin_hidden, t.updated_at, u.email AS creator_email
+     FROM user_top_lists t LEFT JOIN users u ON u.id = t.user_id
+     WHERE t.is_public = 1 ORDER BY t.updated_at DESC LIMIT 200`
+  );
+  res.json(rows.map((r) => {
+    let names = [];
+    try { names = JSON.parse(r.names_json || "[]"); } catch (_) {}
+    return { slug: r.slug, names, byline: r.byline || "", hidden: !!r.admin_hidden, updated_at: r.updated_at, creator_email: r.creator_email || null };
+  }));
+});
+app.post("/api/admin/top-lists/:slug/toggle-hidden", requireAdmin, async (req, res) => {
+  const slug = String(req.params.slug || "");
+  const row = await dbGet(`SELECT admin_hidden FROM user_top_lists WHERE slug = ?`, [slug]);
+  if (!row) return res.status(404).json({ error: "list not found" });
+  const next = row.admin_hidden ? 0 : 1;
+  await dbRun(`UPDATE user_top_lists SET admin_hidden = ? WHERE slug = ?`, [next, slug]);
+  topCardCache.clear();
+  res.json({ ok: true, hidden: !!next });
 });
 const topCardCache = new Map();
 app.get("/source/top-card/:file", async (req, res) => {

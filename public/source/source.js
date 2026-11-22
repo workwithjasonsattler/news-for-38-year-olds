@@ -5666,6 +5666,11 @@
     let sharedList = null;
     function paintShare() {
       shBtn.textContent = sharedList && sharedList.is_public ? "Update and share again" : "Share my top publications";
+      if (sharedList && sharedList.hidden) {
+        shSub.textContent = "A moderator has hidden your shared list, so its link no longer works. Your list itself is untouched.";
+        shBtn.disabled = true;
+        return;
+      }
       shSub.innerHTML = sharedList && sharedList.is_public
         ? `Shared. Changes you make above don\u2019t reach the link until you update it. <button type="button" class="caption-link" id="topShareStop">Stop sharing</button>`
         : "Shares a snapshot of the publications above, as a link and a card. Only the names are shared.";

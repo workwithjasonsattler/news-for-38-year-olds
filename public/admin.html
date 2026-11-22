@@ -292,6 +292,13 @@ Some Video Creator | | Indie Media | | | | | | @somecreator"></textarea>
       <thead><tr><th>Name</th><th>Creator</th><th>Sources</th><th>Followers</th><th>Status</th><th>Featured</th><th></th></tr></thead>
       <tbody id="publicPackRows"></tbody>
     </table>
+
+    <h3 style="font-family:var(--mono);font-size:12px;margin-top:28px;border-top:1px solid rgba(0,0,0,.1);padding-top:20px;">SHARED TOP LISTS — MODERATION</h3>
+    <p style="font-size:13px;color:#666;">Top-publication lists readers chose to share, most recently updated first. Hide unlists the page and its share card without deleting the reader's list. The byline is free text the reader typed, so check it here.</p>
+    <table id="topListTable">
+      <thead><tr><th>Byline</th><th>Creator</th><th>Publications</th><th>Updated</th><th>Status</th><th></th></tr></thead>
+      <tbody id="topListRows"></tbody>
+    </table>
   </div>
 
 </div>
@@ -427,6 +434,7 @@ async function showAdmin(){
   await loadTopicsForPacks();
   await loadOfficialPacks();
   await loadPublicPacks();
+  await loadTopLists();
 }
 
 function esc(v){ return String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
@@ -1255,6 +1263,27 @@ async function loadPublicPacks(){
       </td>
     </tr>
   `).join('') || '<tr><td colspan="7" style="color:#666;">No public Packs yet.</td></tr>';
+}
+
+async function loadTopLists(){
+  const res = await fetch('/api/admin/top-lists', {headers: authHeaders()});
+  if (!res.ok) return;
+  const rows = await res.json();
+  document.getElementById('topListRows').innerHTML = rows.map(l => `
+    <tr>
+      <td>${esc(l.byline) || '<span style="color:#999;">anonymous</span>'}</td>
+      <td style="color:#666;">${esc(l.creator_email) || '—'}</td>
+      <td>${esc(l.names.join(', '))}</td>
+      <td style="color:#666;">${esc(l.updated_at)}</td>
+      <td>${l.hidden ? '<span style="color:#B33A3A;">Hidden</span>' : '<span style="color:#2F6F62;">Visible</span>'}</td>
+      <td><button class="btn-secondary" style="padding:4px 10px;font-size:11px;margin:0;" onclick="toggleTopListHidden('${esc(l.slug)}')">${l.hidden ? 'Unhide' : 'Hide'}</button></td>
+    </tr>
+  `).join('') || '<tr><td colspan="6" style="color:#666;">No shared top lists yet.</td></tr>';
+}
+
+async function toggleTopListHidden(slug){
+  await fetch(`/api/admin/top-lists/${encodeURIComponent(slug)}/toggle-hidden`, {method: 'POST', headers: authHeaders()});
+  await loadTopLists();
 }
 
 async function togglePackHidden(slug){
