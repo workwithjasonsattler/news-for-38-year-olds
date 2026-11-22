@@ -4805,10 +4805,10 @@
     el.innerHTML = `
       <div class="spray-picker-card">
         <div class="spray-picker-head">
-          <span>Browse RSS Packs</span>
+          <span>RSS Packs</span>
           <button class="spray-picker-close" id="publicPackPickerClose" aria-label="Close">×</button>
         </div>
-        <p class="spray-picker-sub">Made and shared by other readers — follow one straight into your Read toggle.</p>
+        <p class="spray-picker-sub">Collections of independent reporting. Tap one to see what is inside, or follow it straight into your Read toggle.</p>
         <input type="text" id="publicPackPickerSearch" placeholder="Search by name or place…" style="width:100%;margin-bottom:8px;">
         <div id="publicPackPickerResults"></div>
       </div>`;
@@ -4837,25 +4837,55 @@
           (p.source_preview || []).some(s => s.toLowerCase().includes(q))
         )
       : pool;
-    container.innerHTML = filtered.length === 0
-      ? `<div class="spray-picker-empty">No public RSS Packs match.</div>`
-      : `<div class="spray-picker-list">` + filtered.map(p => {
-          const following = followedSlugs.has(p.slug);
-          const preview = p.source_preview || [];
-          const extra = Math.max(0, (p.source_count || preview.length) - preview.length);
-          const previewLine = preview.length
-            ? `${escapeHtml(preview.join(", "))}${extra ? ` +${extra} more` : ""}`
-            : "No sources yet";
-          return `
-            <div class="spray-picker-row" style="justify-content:space-between;align-items:flex-start;">
-              <a href="/source/?pack=${encodeURIComponent(p.slug)}" class="pack-row-link" style="min-width:0;color:inherit;text-decoration:none;display:flex;gap:12px;align-items:flex-start;">
-                ${packCoverHtml(p.slug, p.name, 56)}<span style="min-width:0;">
-                <span style="display:block;">${p.featured ? "⭐ " : ""}${escapeHtml(p.name)}${p.location_label ? ` <span style="color:var(--ink-muted);font-weight:400;">· ${escapeHtml(p.location_label)}</span>` : ""}</span>
-                <span class="spray-picker-source-preview">${previewLine}</span>
-              </span></a>
-              <button class="btn" data-slug="${escapeHtml(p.slug)}" style="flex:0 0 auto;">${following ? "Following ✓" : "+ Follow"}</button>
-            </div>`;
-        }).join("") + `</div>`;
+    const rowHtml = (p) => {
+      const following = followedSlugs.has(p.slug);
+      const preview = p.source_preview || [];
+      const extra = Math.max(0, (p.source_count || preview.length) - preview.length);
+      const previewLine = p.description
+        ? escapeHtml(p.description)
+        : (preview.length ? `${escapeHtml(preview.join(", "))}${extra ? ` +${extra} more` : ""}` : "No sources yet");
+      const byLine = p.by && p.by !== "SOURCE!" ? `<span class="spray-picker-source-preview">by ${escapeHtml(p.by)}</span>` : "";
+      return `
+        <div class="spray-picker-row" style="justify-content:space-between;align-items:flex-start;">
+          <a href="/source/?pack=${encodeURIComponent(p.slug)}" class="pack-row-link" style="min-width:0;color:inherit;text-decoration:none;display:flex;gap:12px;align-items:flex-start;">
+            ${packCoverHtml(p.slug, p.name, 56)}<span style="min-width:0;">
+            <span style="display:block;">${escapeHtml(p.name)}${p.location_label ? ` <span style="color:var(--ink-muted);font-weight:400;">\u00b7 ${escapeHtml(p.location_label)}</span>` : ""}</span>
+            ${byLine}<span class="spray-picker-source-preview">${previewLine}</span>
+          </span></a>
+          <button class="btn" data-slug="${escapeHtml(p.slug)}" style="flex:0 0 auto;">${following ? "Following \u2713" : "+ Follow"}</button>
+        </div>`;
+    };
+    const topicSlug = publicPackPickerState.topic || "";
+    const topicPool = topicSlug ? pool.filter(p => (p.topics || []).some(tp => tp.slug === topicSlug)) : null;
+    if (q || topicSlug) {
+      const list = q ? filtered : topicPool;
+      const topicName = topicSlug ? ((pool.flatMap(p => p.topics || []).find(tp => tp.slug === topicSlug) || {}).name || "Topic") : "";
+      container.innerHTML = (topicSlug && !q ? `<div class="store-shelf-head"><span>${escapeHtml(topicName)}</span><button type="button" class="caption-link" id="storeTopicBack">\u2190 All Packs</button></div>` : "")
+        + (list.length === 0 ? `<div class="spray-picker-empty">No public RSS Packs match.</div>` : `<div class="spray-picker-list">${list.map(rowHtml).join("")}</div>`);
+    } else {
+      const featured = pool.filter(p => p.featured);
+      const others = pool.filter(p => !p.featured && p.by !== "SOURCE!");
+      const houseMore = pool.filter(p => !p.featured && p.by === "SOURCE!");
+      const topicMap = new Map();
+      for (const pk of pool) for (const tp of (pk.topics || [])) if (!topicMap.has(tp.slug)) topicMap.set(tp.slug, tp.name);
+      const tile = (pk) => {
+        const following = followedSlugs.has(pk.slug);
+        return `<div class="store-tile">
+          <a href="/source/?pack=${encodeURIComponent(pk.slug)}" style="color:inherit;text-decoration:none;">${packCoverHtml(pk.slug, pk.name, 112)}
+          <div class="store-tile-name">${escapeHtml(pk.name)}</div></a>
+          <button class="btn store-tile-follow" data-slug="${escapeHtml(pk.slug)}">${following ? "Following \u2713" : "+ Follow"}</button>
+        </div>`;
+      };
+      container.innerHTML =
+        (featured.length ? `<div class="store-shelf-head"><span>Editor\u2019s picks</span></div><div class="store-shelf">${featured.map(tile).join("")}</div>` : "")
+        + (topicMap.size ? `<div class="store-shelf-head"><span>Browse by topic</span></div><div class="store-topics">${[...topicMap].map(([sl, nm]) => `<button type="button" class="store-topic" data-topic="${escapeHtml(sl)}">${escapeHtml(nm)}</button>`).join("")}</div>` : "")
+        + (houseMore.length ? `<div class="store-shelf-head"><span>More from SOURCE!</span></div><div class="spray-picker-list">${houseMore.map(rowHtml).join("")}</div>` : "")
+        + (others.length ? `<div class="store-shelf-head"><span>Lists readers share</span></div><div class="spray-picker-list">${others.map(rowHtml).join("")}</div>` : "")
+        + (!featured.length && !others.length && !houseMore.length ? `<div class="spray-picker-empty">No public RSS Packs yet.</div>` : "");
+    }
+    container.querySelectorAll("[data-topic]").forEach(btn => btn.addEventListener("click", () => { publicPackPickerState.topic = btn.dataset.topic; renderPublicPackPickerResults(false); }));
+    const topicBack = container.querySelector("#storeTopicBack");
+    if (topicBack) topicBack.addEventListener("click", () => { publicPackPickerState.topic = ""; renderPublicPackPickerResults(false); });
     container.querySelectorAll("[data-slug]").forEach(btn => {
       btn.addEventListener("click", () => togglePublicPackFollow(btn.dataset.slug, btn));
     });

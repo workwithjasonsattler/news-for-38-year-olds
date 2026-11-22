@@ -3328,3 +3328,11 @@ a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 .pack-source-rows .top-pick-row:first-child { border-top: 0; }
 .pack-page .top-pick-name .source-corporate-mark { margin-left: 4px; }
 .pack-description { font-size: 15px; line-height: 1.45; color: var(--ink); margin: 6px 0 8px; }
+/* Pack store (Browse) */
+.store-shelf-head { display: flex; justify-content: space-between; align-items: baseline; font-family: var(--display, "Space Grotesk", sans-serif); font-weight: 700; font-size: 18px; margin: 18px 0 8px; }
+.store-shelf { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; -webkit-overflow-scrolling: touch; }
+.store-tile { flex: 0 0 112px; }
+.store-tile-name { font-size: 14px; font-weight: 600; line-height: 1.25; margin: 6px 0 6px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.store-tile-follow { min-height: 40px; width: 100%; font-size: 13px; padding: 4px 6px; }
+.store-topics { display: flex; flex-wrap: wrap; gap: 8px; }
+.store-topic { min-height: 40px; padding: 6px 14px; border: 1px solid var(--ink); background: #fff; color: var(--ink); font: inherit; font-weight: 600; cursor: pointer; }

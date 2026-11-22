@@ -5272,7 +5272,7 @@ app.get("/api/mixes", async (req, res) => {
   }
 
   const rows = await dbAll(
-    `SELECT fm.id, fm.slug, fm.name, fm.location_label, fm.created_at, fm.clone_count, fm.featured
+    `SELECT fm.id, fm.slug, fm.name, fm.description, fm.location_label, fm.created_at, fm.clone_count, fm.featured, fm.creator_user_id, fm.byline, fm.is_official, fm.is_public
      FROM feed_mixes fm
      WHERE ${conditions.join(" AND ")}
      ORDER BY fm.featured DESC, fm.featured_order ASC, fm.clone_count DESC, fm.created_at DESC
@@ -5305,7 +5305,15 @@ app.get("/api/mixes", async (req, res) => {
       .slice(0, 4)
       .map((s) => (s.source_type === "admin_outlet" ? s.outlet : s.custom_name))
       .filter(Boolean);
+    // Who made it, for the store's "Lists readers share" shelf: "SOURCE!" for house
+    // Packs, the reader's chosen byline, or null (anonymous). Never an email or id.
+    row.by = packCurator(row);
+    row.description = row.description || "";
     delete row.id; // internal-only, not part of the public response shape
+    delete row.creator_user_id;
+    delete row.byline;
+    delete row.is_official;
+    delete row.is_public;
   }
   res.json(rows);
 });
