@@ -443,6 +443,7 @@ async function initSchema() {
     `ALTER TABLE headlines ADD COLUMN subhead TEXT`,
     `ALTER TABLE feed_mixes ADD COLUMN topic_id INTEGER`,
     `ALTER TABLE feed_mixes ADD COLUMN clone_count INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE feed_mixes ADD COLUMN forked_from_id INTEGER`,
     `ALTER TABLE feed_mixes ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0`,
     // auto_sync is split out from is_official (see the note above
     // seedOfficialHeadlinesSpray()) so a real, editor-curated official Pack
@@ -3624,6 +3625,12 @@ app.post("/api/mixes", async (req, res) => {
     `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, byline) VALUES (?, ?, ?, ?, ?, ?)`,
     [slug, name, user.id, locationLabel, isPublic, bl.value]
   );
+  // Lineage: a Pack built by "Copy and customize" remembers which public Pack
+  // it started from. Only public, visible Packs can be a parent.
+  if (typeof req.body?.forked_from === "string" && req.body.forked_from) {
+    const parent = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ? AND is_public = 1 AND admin_hidden = 0 AND is_my_feed = 0`, [req.body.forked_from.slice(0, 120)]);
+    if (parent) await dbRun(`UPDATE feed_mixes SET forked_from_id = ? WHERE id = ?`, [parent.id, info.lastInsertRowid]);
+  }
   for (let i = 0; i < validated.length; i++) {
     const v = validated[i];
     await dbRun(
@@ -3807,9 +3814,26 @@ app.get("/api/mixes/:slug", async (req, res) => {
   const listed = isSupportListName(mix.name)
     ? await dbAll(`SELECT name, url, support_url FROM feed_mix_listed WHERE mix_id = ? ORDER BY sort_order ASC, id ASC`, [mix.id])
     : [];
+  // Lineage, names only (no counts): the Pack this one was copied from, and
+  // public Packs readers have built from it. Private or hidden Packs never show.
+  let forkedFrom = null;
+  if (mix.forked_from_id) {
+    const par = await dbGet(`SELECT slug, name FROM feed_mixes WHERE id = ? AND is_public = 1 AND admin_hidden = 0 AND is_my_feed = 0`, [mix.forked_from_id]);
+    if (par && mix.is_public) forkedFrom = { slug: par.slug, name: par.name };
+  }
+  let remixes = [];
+  if (mix.is_public && !mix.admin_hidden) {
+    const rows = await dbAll(
+      `SELECT * FROM feed_mixes WHERE forked_from_id = ? AND is_public = 1 AND admin_hidden = 0 AND is_my_feed = 0 ORDER BY created_at DESC, id DESC LIMIT 12`,
+      [mix.id]
+    );
+    remixes = rows.map((r) => ({ slug: r.slug, name: r.name, by: packCurator(r) }));
+  }
   res.json({
     slug: mix.slug,
     name: mix.name,
+    forked_from: forkedFrom,
+    remixes,
     listed,
     location_label: mix.location_label,
     is_public: !!mix.is_public,

@@ -3810,6 +3810,7 @@
         <div class="manage-screen-head">
           <div class="tile-sheet-badge">Starter pack</div>
           <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
+          ${mix.forked_from ? `<div class="manage-screen-stat">Based on <a href="/source/?pack=${encodeURIComponent(mix.forked_from.slug)}">${escapeHtml(mix.forked_from.name)}</a></div>` : ""}
           <div class="manage-screen-stat">${mix.sources.length} sources right now · auto-updates with whatever's live</div>
         </div>
         <div class="tile-sheet-toggle-row">
@@ -3925,7 +3926,7 @@
       const sources = mix.sources.map(s => ({ source_type: s.source_type, outlet: s.outlet, custom_source_id: s.custom_source_id || null }));
       const created = await api("/api/mixes", {
         method: "POST",
-        body: JSON.stringify({ name: `My ${mix.name} (copy)`, sources, is_public: false }),
+        body: JSON.stringify({ name: `My ${mix.name} (copy)`, sources, is_public: false, forked_from: mix.slug }),
       });
       await loadMyMixes(true);
       toast(`Created "${created.name}" — now yours to edit.`);
@@ -4842,10 +4843,10 @@
             : "No sources yet";
           return `
             <div class="spray-picker-row" style="justify-content:space-between;align-items:flex-start;">
-              <span style="min-width:0;">
+              <a href="/source/?pack=${encodeURIComponent(p.slug)}" class="pack-row-link" style="min-width:0;color:inherit;text-decoration:none;">
                 <span style="display:block;">${p.featured ? "⭐ " : ""}${escapeHtml(p.name)}${p.location_label ? ` <span style="color:var(--ink-muted);font-weight:400;">· ${escapeHtml(p.location_label)}</span>` : ""}</span>
                 <span class="spray-picker-source-preview">${previewLine}</span>
-              </span>
+              </a>
               <button class="btn" data-slug="${escapeHtml(p.slug)}" style="flex:0 0 auto;">${following ? "Following ✓" : "+ Follow"}</button>
             </div>`;
         }).join("") + `</div>`;
@@ -6850,12 +6851,33 @@
         ${listedHtml}
         <button class="btn primary" id="packFollowBtn" style="width:100%; margin-top:14px;">${followLabel}</button>
         ${packShareButtonHtml(mix)}
+        ${mix.is_public && !mix.auto_sync && sources.some(s => s.source_type === "admin_outlet") ? `<button class="btn" id="packCopyBtn" style="width:100%; margin-top:10px;">Copy and customize</button>` : ""}
         <button class="btn" id="packMakeOwnBtn" style="width:100%; margin-top:10px;">${isSupportList ? "Make your own list of publications you support" : "Make your own RSS Pack"}</button>
         <a href="${location.origin}/api/mixes/${encodeURIComponent(mix.slug)}/rss" class="tile-sheet-rss" target="_blank" rel="noopener">📡 Subscribe via RSS</a>
+        ${(mix.remixes || []).length ? `<div class="section-label" style="margin-top:22px;">REMIXED BY READERS</div>${mix.remixes.map(r => `<div class="top-pick-row"><a href="/source/?pack=${encodeURIComponent(r.slug)}" class="top-pick-name" style="color:inherit;">${escapeHtml(r.name)}</a><span class="manage-screen-stat" style="margin:0;">${escapeHtml(r.by || "A reader")}</span></div>`).join("")}` : ""}
         ${latest ? `<div class="section-label" style="margin-top:22px;">LATEST</div>${latest}` : ""}
         <a href="/source/" class="ob-whats-this" style="display:block; margin-top:16px;">← Back to SOURCE!</a>
       </div>`;
     wirePackShareButton(main, mix);
+    const packCopyBtn = document.getElementById("packCopyBtn");
+    if (packCopyBtn) packCopyBtn.addEventListener("click", async () => {
+      if (!requireSignIn("Sign in to copy this RSS Pack.", () => packCopyBtn.click())) return;
+      packCopyBtn.disabled = true;
+      packCopyBtn.textContent = "Copying\u2026";
+      try {
+        const srcs = sources.filter(s => s.source_type === "admin_outlet" && s.outlet).slice(0, 25).map(s => ({ source_type: "admin_outlet", outlet: s.outlet }));
+        const created = await api("/api/mixes", { method: "POST", body: JSON.stringify({ name: `My ${mix.name} (copy)`, sources: srcs, is_public: false, forked_from: mix.slug }) });
+        await loadMyMixes(true);
+        try { history.replaceState(null, "", "/source/"); } catch (e) {}
+        renderActiveTab();
+        toast(`Created "${created.name}". It\u2019s yours to edit.`);
+        openManagePack(created.slug);
+      } catch (e) {
+        toast(e.message || "Couldn\u2019t copy that RSS Pack.");
+        packCopyBtn.disabled = false;
+        packCopyBtn.textContent = "Copy and customize";
+      }
+    });
     document.getElementById("packMakeOwnBtn").addEventListener("click", async () => {
       // Leave the ?pack= URL so a refresh doesn't bounce back to this page.
       try { history.replaceState(null, "", "/source/"); } catch (e) {}
