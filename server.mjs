@@ -444,6 +444,7 @@ async function initSchema() {
     `ALTER TABLE feed_mixes ADD COLUMN topic_id INTEGER`,
     `ALTER TABLE feed_mixes ADD COLUMN clone_count INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE feed_mixes ADD COLUMN forked_from_id INTEGER`,
+    `ALTER TABLE feed_mixes ADD COLUMN description TEXT`,
     `ALTER TABLE feed_mixes ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0`,
     // auto_sync is split out from is_official (see the note above
     // seedOfficialHeadlinesSpray()) so a real, editor-curated official Pack
@@ -1656,6 +1657,7 @@ app.get(["/source", "/source/", "/source/index.html"], async (req, res, next) =>
         if (names.length) parts.push(`${names.join(", ")}${total > names.length ? ` and ${total - names.length} more` : ""}`);
         parts.push("Make your own list on SOURCE!");
       } else {
+        if (mix.description) parts.push(mix.description);
         if (by) parts.push(`A Pack from ${by}`);
         if (names.length) parts.push(`${names.join(", ")}${total > names.length ? ` and ${total - names.length} more` : ""}`);
         parts.push("Newest first. No algorithm.");
@@ -1784,6 +1786,10 @@ app.get("/source/pack-card/:file", async (req, res) => {
 // A reader's top publications (their Top source picks) can be shared as a
 // stored snapshot: names only, public only while the reader shares it.
 const TOP_LIST_CAP = 10;
+// Short Pack description (plain text, one or two sentences). Shown on the Pack page.
+function cleanPackDescription(v) {
+  return String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 200);
+}
 function cleanTopByline(v) {
   const t = String(v == null ? "" : v).replace(/[\u0000-\u001f\u007f<>]/g, "").replace(/\s+/g, " ").trim().slice(0, 40);
   return t;
@@ -3631,6 +3637,9 @@ app.post("/api/mixes", async (req, res) => {
     const parent = await dbGet(`SELECT id FROM feed_mixes WHERE slug = ? AND is_public = 1 AND admin_hidden = 0 AND is_my_feed = 0`, [req.body.forked_from.slice(0, 120)]);
     if (parent) await dbRun(`UPDATE feed_mixes SET forked_from_id = ? WHERE id = ?`, [parent.id, info.lastInsertRowid]);
   }
+  if (typeof req.body?.description === "string" && req.body.description.trim()) {
+    await dbRun(`UPDATE feed_mixes SET description = ? WHERE id = ?`, [cleanPackDescription(req.body.description) || null, info.lastInsertRowid]);
+  }
   for (let i = 0; i < validated.length; i++) {
     const v = validated[i];
     await dbRun(
@@ -3672,9 +3681,10 @@ app.put("/api/mixes/:slug", async (req, res) => {
   const listedCountAfter = lcPut.value !== undefined ? lcPut.value.length
     : (await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_listed WHERE mix_id = ?`, [mix.id])).n;
 
+  const description = req.body?.description !== undefined ? (cleanPackDescription(req.body.description) || null) : (mix.description ?? null);
   await dbRun(
-    `UPDATE feed_mixes SET name = ?, location_label = ?, is_public = ?, byline = ?, updated_at = datetime('now') WHERE id = ?`,
-    [name, locationLabel, isPublic, byline, mix.id]
+    `UPDATE feed_mixes SET name = ?, location_label = ?, is_public = ?, byline = ?, description = ?, updated_at = datetime('now') WHERE id = ?`,
+    [name, locationLabel, isPublic, byline, description, mix.id]
   );
 
   // Topics are optional on edit — only replace them if the caller sent a
@@ -3832,6 +3842,7 @@ app.get("/api/mixes/:slug", async (req, res) => {
   res.json({
     slug: mix.slug,
     name: mix.name,
+    description: mix.description || "",
     forked_from: forkedFrom,
     remixes,
     listed,
@@ -5259,7 +5270,7 @@ const officialPackHealthCache = new Map(); // slug -> { checkedAt, results: [{ou
 
 app.get("/api/admin/mixes/official", requireAdmin, async (req, res) => {
   const rows = await dbAll(
-    `SELECT id, slug, name, location_label, auto_sync, clone_count, official_order, created_at
+    `SELECT id, slug, name, description, location_label, auto_sync, clone_count, official_order, created_at
      FROM feed_mixes WHERE is_official = 1
      ORDER BY auto_sync DESC, (official_order IS NULL) ASC, official_order ASC, created_at ASC`
   );
@@ -5469,9 +5480,9 @@ app.post("/api/admin/mixes", requireAdmin, async (req, res) => {
   // auto-syncing flagship — no FK constraint on this column, real
   // users.id starts at 1, so 0 never collides with a real reader.
   const info = await dbRun(
-    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, is_official, auto_sync)
-     VALUES (?, ?, 0, ?, 1, 1, 0)`,
-    [slug, name, locationLabel]
+    `INSERT INTO feed_mixes (slug, name, creator_user_id, location_label, is_public, is_official, auto_sync, description)
+     VALUES (?, ?, 0, ?, 1, 1, 0, ?)`,
+    [slug, name, locationLabel, cleanPackDescription(req.body?.description) || null]
   );
   for (let i = 0; i < validated.length; i++) {
     await dbRun(
@@ -5489,7 +5500,13 @@ app.put("/api/admin/mixes/:slug", requireAdmin, async (req, res) => {
   const mix = await dbGet(`SELECT * FROM feed_mixes WHERE slug = ?`, [req.params.slug]);
   if (!mix) return res.status(404).json({ error: "Pack not found" });
   if (!mix.is_official) return res.status(400).json({ error: "not an official Pack" });
-  if (mix.auto_sync) return res.status(400).json({ error: "this Pack auto-syncs to the live Wire and has no editable source list" });
+  if (req.body?.description !== undefined) {
+    await dbRun(`UPDATE feed_mixes SET description = ? WHERE id = ?`, [cleanPackDescription(req.body.description) || null, mix.id]);
+  }
+  if (mix.auto_sync) {
+    if (req.body?.description !== undefined && Object.keys(req.body).length === 1) return res.json({ ok: true });
+    return res.status(400).json({ error: "this Pack auto-syncs to the live Wire and has no editable source list" });
+  }
 
   const name = req.body?.name !== undefined ? String(req.body.name).trim().slice(0, 100) : mix.name;
   if (!name) return res.status(400).json({ error: "name is required" });

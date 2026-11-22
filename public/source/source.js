@@ -3875,6 +3875,11 @@
           <div class="manage-screen-stat" style="margin-top:6px;">Shown as "Curated by …" on your Pack page and share card while the Pack is public. Leave it blank to stay anonymous.</div>
         </div>
         <div class="manage-screen-field">
+          <div class="create-flow-label">Description (optional)</div>
+          <textarea class="create-flow-input" id="mgDescInput" maxlength="200" rows="2" placeholder="One or two sentences on what this Pack is for">${escapeHtml(mix.description || "")}</textarea>
+          <div class="manage-screen-stat" style="margin-top:6px;">Shown under the name on your Pack page and in the link preview while the Pack is public.</div>
+        </div>
+        <div class="manage-screen-field">
           <div class="create-flow-label">Sources</div>
           <div class="tile-sheet-sources">${sourcesHtml}</div>
           <input class="create-flow-input" id="mgAddSourceInput" placeholder="Search sources to add…" style="margin-top:10px;">
@@ -3989,7 +3994,7 @@
       try {
         await api(`/api/mixes/${encodeURIComponent(mix.slug)}`, {
           method: "PUT",
-          body: JSON.stringify({ name, is_public: isPublic, byline: (document.getElementById("mgBylineInput")?.value || "").trim() }),
+          body: JSON.stringify({ name, is_public: isPublic, byline: (document.getElementById("mgBylineInput")?.value || "").trim(), description: (document.getElementById("mgDescInput")?.value || "").trim() }),
         });
         await loadMyMixes(true);
         toast("Saved.");
@@ -6862,6 +6867,7 @@
             </div>
           </div>
           <h2 class="manage-screen-title">${escapeHtml(mix.name)}</h2>
+          ${mix.description ? `<p class="pack-description">${escapeHtml(mix.description)}</p>` : ""}
           ${mix.forked_from ? `<div class="manage-screen-stat">Based on <a href="/source/?pack=${encodeURIComponent(mix.forked_from.slug)}">${escapeHtml(mix.forked_from.name)}</a></div>` : ""}
         </div>
         ${mix.is_public ? "" : `<div class="manage-screen-hidden-notice"><span>🔒</span><span><strong>Private.</strong> Only you can see this page. Make the Pack public in Feeds to share it.</span></div>`}

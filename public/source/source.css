@@ -3327,3 +3327,4 @@ a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 .pack-actions .btn { flex: 1 1 140px; width: auto !important; margin: 0 !important; min-height: 44px; }
 .pack-source-rows .top-pick-row:first-child { border-top: 0; }
 .pack-page .top-pick-name .source-corporate-mark { margin-left: 4px; }
+.pack-description { font-size: 15px; line-height: 1.45; color: var(--ink); margin: 6px 0 8px; }

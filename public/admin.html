@@ -273,6 +273,7 @@ Some Video Creator | | Indie Media | | | | | | @somecreator"></textarea>
     <h3 style="font-family:var(--mono);font-size:12px;margin-top:24px;border-top:1px solid rgba(0,0,0,.1);padding-top:16px;" id="packFormTitle">CREATE AN OFFICIAL PACK</h3>
     <label>Name</label><input id="pk_name">
     <label>Location (optional)</label><input id="pk_location" placeholder="e.g. Ann Arbor, MI">
+    <label>Description (optional, up to 200 characters, shown under the Pack name)</label><input id="pk_desc" maxlength="200" placeholder="One or two sentences on what this Pack is for">
     <label>Topics (optional — comma-separated, must be existing approved topic names)</label>
     <input id="pk_topics" placeholder="Politics, Climate Change" list="pk_topics_datalist">
     <datalist id="pk_topics_datalist"></datalist>
@@ -1155,6 +1156,7 @@ function editPack(slug){
   editingPackSlug = slug;
   document.getElementById('pk_name').value = p.name;
   document.getElementById('pk_location').value = p.location_label || '';
+  document.getElementById('pk_desc').value = p.description || '';
   document.getElementById('pk_topics').value = (p.topics || []).map(t => t.name).join(', ');
   allPackSources = [...(p.sources || [])];
   renderPackSourceChips();
@@ -1187,6 +1189,7 @@ async function submitPack(){
   const body = {
     name,
     location_label: document.getElementById('pk_location').value.trim() || null,
+    description: document.getElementById('pk_desc').value.trim(),
     sources: allPackSources,
     topic_ids,
   };
@@ -1206,6 +1209,7 @@ async function submitPack(){
 function clearPackForm(){
   document.getElementById('pk_name').value = '';
   document.getElementById('pk_location').value = '';
+  document.getElementById('pk_desc').value = '';
   document.getElementById('pk_topics').value = '';
   document.getElementById('pk_source_search').value = '';
   document.getElementById('pk_source_search_results').innerHTML = '';
