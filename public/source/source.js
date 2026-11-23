@@ -434,6 +434,7 @@
       <div class="mc-actions">
         ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
         ${didReadButton(d)}
+        ${talkButton(d)}
         ${storyShareButton(d)}
         ${storyUrl ? `<a class="mc-support" href="${storyUrl}">Story page</a>` : ""}
       </div>
@@ -3273,6 +3274,7 @@
               ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
               ${saveButton(d)}
               ${didReadButton(d)}
+              ${talkButton(d)}
               ${storyShareButton(d)}
             </div>
             <div class="mc-source-line">
@@ -6919,6 +6921,30 @@
     if (e.target.closest && e.target.closest("#youDidReadRow")) openDidReadList();
   });
 
+  // ----- Who's talking about this story (tap to look up, on Bluesky) -----
+  function talkButton(d) {
+    const link = d && d.link;
+    if (!link || !/^https?:\/\//i.test(link)) return "";
+    return `<button type="button" class="story-talk-btn" data-link="${escapeHtml(link)}">\ud83d\udcac Who\u2019s talking</button>`;
+  }
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest && e.target.closest(".story-talk-btn");
+    if (!b) return;
+    const holder = b.closest(".mc-actions") || b.parentElement;
+    let out = holder.parentElement.querySelector(".story-talk-out");
+    if (out && !out.hidden) { out.hidden = true; return; }
+    if (!out) { out = document.createElement("div"); out.className = "story-talk-out"; holder.insertAdjacentElement("afterend", out); }
+    out.hidden = false;
+    out.innerHTML = `<div class="story-talk-note">Asking Bluesky\u2026</div>`;
+    try {
+      const r = await api(`/api/story-talk?link=${encodeURIComponent(b.dataset.link)}`);
+      if (r.unavailable) out.innerHTML = `<div class="story-talk-note">Bluesky isn\u2019t answering right now. Try again in a minute.</div>`;
+      else if (!(r.posts || []).length) out.innerHTML = `<div class="story-talk-note">No one on Bluesky has linked this story yet.</div>`;
+      else out.innerHTML = `<div class="story-talk-note">On Bluesky, newest first. Names and words only.</div>` + r.posts.map(p => `
+        <div class="story-talk-post"><a class="story-talk-who" href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(p.name)} <span>@${escapeHtml(p.handle)}</span></a>${p.text ? `<p>${escapeHtml(p.text)}</p>` : ""}<a class="caption-link" href="${escapeHtml(p.url)}" target="_blank" rel="noopener noreferrer">See it on Bluesky \u2197</a></div>`).join("");
+    } catch (_) { out.innerHTML = `<div class="story-talk-note">Couldn\u2019t reach the lookup. Try again in a minute.</div>`; }
+  });
+
   // ----- Public story page (?story=<id>) -----
   // What a shared story link opens. Server fills og tags (see server.mjs).
   async function renderPublicStory(id, sessionPromise) {
@@ -6947,6 +6973,7 @@
         <div class="mc-actions" style="margin-top:12px;">
           ${saveButton(item)}
           ${didReadButton(item)}
+          ${talkButton(item)}
           ${storyShareButton(item)}
           ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener">💛 Support</a>` : ""}
         </div>

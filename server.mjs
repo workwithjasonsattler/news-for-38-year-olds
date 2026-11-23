@@ -1831,6 +1831,84 @@ app.get("/source/pack-card/:file", async (req, res) => {
   }
 });
 
+// ---------- Who's talking about this story (Bluesky) ----------
+// Reader taps "Who's talking about this"; we ask Bluesky's post search for posts
+// linking that exact story URL. Tapped only, never automatic. Returns names and
+// words only: no like, repost or reply counts (brand rule 2). Skips authors who
+// opted out of logged-out viewing (!no-unauthenticated) and sensitive-labelled
+// posts. One post per person, newest first. Public search is blocked from some
+// datacenter hosts on public.api.bsky.app, so api.bsky.app is tried first.
+const talkCache = new Map();
+const talkHits = new Map();
+const TALK_HOSTS = ["https://api.bsky.app", "https://public.api.bsky.app"];
+const TALK_SKIP_LABELS = new Set(["porn", "sexual", "nudity", "graphic-media", "gore"]);
+function talkUrlVariants(link) {
+  const out = [link];
+  try {
+    const u = new URL(link);
+    const strip = new URL(u.origin + u.pathname + (u.search ? "" : ""));
+    for (const k of [...u.searchParams.keys()]) if (!/^utm_|^fbclid$|^gclid$|^mc_|^ref$/i.test(k)) strip.searchParams.set(k, u.searchParams.get(k));
+    if (strip.href !== link) out.push(strip.href);
+  } catch (_) {}
+  return [...new Set(out)].slice(0, 2);
+}
+async function bskyPostsLinking(link) {
+  let lastErr = null;
+  for (const host of TALK_HOSTS) {
+    try {
+      const url = `${host}/xrpc/app.bsky.feed.searchPosts?q=${encodeURIComponent("*")}&url=${encodeURIComponent(link)}&sort=latest&limit=40`;
+      const r = await fetch(url, { headers: { accept: "application/json", "user-agent": "SOURCE-news-reader/1.0 (+https://news-for-38-year-olds.onrender.com)" }, signal: AbortSignal.timeout(8000) });
+      if (!r.ok) { lastErr = new Error(`search ${r.status}`); continue; }
+      const j = await r.json();
+      return Array.isArray(j.posts) ? j.posts : [];
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("search failed");
+}
+app.get("/api/story-talk", async (req, res) => {
+  const link = String(req.query.link || "").trim().slice(0, 1000);
+  if (!/^https?:\/\//i.test(link)) return res.status(400).json({ error: "bad link" });
+  const ip = String((req.headers["x-forwarded-for"] || req.socket.remoteAddress || "")).split(",")[0].trim();
+  const now = Date.now();
+  const hits = (talkHits.get(ip) || []).filter((t) => now - t < 60000);
+  if (hits.length >= 30) return res.status(429).json({ error: "slow down" });
+  hits.push(now); talkHits.set(ip, hits);
+  if (talkHits.size > 5000) talkHits.clear();
+  const cached = talkCache.get(link);
+  if (cached && now - cached.at < 10 * 60 * 1000) return res.json(cached.data);
+  try {
+    let posts = [];
+    for (const v of talkUrlVariants(link)) posts = posts.concat(await bskyPostsLinking(v));
+    const seen = new Set();
+    const out = [];
+    posts.sort((a, b) => String(b.record?.createdAt || "").localeCompare(String(a.record?.createdAt || "")));
+    for (const p of posts) {
+      const a = p.author || {};
+      if (!a.did || !a.handle || seen.has(a.did)) continue;
+      if ((a.labels || []).some((l) => l.val === "!no-unauthenticated")) continue;
+      if ((p.labels || []).some((l) => TALK_SKIP_LABELS.has(l.val))) continue;
+      const rkey = String(p.uri || "").split("/").pop();
+      if (!rkey) continue;
+      seen.add(a.did);
+      out.push({
+        name: String(a.displayName || a.handle).slice(0, 80),
+        handle: String(a.handle).slice(0, 80),
+        text: String(p.record?.text || "").replace(/\s+/g, " ").trim().slice(0, 300),
+        url: `https://bsky.app/profile/${a.handle}/post/${rkey}`,
+        at: p.record?.createdAt || null,
+      });
+      if (out.length >= 10) break;
+    }
+    const data = { posts: out };
+    if (talkCache.size > 500) talkCache.clear();
+    talkCache.set(link, { at: now, data });
+    res.set("Cache-Control", "private, max-age=300");
+    res.json(data);
+  } catch (e) {
+    res.json({ posts: [], unavailable: true });
+  }
+});
+
 // ---------- Did Read: private notes on stories ----------
 // Account-stored notes (the "Just me, all my devices" choice). Always private:
 // there is no public read route. Device-only notes never reach the server.
