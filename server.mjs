@@ -301,6 +301,19 @@ async function initSchema() {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       UNIQUE(user_id, word)
     )`,
+    // Did Read: a reader's private notes on stories, kept only when they choose
+    // "Just me, all my devices". One note per story link per reader.
+    `CREATE TABLE IF NOT EXISTS user_notes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      link TEXT NOT NULL,
+      headline TEXT,
+      outlet TEXT,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE(user_id, link)
+    )`,
     // A reader's shareable "top publications" list: a stored snapshot (names only),
     // public only when the reader shares it. One row per reader.
     `CREATE TABLE IF NOT EXISTS user_top_lists (
@@ -1818,6 +1831,50 @@ app.get("/source/pack-card/:file", async (req, res) => {
   }
 });
 
+// ---------- Did Read: private notes on stories ----------
+// Account-stored notes (the "Just me, all my devices" choice). Always private:
+// there is no public read route. Device-only notes never reach the server.
+const NOTE_CAP = 500;
+const NOTE_MAX_CHARS = 2000;
+function cleanNoteText(v, max) {
+  return String(v == null ? "" : v).replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, "").trim().slice(0, max);
+}
+app.get("/api/my/notes", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const rows = await dbAll(`SELECT link, headline, outlet, body, created_at, updated_at FROM user_notes WHERE user_id = ? ORDER BY updated_at DESC, id DESC LIMIT ?`, [user.id, NOTE_CAP]);
+  res.set("Cache-Control", "no-store");
+  res.json({ notes: rows });
+});
+app.put("/api/my/notes", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const link = cleanNoteText(req.body?.link, 1000);
+  const body = cleanNoteText(req.body?.body, NOTE_MAX_CHARS);
+  if (!/^https?:\/\//i.test(link)) return res.status(400).json({ error: "That story has no link to attach a note to." });
+  if (!body) return res.status(400).json({ error: "Write something first." });
+  const exists = await dbGet(`SELECT id FROM user_notes WHERE user_id = ? AND link = ?`, [user.id, link]);
+  if (!exists) {
+    const n = await dbGet(`SELECT COUNT(*) AS n FROM user_notes WHERE user_id = ?`, [user.id]);
+    if (Number(n?.n || 0) >= NOTE_CAP) return res.status(400).json({ error: `You can keep up to ${NOTE_CAP} notes in your account.` });
+  }
+  const headline = cleanNoteText(req.body?.headline, 300) || null;
+  const outlet = cleanNoteText(req.body?.outlet, 120) || null;
+  await dbRun(
+    `INSERT INTO user_notes (user_id, link, headline, outlet, body) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(user_id, link) DO UPDATE SET headline = excluded.headline, outlet = excluded.outlet, body = excluded.body, updated_at = datetime('now')`,
+    [user.id, link, headline, outlet, body]
+  );
+  res.json({ ok: true });
+});
+app.delete("/api/my/notes", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const link = cleanNoteText(req.query.link, 1000);
+  await dbRun(`DELETE FROM user_notes WHERE user_id = ? AND link = ?`, [user.id, link]);
+  res.json({ ok: true });
+});
+
 // ---------- Shareable "top publications" list ----------
 // A reader's top publications (their Top source picks) can be shared as a
 // stored snapshot: names only, public only while the reader shares it.
@@ -2396,6 +2453,7 @@ app.delete("/api/my/account", async (req, res) => {
     await dbRun(`DELETE FROM user_news_pref WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM user_mutes WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM user_top_lists WHERE user_id = ?`, [user.id]);
+    await dbRun(`DELETE FROM user_notes WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM user_mute_defaults_off WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM feed_thumbs WHERE user_id = ?`, [user.id]);
     await dbRun(`DELETE FROM sessions WHERE user_id = ?`, [user.id]);

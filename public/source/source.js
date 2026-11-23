@@ -433,6 +433,7 @@
       ${excerpt ? `<p class="mc-excerpt">${escapeHtml(excerpt)}</p>` : ""}
       <div class="mc-actions">
         ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
+        ${didReadButton(d)}
         ${storyShareButton(d)}
         ${storyUrl ? `<a class="mc-support" href="${storyUrl}">Story page</a>` : ""}
       </div>
@@ -3150,6 +3151,7 @@
           ${tipSubscribeButton(d)}
           ${sprayAddButton(d)}
           ${saveButton(d)}
+          ${didReadButton(d)}
           ${tuneButton(d)}
           ${shareButton(d)}
           <button class="btn reader-fullscreen-btn" id="readerFullscreenBtn" title="${readerFullscreen ? "Exit full screen" : "Full screen"}" aria-label="${readerFullscreen ? "Exit full screen" : "Full screen"}">${readerFullscreen ? "⤡" : "⛶"}</button>
@@ -3270,6 +3272,7 @@
             <div class="mc-actions">
               ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
               ${saveButton(d)}
+              ${didReadButton(d)}
               ${storyShareButton(d)}
             </div>
             <div class="mc-source-line">
@@ -6103,6 +6106,14 @@
         <div class="section-sub" style="margin:0; font-size:13px;">RSS Packs to follow, feeds to add, and your own to build. No account needed to browse.</div>
       </button>`;
   }
+  function youDidReadRowHtml() {
+    return `
+      <button class="card you-sources-row" id="youDidReadRow" type="button" style="width:100%; text-align:left; cursor:pointer; margin-bottom:18px;">
+        <div class="card-meta"><span>DID READ</span></div>
+        <div class="card-title" style="margin-bottom:4px;">Your notes on stories \u203a</div>
+        <div class="section-sub" style="margin:0; font-size:13px;">What you made of the news. Private, and they stay attached to the story.</div>
+      </button>`;
+  }
   function youFooterHtml() {
     return `
       <div class="you-footer" style="margin-top:28px; padding-top:16px; border-top:1px solid var(--line);">
@@ -6368,7 +6379,7 @@
     if (!currentUser) {
       main.innerHTML = `
         <div class="source-single-col-screen">
-        ${youSourcesRowHtml()}
+        ${youSourcesRowHtml()}${youDidReadRowHtml()}
         <div id="youSupportCard" style="margin-bottom:20px;"></div>
         <div class="section-label" style="margin-top:2px;">WHY SIGN IN</div>
         <div class="section-sub" style="font-size:13.5px; line-height:1.5; margin:0 2px 20px;">
@@ -6405,7 +6416,7 @@
 
     main.innerHTML = `
       <div class="source-single-col-screen">
-      ${youSourcesRowHtml()}
+      ${youSourcesRowHtml()}${youDidReadRowHtml()}
       <div id="youSupportCard" style="margin-bottom:18px;"></div>
       <div class="card">
         <div class="card-meta"><span>SIGNED IN</span><span class="stamp">VERIFIED</span></div>
@@ -6769,6 +6780,145 @@
   // ---------------------------------------------------------------
   // Boot
   // ---------------------------------------------------------------
+  // ----- Did Read: notes on stories -----
+  // A note you write on a story, attached to the story's link. Three kinds of
+  // privacy, chosen on every note:
+  //   device  = Just me, on this device (local storage, never sent anywhere)
+  //   account = Just me, all my devices (stored in your SOURCE! account, private)
+  //   (public on Bluesky comes later; shown as coming soon, never preselected)
+  const DR_KEY = "source_did_read";
+  const DR_CAP = 300;
+  let drAccount = null; // link -> note, loaded when signed in
+  function drDevice() { try { const o = JSON.parse(localStorage.getItem(DR_KEY) || "{}"); return o && typeof o === "object" ? o : {}; } catch (_) { return {}; } }
+  function drWriteDevice(o) {
+    const keys = Object.keys(o);
+    if (keys.length > DR_CAP) keys.sort((a, b) => (o[a].at || 0) - (o[b].at || 0)).slice(0, keys.length - DR_CAP).forEach(k => delete o[k]);
+    try { localStorage.setItem(DR_KEY, JSON.stringify(o)); } catch (_) {}
+  }
+  async function drLoadAccount() {
+    if (!currentUser) { drAccount = null; return; }
+    try {
+      const r = await api("/api/my/notes");
+      drAccount = {};
+      for (const n of (r.notes || [])) drAccount[n.link] = n;
+    } catch (_) { drAccount = drAccount || {}; }
+  }
+  function drFind(link) {
+    const dev = drDevice()[link];
+    if (dev) return { ...dev, vis: "device" };
+    const acc = drAccount && drAccount[link];
+    if (acc) return { link: acc.link, headline: acc.headline, outlet: acc.outlet, body: acc.body, at: Date.parse(acc.updated_at + "Z") || 0, vis: "account" };
+    return null;
+  }
+  function didReadButton(d) {
+    const link = d && d.link;
+    if (!link || !/^https?:\/\//i.test(link)) return "";
+    const payload = { link, headline: (d.title || d.headline || "").slice(0, 300), outlet: (d.outlet || d.source || "").trim().slice(0, 120) };
+    return `<button type="button" class="did-read-btn" data-dr='${escapeHtml(JSON.stringify(payload))}'>\u270e Did Read</button>`;
+  }
+  function closeDidRead() { const el = document.getElementById("didReadOverlay"); if (el) el.remove(); }
+  async function openDidReadSheet(item) {
+    closeDidRead();
+    if (currentUser && drAccount === null) await drLoadAccount();
+    const existing = drFind(item.link);
+    const el = document.createElement("div");
+    el.id = "didReadOverlay";
+    el.className = "spray-picker-overlay";
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head"><span><strong>Did Read</strong></span><button class="spray-picker-close" id="drClose" aria-label="Close">\u00d7</button></div>
+        <p class="spray-picker-sub">${escapeHtml(item.headline || item.link)}${item.outlet ? ` \u00b7 ${escapeHtml(item.outlet)}` : ""}</p>
+        <textarea class="create-flow-input" id="drBody" rows="5" maxlength="2000" placeholder="What did you make of it?">${escapeHtml(existing ? existing.body : "")}</textarea>
+        <fieldset class="dr-vis">
+          <legend>Who can see this</legend>
+          <label class="dr-opt"><input type="radio" name="drVis" value="device"><span><strong>\ud83d\udd12 Just me, on this device</strong><small>Saved on this phone or browser only. Never sent anywhere. Clearing the app\u2019s data deletes it.</small></span></label>
+          <label class="dr-opt"><input type="radio" name="drVis" value="account"><span><strong>\ud83d\udd12 Just me, all my devices</strong><small>Saved in your SOURCE! account so it follows you to a new phone. Private. Deleted when you delete your account.</small></span></label>
+          <label class="dr-opt dr-off"><input type="radio" name="drVis" value="public" disabled><span><strong>\ud83c\udf10 Public on Bluesky</strong><small>Coming soon. Nothing is ever posted unless you tap Post.</small></span></label>
+        </fieldset>
+        <div class="pack-actions">
+          <button type="button" class="btn primary" id="drSave">Save note</button>
+          ${existing ? `<button type="button" class="btn" id="drDelete">Delete</button>` : ""}
+        </div>
+      </div>`;
+    document.body.appendChild(el);
+    const visInit = existing ? existing.vis : "device";
+    el.querySelector(`input[name="drVis"][value="${visInit}"]`).checked = true;
+    el.addEventListener("click", (e) => { if (e.target === el) closeDidRead(); });
+    el.querySelector("#drClose").addEventListener("click", closeDidRead);
+    const bodyEl = el.querySelector("#drBody");
+    bodyEl.focus();
+    el.querySelector("#drSave").addEventListener("click", async () => {
+      const body = bodyEl.value.trim();
+      const vis = (el.querySelector('input[name="drVis"]:checked') || {}).value || "device";
+      if (!body) { toast("Write something first."); return; }
+      if (vis === "account" && !requireSignIn("Sign in to keep this note in your account.", () => el.querySelector("#drSave").click())) return;
+      const btn = el.querySelector("#drSave");
+      btn.disabled = true;
+      try {
+        const dev = drDevice();
+        if (vis === "account") {
+          await api("/api/my/notes", { method: "PUT", body: JSON.stringify({ link: item.link, headline: item.headline, outlet: item.outlet, body }) });
+          delete dev[item.link]; drWriteDevice(dev);
+          await drLoadAccount();
+        } else {
+          if (existing && existing.vis === "account") { try { await api(`/api/my/notes?link=${encodeURIComponent(item.link)}`, { method: "DELETE" }); await drLoadAccount(); } catch (_) {} }
+          dev[item.link] = { link: item.link, headline: item.headline, outlet: item.outlet, body: body.slice(0, 2000), at: Date.now() };
+          drWriteDevice(dev);
+        }
+        toast(vis === "account" ? "Saved in your account." : "Saved on this device.");
+        closeDidRead();
+        drRefreshButtons();
+      } catch (e) { toast((e && e.message) || "Couldn\u2019t save that note."); btn.disabled = false; }
+    });
+    const del = el.querySelector("#drDelete");
+    if (del) del.addEventListener("click", async () => {
+      try {
+        if (existing.vis === "account") { await api(`/api/my/notes?link=${encodeURIComponent(item.link)}`, { method: "DELETE" }); await drLoadAccount(); }
+        else { const dev = drDevice(); delete dev[item.link]; drWriteDevice(dev); }
+        toast("Note deleted.");
+        closeDidRead();
+        drRefreshButtons();
+      } catch (e) { toast("Couldn\u2019t delete that note."); }
+    });
+  }
+  function drRefreshButtons() {
+    document.querySelectorAll(".did-read-btn").forEach(b => {
+      try { const it = JSON.parse(b.dataset.dr); b.classList.toggle("has-note", !!drFind(it.link)); } catch (_) {}
+    });
+  }
+  async function openDidReadList() {
+    closeDidRead();
+    if (currentUser && drAccount === null) await drLoadAccount();
+    const notes = [];
+    for (const n of Object.values(drDevice())) notes.push({ ...n, vis: "device" });
+    for (const n of Object.values(drAccount || {})) notes.push({ link: n.link, headline: n.headline, outlet: n.outlet, body: n.body, at: Date.parse(n.updated_at + "Z") || 0, vis: "account" });
+    notes.sort((a, b) => (b.at || 0) - (a.at || 0));
+    const el = document.createElement("div");
+    el.id = "didReadOverlay";
+    el.className = "spray-picker-overlay";
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head"><span><strong>Did Read</strong></span><button class="spray-picker-close" id="drClose" aria-label="Close">\u00d7</button></div>
+        <p class="spray-picker-sub">Your notes on stories, newest first. Only you can see them.</p>
+        <div id="drList">${notes.length ? notes.map((n, i) => `
+          <div class="dr-note">
+            <div class="dr-note-meta">${n.vis === "account" ? "\ud83d\udd12 In your account" : "\ud83d\udd12 On this device"}${n.outlet ? ` \u00b7 ${escapeHtml(n.outlet)}` : ""}${n.at ? ` \u00b7 ${relTime(new Date(n.at).toISOString())}` : ""}</div>
+            <a class="dr-note-title" href="${escapeHtml(n.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(n.headline || n.link)}</a>
+            <p class="dr-note-body">${escapeHtml(n.body)}</p>
+            <button type="button" class="caption-link" data-edit="${i}">Edit</button>
+          </div>`).join("") : `<div class="spray-picker-empty">Nothing here yet. Tap \u201c\u270e Did Read\u201d on any story to write your first note.</div>`}</div>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) closeDidRead(); });
+    el.querySelector("#drClose").addEventListener("click", closeDidRead);
+    el.querySelectorAll("[data-edit]").forEach(b => b.addEventListener("click", () => { const n = notes[Number(b.dataset.edit)]; openDidReadSheet({ link: n.link, headline: n.headline, outlet: n.outlet }); }));
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest(".did-read-btn");
+    if (b) { try { openDidReadSheet(JSON.parse(b.dataset.dr)); } catch (_) {} return; }
+    if (e.target.closest && e.target.closest("#youDidReadRow")) openDidReadList();
+  });
+
   // ----- Public story page (?story=<id>) -----
   // What a shared story link opens. Server fills og tags (see server.mjs).
   async function renderPublicStory(id, sessionPromise) {
@@ -6796,6 +6946,7 @@
         ${item.link ? `<a class="btn primary" style="display:block; text-align:center; margin-top:12px;" href="${escapeHtml(item.link)}" target="_blank" rel="noopener">Read the full story at ${escapeHtml(item.outlet)} ↗</a>` : ""}
         <div class="mc-actions" style="margin-top:12px;">
           ${saveButton(item)}
+          ${didReadButton(item)}
           ${storyShareButton(item)}
           ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener">💛 Support</a>` : ""}
         </div>
