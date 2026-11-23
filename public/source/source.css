@@ -3360,3 +3360,16 @@ a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 
 .store-topic-group { margin: 0 0 14px; }
 .store-topic-label { display: block; margin: 0 0 6px; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); }
+
+/* Fix: "← Back to SOURCE!" reused the onboarding link's absolute positioning
+   and landed on top of the Pack page buttons. Inside a screen it flows normally. */
+.source-single-col-screen .ob-whats-this,
+.pack-page .ob-whats-this { position: static; display: block; margin-top: 20px; padding: 10px 0; font-size: 14px; }
+
+/* Fix: video cards. Save, Share and Support share one height and sit on one
+   line; the three-dot button gets the same left inset as the band. */
+.video-band { padding: 10px 14px 4px; }
+.video-band .save-btn,
+.video-share-btn,
+.video-support-btn { min-height: 40px; box-sizing: border-box; }
+.tune-btn.video-tune { margin: 4px 0 14px 14px; }
