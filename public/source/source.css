@@ -3357,3 +3357,6 @@ a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 .story-talk-post p { margin: 4px 0; font-size: 15px; line-height: 1.4; overflow-wrap: anywhere; }
 .story-talk-who { font-weight: 600; color: var(--ink); }
 .story-talk-who span { font-weight: 400; color: var(--ink-muted, #5b6068); font-size: 13px; }
+
+.store-topic-group { margin: 0 0 14px; }
+.store-topic-label { display: block; margin: 0 0 6px; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); }

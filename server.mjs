@@ -1179,6 +1179,26 @@ async function seedPackDescriptions() {
   }
   if (filled) console.log(`Pack descriptions: filled ${filled} house Pack(s).`);
 }
+
+// Tags SOURCE!'s own house Packs with the news topics they belong to, so the
+// Browse store's News > Politics chip has something to show. Idempotent
+// (INSERT OR IGNORE) and matched by exact Pack name; never removes a tag.
+const HOUSE_PACK_TOPICS = [
+  ["Headlines: Best in the World", ["politics"]],
+  ["Public Media Around the World", ["politics"]],
+  ["Progressive Podcasts", ["politics", "indie-media"]],
+];
+async function seedHouseTopics() {
+  for (const [name, slugs] of HOUSE_PACK_TOPICS) {
+    const mix = await dbGet(`SELECT id FROM feed_mixes WHERE name = ? AND creator_user_id = 0`, [name]);
+    if (!mix) continue;
+    for (const slug of slugs) {
+      const topic = await dbGet(`SELECT id FROM topics WHERE slug = ?`, [slug]);
+      if (topic) await dbRun(`INSERT OR IGNORE INTO feed_mix_topics (mix_id, topic_id) VALUES (?, ?)`, [mix.id, topic.id]);
+    }
+  }
+}
+
 async function seedPublicMediaPack() {
   const existingFeeds = await dbAll(`SELECT id, outlet, feed_url FROM feeds`);
   const byOutletLower = new Map(existingFeeds.map(f => [f.outlet.toLowerCase(), f]));
@@ -5395,7 +5415,11 @@ app.delete("/api/admin/topics/:id", requireAdmin, async (req, res) => {
 // tie-broken by most recent.
 app.get("/api/mixes", async (req, res) => {
   const { topic, location } = req.query;
-  const conditions = [`fm.is_public = 1`, `fm.is_official = 0`, `fm.admin_hidden = 0`];
+  // include_official=1 lets the Browse store list SOURCE!'s own official Packs
+  // (Headlines, Public Media...) beside everything else. Default stays as before.
+  const includeOfficial = String(req.query.include_official || "") === "1";
+  const conditions = [`fm.is_public = 1`, `fm.admin_hidden = 0`];
+  if (!includeOfficial) conditions.push(`fm.is_official = 0`);
   const params = [];
 
   if (topic) {
@@ -5444,6 +5468,7 @@ app.get("/api/mixes", async (req, res) => {
     // Who made it, for the store's "Lists readers share" shelf: "SOURCE!" for house
     // Packs, the reader's chosen byline, or null (anonymous). Never an email or id.
     row.by = packCurator(row);
+    row.official = !!row.is_official;
     row.description = row.description || "";
     delete row.id; // internal-only, not part of the public response shape
     delete row.creator_user_id;
@@ -8397,6 +8422,7 @@ async function start() {
       await step("seedProgressivePodcasts", seedProgressivePodcasts);
       await step("seedPublicMediaPack", seedPublicMediaPack);
       await step("seedPackDescriptions", seedPackDescriptions);
+      await step("seedHouseTopics", seedHouseTopics);
       app.listen(PORT, () => console.log(`News for 38 Year Olds CMS running on http://localhost:${PORT}`));
       // Same "kick shortly after boot, not just on the interval" pattern as
       // the Bluesky bot below — a fresh deploy shouldn't have to wait up to

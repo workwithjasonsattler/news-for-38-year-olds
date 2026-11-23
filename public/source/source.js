@@ -3724,7 +3724,7 @@
     renderBrowseScreen();
     if (!publicPacksCache) {
       try {
-        publicPacksCache = await api("/api/mixes");
+        publicPacksCache = await api("/api/mixes?include_official=1");
       } catch (e) {
         publicPacksCache = [];
         toast(e.message || "Couldn't load public RSS Packs.");
@@ -4041,7 +4041,7 @@
         loadSourceSuggestions(),
         loadMyMixes(),
         officialPacksCache || api("/api/mixes/official"),
-        publicPacksCache || api("/api/mixes"),
+        publicPacksCache || api("/api/mixes?include_official=1"),
       ]);
       // Sources is for building RSS Packs out of Organizations — Individuals (Bluesky-only
       // people) don't produce dispatch items on their own and belong to Buzz, not here.
@@ -4781,7 +4781,7 @@
     renderPublicPackPickerShell();
     renderPublicPackPickerResults(!publicPacksCache);
     const fetches = [];
-    if (!publicPacksCache) fetches.push(api("/api/mixes").then(d => { publicPacksCache = d; }).catch(e => { publicPacksCache = []; toast(e.message || "Couldn't load public RSS Packs."); }));
+    if (!publicPacksCache) fetches.push(api("/api/mixes?include_official=1").then(d => { publicPacksCache = d; }).catch(e => { publicPacksCache = []; toast(e.message || "Couldn't load public RSS Packs."); }));
     if (!sprayBarData) fetches.push(loadSprayBar());
     if (fetches.length) await Promise.all(fetches);
     renderPublicPackPickerResults(false);
@@ -4870,9 +4870,13 @@
     } else {
       const featured = pool.filter(p => p.featured);
       const others = pool.filter(p => !p.featured && p.by !== "SOURCE!");
-      const houseMore = pool.filter(p => !p.featured && p.by === "SOURCE!");
+      const houseMore = pool.filter(p => !p.featured && p.by === "SOURCE!").sort((a, b) => (b.official ? 1 : 0) - (a.official ? 1 : 0));
       const topicMap = new Map();
-      for (const pk of pool) for (const tp of (pk.topics || [])) if (!topicMap.has(tp.slug)) topicMap.set(tp.slug, tp.name);
+      for (const pk of pool) for (const tp of (pk.topics || [])) if (!topicMap.has(tp.slug)) topicMap.set(tp.slug, { name: tp.name, category: tp.category || "other" });
+      const topicGroups = [["news", "News"], ["fun", "Fun"], ["work", "Work"], ["local", "Local"], ["other", "More"]]
+        .map(([cat, label]) => [label, [...topicMap].filter(([, v]) => v.category === cat)])
+        .filter(([, list]) => list.length);
+      const topicsHtml = topicGroups.map(([label, list]) => `<div class="store-topic-group"><span class="store-topic-label">${label}</span><div class="store-topics">${list.map(([sl, v]) => `<button type="button" class="store-topic" data-topic="${escapeHtml(sl)}">${escapeHtml(v.name)}</button>`).join("")}</div></div>`).join("");
       const tile = (pk) => {
         const following = followedSlugs.has(pk.slug);
         return `<div class="store-tile">
@@ -4883,7 +4887,7 @@
       };
       container.innerHTML =
         (featured.length ? `<div class="store-shelf-head"><span>Editor\u2019s picks</span></div><div class="store-shelf">${featured.map(tile).join("")}</div>` : "")
-        + (topicMap.size ? `<div class="store-shelf-head"><span>Browse by topic</span></div><div class="store-topics">${[...topicMap].map(([sl, nm]) => `<button type="button" class="store-topic" data-topic="${escapeHtml(sl)}">${escapeHtml(nm)}</button>`).join("")}</div>` : "")
+        + (topicMap.size ? `<div class="store-shelf-head"><span>Browse by topic</span></div>${topicsHtml}` : "")
         + (houseMore.length ? `<div class="store-shelf-head"><span>More from SOURCE!</span></div><div class="spray-picker-list">${houseMore.map(rowHtml).join("")}</div>` : "")
         + (others.length ? `<div class="store-shelf-head"><span>Lists readers share</span></div><div class="spray-picker-list">${others.map(rowHtml).join("")}</div>` : "")
         + (!featured.length && !others.length && !houseMore.length ? `<div class="spray-picker-empty">No public RSS Packs yet.</div>` : "");
