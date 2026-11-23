@@ -13,62 +13,47 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500&display=swap">
 <style>
 body{margin:0}
-a{color:#111}a:hover{color:#FF3E1D}
+a{color:#14161B}a:hover{color:#C42A0E}
 </style>
 
 </head>
 <body>
+<div style="background:#ffffff;color:#14161B;font-family:'IBM Plex Sans',Arial,sans-serif;font-size:18px;line-height:1.55;width:100%">
 
-<div style="background:#ffffff;color:#111111;font-family:'IBM Plex Sans',Arial,sans-serif;font-size:18px;line-height:1.55">
-<div style="max-width:1120px;margin:0 auto;padding:0 24px">
-
-<div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;padding:24px 0;border-bottom:1px solid #111111">
-<div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:28px">SOURCE<span style="color:#FF3E1D">!</span></div>
-<div style="display:flex;flex-wrap:wrap;gap:24px;font-size:16px">
-<a href="#how" style="text-decoration:none">How it works</a>
-<a href="#roadmap" style="text-decoration:none">Roadmap</a>
-<a href="#get" style="text-decoration:none">Get the app</a>
+<div style="background:#FF3E1D">
+<div style="max-width:1160px;margin:0 auto;padding:18px 24px;display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:16px;box-sizing:border-box">
+<div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:32px;color:#ffffff;line-height:1">SOURCE!</div>
+<div style="display:flex;flex-wrap:wrap;gap:24px;font-size:16px;font-weight:500">
+<a href="#how" style="color:#14161B;text-decoration:none">How it works</a>
+<a href="#see" style="color:#14161B;text-decoration:none">See it</a>
+<a href="#roadmap" style="color:#14161B;text-decoration:none">Roadmap</a>
+<a href="#get" style="color:#14161B;text-decoration:none">Get the app</a>
 </div>
-</div>
-
-<a href="/xoff/" style="display:block;margin-top:24px;padding:14px 18px;border-left:6px solid #FF3E1D;background:#faf8f5;text-decoration:none;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;font-size:18px"><b>X OFF.</b> The election is over. Now is the time to leave X. Make the jump &rarr;</a>
-
-<div style="padding:96px 0 80px">
-<div style="font-size:14px;letter-spacing:0.12em;text-transform:uppercase;color:#6b6b6b;margin-bottom:20px">A news reader, first draft</div>
-<h1 id="heroH1" style="margin:0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:clamp(44px,8vw,96px);line-height:1;letter-spacing:-0.03em">News first.<br>Escape the algorithm<span style="color:#FF3E1D">.</span></h1>
-<script>
-(function(){
-  var V;
-  try{V=localStorage.getItem('xo_home_h');if(V!=='a'&&V!=='b'){V=Math.random()<.5?'a':'b';localStorage.setItem('xo_home_h',V);}}
-  catch(e){V=Math.random()<.5?'a':'b';}
-  if(V==='b'){document.getElementById('heroH1').innerHTML='Take Back Your<br>Morning<span style="color:#FF3E1D">.</span>';}
-  function send(ev){
-    try{var k='xo_ab_'+ev;if(localStorage.getItem(k))return;localStorage.setItem(k,'1');}catch(e){}
-    var body=JSON.stringify({v:V,e:ev});
-    try{
-      if(navigator.sendBeacon){navigator.sendBeacon('/api/home-ab',new Blob([body],{type:'application/json'}));}
-      else{fetch('/api/home-ab',{method:'POST',headers:{'Content-Type':'application/json'},body:body,keepalive:true});}
-    }catch(e){}
-  }
-  send('view');
-  document.addEventListener('click',function(ev){
-    var a=ev.target.closest&&ev.target.closest('a');if(!a)return;
-    var u=a.getAttribute('href')||'';
-    if(u.indexOf('apps.apple.com')>-1)send('ios_click');
-    else if(a.getAttribute('data-ab')==='android'||u.indexOf('groups.google.com')>-1||u.indexOf('play.google.com')>-1)send('android_click');
-    else if(u.indexOf('/xoff/')===0)send('xoff_click');
-  });
-})();
-</script>
-<p style="max-width:680px;margin:32px 0 0;font-size:26px;line-height:1.4">The news app you check first. The best independent journalism as it’s published, not when a billionaire flings it at you.</p>
-<div style="display:flex;flex-wrap:wrap;gap:16px;margin-top:40px">
-<a href="https://apps.apple.com/us/app/source-news-reader/id6814234005" style="background:#111111;color:#ffffff;text-decoration:none;padding:16px 28px;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;min-height:44px;box-sizing:border-box">Get it on iPhone and iPad</a>
-<a href="https://play.google.com/store/apps/details?id=com.newsfor38yearolds.source" data-ab="android" style="background:#ffffff;color:#111111;text-decoration:none;padding:16px 28px;border:2px solid #111111;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;min-height:44px;box-sizing:border-box">Get it on Google Play</a>
-<a href="https://news-for-38-year-olds.onrender.com/source/" data-ab="web" style="background:#ffffff;color:#111111;text-decoration:none;padding:16px 28px;border:2px solid #111111;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;min-height:44px;box-sizing:border-box">Use it in your browser</a>
 </div>
 </div>
 
-<div style="padding:0 0 80px">
+<div style="max-width:1160px;margin:0 auto;padding:0 24px;box-sizing:border-box">
+
+<div style="display:flex;flex-wrap:wrap;gap:56px;align-items:center;padding:88px 0 80px">
+<div style="flex:1 1 480px">
+<h1 style="margin:0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:clamp(44px,7vw,84px);line-height:1;letter-spacing:-0.03em">News first.<br>Escape the algorithm<span style="color:#FF3E1D">.</span></h1>
+<p style="margin:28px 0 0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;font-size:26px;line-height:1.25">You control the news. Not versa vice.</p>
+<p style="max-width:560px;margin:20px 0 0;font-size:20px;color:#3a3d44">The news app you check first. The best independent journalism as it’s published, not when a billionaire flings it at you.</p>
+<div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:36px">
+<a href="https://apps.apple.com/us/app/source-news-reader/id6814234005" style="background:#14161B;color:#ffffff;text-decoration:none;padding:15px 26px;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;min-height:44px;box-sizing:border-box">iPhone and iPad</a>
+<a href="https://play.google.com/store/apps/details?id=com.newsfor38yearolds.source" style="background:#14161B;color:#ffffff;text-decoration:none;padding:15px 26px;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;min-height:44px;box-sizing:border-box">Android</a>
+<a href="https://news-for-38-year-olds.onrender.com/source/" style="background:#ffffff;color:#14161B;text-decoration:none;padding:13px 24px;border:2px solid #14161B;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;min-height:44px;box-sizing:border-box">Use it in your browser</a>
+</div>
+</div>
+
+<div style="flex:0 0 300px;margin:0 auto">
+<div style="width:300px;height:560px;border:2px solid #14161B;border-radius:30px;overflow:hidden;box-sizing:border-box;background:#ffffff">
+<img width="780" height="1688" src="/home/shots/read.png" alt="SOURCE! Read tab: an orange header, the My Feed pack selected, and a newest-first list of headlines" style="width:100%;display:block;margin-top:-36px">
+</div>
+</div>
+</div>
+
+<div style="padding:0 0 72px">
 <div id="promo" style="position:relative;width:100%;aspect-ratio:16/9;background:#111111">
 <button id="promoPlay" type="button" aria-label="Play the SOURCE! promo video" style="position:absolute;inset:0;width:100%;height:100%;border:0;padding:0;cursor:pointer;background:#111111 url('/home/poster.jpg') center/cover no-repeat">
 <span style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:84px;height:84px;border-radius:50%;background:#FF3E1D;display:flex;align-items:center;justify-content:center"><span style="margin-left:6px;border-style:solid;border-width:16px 0 16px 28px;border-color:transparent transparent transparent #ffffff"></span></span>
@@ -88,73 +73,104 @@ document.getElementById("promoPlay").addEventListener("click",function(){
 </script>
 </div>
 
-<div id="how" style="padding:72px 0;border-top:1px solid #111111">
-<h2 style="margin:0 0 40px;font-family:'Space Grotesk',Arial,sans-serif;font-size:40px;letter-spacing:-0.02em">How it works</h2>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:40px">
-<div style="border-top:4px solid #FF3E1D;padding-top:16px">
-<h3 style="margin:0 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">You control the news. Not versa vice.</h3>
-<p style="margin:0;color:#444444">Stories come straight from each outlet's own RSS feed, newest first, unless you say otherwise. Every change is yours, and you can see it. A story never climbs because people are angry about it.</p>
+<div id="how" style="padding:72px 0;border-top:1px solid #14161B">
+<h2 style="margin:0 0 12px;font-family:'Space Grotesk',Arial,sans-serif;font-size:40px;letter-spacing:-0.02em">How it works</h2>
+<p style="margin:0 0 40px;max-width:640px;color:#3a3d44">Six things SOURCE! does that a plain RSS reader leaves to you.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:0 56px">
+
+<div style="border-top:4px solid #FF3E1D;padding:16px 0 36px">
+<div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:15px;color:#C42A0E">01</div>
+<h3 style="margin:4px 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">You start with a full feed</h3>
+<p style="margin:0;color:#3a3d44">Handpicked RSS Packs of independent journalism give you a morning feed in under a minute. Never heard of RSS? You don’t need to have. Every Pack has its own page you can share, copy and follow.</p>
 </div>
-<div style="border-top:4px solid #FF3E1D;padding-top:16px">
-<h3 style="margin:0 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Build your own RSS Packs</h3>
-<p style="margin:0;color:#444444">A Pack is a collection of the outlets you trust or the subjects you follow. Share it or copy someone else's. Every public Pack is also an open RSS feed you can read anywhere.</p>
+
+<div style="border-top:4px solid #FF3E1D;padding:16px 0 36px">
+<div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:15px;color:#C42A0E">02</div>
+<h3 style="margin:4px 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Every change is yours, and you can see it</h3>
+<p style="margin:0;color:#3a3d44">Pick top sources, show fewer stories from a source, hide one, mute a word. Switch on Sort by relevance when you want stories your sources agree on first, with the outlets named. Newest first stays the default.</p>
 </div>
-<div style="border-top:4px solid #FF3E1D;padding-top:16px">
-<h3 style="margin:0 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Support journalists and publications</h3>
-<p style="margin:0;color:#444444">If a journalist or publication has a tip jar or a subscribe page, it's one tap away. The money goes to them, not through us.</p>
+
+<div style="border-top:4px solid #FF3E1D;padding:16px 0 36px">
+<div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:15px;color:#C42A0E">03</div>
+<h3 style="margin:4px 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Support goes with the story</h3>
+<p style="margin:0;color:#3a3d44">Where a journalist or publication has a tip jar or subscribe page, one tap takes you there. The money goes to them, not through us.</p>
 </div>
+
+<div style="border-top:4px solid #FF3E1D;padding:16px 0 36px">
+<div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:15px;color:#C42A0E">04</div>
+<h3 style="margin:4px 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Videos, newest first</h3>
+<p style="margin:0;color:#3a3d44">Paste a YouTube link or @handle and the channel joins your videos. They come out in the order they were posted, and nothing is recommended to you.</p>
+</div>
+
+<div style="border-top:4px solid #FF3E1D;padding:16px 0 36px">
+<div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:15px;color:#C42A0E">05</div>
+<h3 style="margin:4px 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Buzz without the scoreboard</h3>
+<p style="margin:0;color:#3a3d44">See what journalists are saying on Bluesky. SOURCE! shows the words and the names and leaves out the like and repost counts.</p>
+</div>
+
+<div style="border-top:4px solid #FF3E1D;padding:16px 0 36px">
+<div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:15px;color:#C42A0E">06</div>
+<h3 style="margin:4px 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Leave whenever you like</h3>
+<p style="margin:0;color:#3a3d44">Import your feeds from another reader, export them as OPML any time, and read without an account. There are no ads and no trackers.</p>
+</div>
+
 </div>
 </div>
 
-<div id="roadmap" style="padding:72px 0;border-top:1px solid #111111">
-<h2 style="margin:0 0 12px;font-family:'Space Grotesk',Arial,sans-serif;font-size:40px;letter-spacing:-0.02em">Roadmap</h2>
-<p style="margin:0 0 40px;max-width:640px;color:#444444">Where this is heading as of now.</p>
+<div id="see" style="padding:72px 0;border-top:1px solid #14161B">
+<h2 style="margin:0 0 12px;font-family:'Space Grotesk',Arial,sans-serif;font-size:40px;letter-spacing:-0.02em">See it</h2>
+<p style="margin:0 0 40px;max-width:640px;color:#3a3d44">Straight from a phone.</p>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:40px">
 
-<div style="display:flex;flex-wrap:wrap;gap:16px 40px;padding:28px 0;border-top:1px solid #cccccc">
-<div style="flex:0 0 180px"><div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:20px">1. The promise</div><div style="font-size:14px;color:#FF3E1D;font-weight:500;margin-top:4px">NOW</div></div>
-<div style="flex:1 1 320px"><p style="margin:0">Independent reporting as it's published, with a one-tap way to support the people behind it. <span id="nowText">Live on iPhone, iPad and Android, and on the web.</span></p></div>
-</div>
-<div style="display:flex;flex-wrap:wrap;gap:16px 40px;padding:28px 0;border-top:1px solid #cccccc">
-<div style="flex:0 0 180px"><div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:20px">2. Your feeds</div><div style="font-size:14px;color:#8a5f00;font-weight:500;margin-top:4px">NEXT</div></div>
-<div style="flex:1 1 320px"><p style="margin:0">Create and share feeds of the publications you support or the subjects you follow. Train your main feed until it's exactly what you want, with room to discover new voices.</p></div>
-</div>
-<div style="display:flex;flex-wrap:wrap;gap:16px 40px;padding:28px 0;border-top:1px solid #cccccc">
-<div style="flex:0 0 180px"><div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:20px">3. Reporting and conversation</div><div style="font-size:14px;color:#6b6b6b;font-weight:500;margin-top:4px">THEN</div></div>
-<div style="flex:1 1 320px"><p style="margin:0">Connect original reporting to the Buzz, podcasts, and videos on the same subject, so a story and everything around it live in one place.</p></div>
-</div>
-<div style="display:flex;flex-wrap:wrap;gap:16px 40px;padding:28px 0;border-top:1px solid #cccccc;border-bottom:1px solid #cccccc">
-<div style="flex:0 0 180px"><div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:20px">4. Indie journalist store</div><div style="font-size:14px;color:#6b6b6b;font-weight:500;margin-top:4px">SOMEDAY</div></div>
-<div style="flex:1 1 320px"><p style="margin:0">A place to find and support independent journalists directly, part Substack alternative, part browsing a store for shows you didn't know you needed.</p></div>
-</div>
-</div>
-
-<div id="get" style="padding:72px 0;border-top:1px solid #111111">
-<h2 style="margin:0 0 32px;font-family:'Space Grotesk',Arial,sans-serif;font-size:40px;letter-spacing:-0.02em">Get SOURCE!</h2>
-<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:48px">
 <div>
-<h3 style="margin:0 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">iPhone and iPad</h3>
-<p style="margin:0 0 20px;color:#444444">Live now on the App Store.</p>
-<a href="https://apps.apple.com/us/app/source-news-reader/id6814234005" style="background:#111111;color:#ffffff;text-decoration:none;padding:14px 24px;display:inline-block;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500">Open the App Store</a>
+<div style="width:280px;height:520px;border:2px solid #14161B;border-radius:28px;overflow:hidden;box-sizing:border-box;background:#ffffff">
+<img width="780" height="1688" loading="lazy" src="/home/shots/sheet.png" alt="The source sheet for France 24 with Top source, Show all their stories, Show fewer, Hide and Mute a word" style="width:100%;display:block;margin-top:-34px">
 </div>
-<div id="androidCard">
-<h3 style="margin:0 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Android</h3>
-<p style="margin:0 0 20px;color:#444444">Live now on Google Play.</p>
-<a href="https://play.google.com/store/apps/details?id=com.newsfor38yearolds.source" style="background:#111111;color:#ffffff;text-decoration:none;padding:14px 24px;display:inline-block;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500">Open Google Play</a>
+<p style="margin:16px 0 0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;font-size:20px">Edit your feed while you read it</p>
 </div>
-<div id="webCard">
-<h3 style="margin:0 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Desktop and web</h3>
-<p style="margin:0 0 20px;color:#444444">Use SOURCE! in any browser, no install.</p>
-<a href="https://news-for-38-year-olds.onrender.com/source/" style="background:#111111;color:#ffffff;text-decoration:none;padding:14px 24px;display:inline-block;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500">Open SOURCE!</a>
+
+<div>
+<div style="width:280px;height:470px;border:2px solid #14161B;border-radius:28px;overflow:hidden;box-sizing:border-box;background:#ffffff">
+<img width="780" height="1688" loading="lazy" src="/home/shots/pack.png" alt="A Pack page for Awards and Oscars-Prestige with a description, its four outlets, and Follow and Share buttons" style="width:100%;display:block">
 </div>
+<p style="margin:16px 0 0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;font-size:20px">Packs you can follow, copy and share</p>
+</div>
+
+<div>
+<div style="width:280px;height:520px;border:2px solid #14161B;border-radius:28px;overflow:hidden;box-sizing:border-box;background:#ffffff">
+<img width="780" height="1688" loading="lazy" src="/home/shots/videos.png" alt="The Videos tab with the line Your videos. As they come out. and an Add a channel button" style="width:100%;display:block;margin-top:-34px">
+</div>
+<p style="margin:16px 0 0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;font-size:20px">Add any channel. Newest first.</p>
+</div>
+
 </div>
 </div>
 
-<div style="padding:32px 0 48px;border-top:1px solid #111111;display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;font-size:15px;color:#444444">
+<div id="roadmap" style="padding:72px 0;border-top:1px solid #14161B">
+<h2 style="margin:0 0 12px;font-family:'Space Grotesk',Arial,sans-serif;font-size:40px;letter-spacing:-0.02em">Roadmap</h2>
+<p style="margin:0 0 40px;max-width:640px;color:#3a3d44">Where this is heading as of now.</p>
+<div style="display:flex;flex-wrap:wrap;gap:12px 40px;padding:24px 0;border-top:1px solid #cccccc"><div style="flex:0 0 220px"><div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:20px">1. The promise</div><div style="font-size:14px;color:#C42A0E;font-weight:500;margin-top:4px">NOW</div></div><div style="flex:1 1 320px"><p style="margin:0">Real-time reporting from independent outlets, and an easy way to support the people behind it. Live on iPhone, iPad, Android and the web.</p></div></div>
+<div style="display:flex;flex-wrap:wrap;gap:12px 40px;padding:24px 0;border-top:1px solid #cccccc"><div style="flex:0 0 220px"><div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:20px">2. Your feeds</div><div style="font-size:14px;color:#8a5f00;font-weight:500;margin-top:4px">NEXT</div></div><div style="flex:1 1 320px"><p style="margin:0">Create and share feeds of the publications you support or the subjects you follow, and tune your main feed until it’s yours.</p></div></div>
+<div style="display:flex;flex-wrap:wrap;gap:12px 40px;padding:24px 0;border-top:1px solid #cccccc"><div style="flex:0 0 220px"><div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:20px">3. Reporting and conversation</div><div style="font-size:14px;color:#5a5d64;font-weight:500;margin-top:4px">THEN</div></div><div style="flex:1 1 320px"><p style="margin:0">Connect original reporting to the Buzz, podcasts and videos on the same subject.</p></div></div>
+<div style="display:flex;flex-wrap:wrap;gap:12px 40px;padding:24px 0;border-top:1px solid #cccccc;border-bottom:1px solid #cccccc"><div style="flex:0 0 220px"><div style="font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:20px">4. Indie journalist store</div><div style="font-size:14px;color:#5a5d64;font-weight:500;margin-top:4px">SOMEDAY</div></div><div style="flex:1 1 320px"><p style="margin:0">A place to find and support independent journalists directly, part Substack alternative, part browsing a store for shows you didn’t know you needed.</p></div></div>
+</div>
+
+<div id="get" style="padding:72px 0;border-top:1px solid #14161B">
+<h2 style="margin:0 0 32px;font-family:'Space Grotesk',Arial,sans-serif;font-size:40px;letter-spacing:-0.02em">Get SOURCE!</h2>
+<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:40px">
+<div><h3 style="margin:0 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">iPhone and iPad</h3><p style="margin:0 0 18px;color:#3a3d44">Free on the App Store.</p><a href="https://apps.apple.com/us/app/source-news-reader/id6814234005" style="background:#14161B;color:#ffffff;text-decoration:none;padding:14px 24px;display:inline-block;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500">Open the App Store</a></div>
+<div><h3 style="margin:0 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Android</h3><p style="margin:0 0 18px;color:#3a3d44">Free on Google Play.</p><a href="https://play.google.com/store/apps/details?id=com.newsfor38yearolds.source" style="background:#14161B;color:#ffffff;text-decoration:none;padding:14px 24px;display:inline-block;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500">Open Google Play</a></div>
+<div><h3 style="margin:0 0 8px;font-family:'Space Grotesk',Arial,sans-serif;font-size:24px">Desktop and web</h3><p style="margin:0 0 18px;color:#3a3d44">Nothing to install.</p><a href="https://news-for-38-year-olds.onrender.com/source/" style="background:#ffffff;color:#14161B;text-decoration:none;padding:12px 22px;display:inline-block;border:2px solid #14161B;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500">Open SOURCE!</a></div>
+</div>
+</div>
+
+<div style="padding:32px 0 48px;border-top:1px solid #14161B;display:flex;flex-wrap:wrap;justify-content:space-between;gap:16px;font-size:15px;color:#3a3d44">
 <div>SOURCE! by LOLGOP Studios</div>
 <div style="display:flex;flex-wrap:wrap;gap:24px">
 <a href="https://news-for-38-year-olds.onrender.com/source/privacy.html">Privacy</a>
 <a href="https://news-for-38-year-olds.onrender.com/source/support.html">Support</a>
 <a href="mailto:lolgopstudios@gmail.com">Contact</a>
+<a href="https://www.patreon.com/lolgopstudios">Support this project</a>
 </div>
 </div>
 
