@@ -2816,6 +2816,12 @@
       renderMobileClassic(shown, trendingLinks);
       return;
     }
+    // Scroll: the same rows as Classic with a picture under every headline until
+    // the row is opened (phone and desktop; desktop keeps its centered column).
+    if (getReadDisplay() === "scroll") {
+      renderMobileClassic(shown, trendingLinks, { scroll: true });
+      return;
+    }
     if (getLayoutMode() === "desktop" && getReadDisplay() === "classic") {
       renderReadClassic(shown, trendingLinks);
       return;
@@ -3298,18 +3304,23 @@
   // newest first, same as every other view.
   // ---------------------------------------------------------------
   const mobileClassicSeen = new Set();
-  function renderMobileClassic(shown, trendingLinks) {
+  function renderMobileClassic(shown, trendingLinks, opts) {
+    // opts.scroll: the Scroll view. Same rows as Classic, but every story with a
+    // picture shows it under the headline until the row is opened.
+    const scroll = !!(opts && opts.scroll);
     const main = document.getElementById("main");
     main.classList.remove("read-layout", "read-scroll-desktop");
     main.classList.add("read-mobile-classic");
+    if (scroll && getLayoutMode() === "desktop") main.classList.add("read-scroll-desktop");
+    const heroList = [];
     // The top story gets its picture up front (if it has one); every other row
     // keeps loading its image only when opened.
     let heroDispatch = null;
     main.innerHTML = `<div class="mc-list">` + readEntries(shown).map(e => {
       if (e.role === "group") return relGroupHtml(e);
       const d = e.d;
-      const isHero = !heroDispatch && !!d.link;
-      if (isHero) heroDispatch = d;
+      const isHero = scroll ? !!d.link : (!heroDispatch && !!d.link);
+      if (isHero) { if (!heroDispatch) heroDispatch = d; heroList.push(d); }
       const id = escapeHtml(String(d.id));
       const title = escapeHtml(d.title || d.headline || "");
       const outlet = escapeHtml(d.outlet || d.source || "");
@@ -3371,7 +3382,45 @@
     wireSaveButtons(main);
     wireStoryShareButtons(main);
     main.querySelector(".mc-list")?.insertAdjacentHTML("beforeend", readFootnoteHtml());
-    loadHeroImage(heroDispatch);
+    if (scroll) loadScrollHeroes(main, heroList);
+    else loadHeroImage(heroDispatch);
+  }
+
+  // Scroll view: each row's picture is fetched only as the row nears the screen,
+  // so a long list does not download every image at once. Stored image first;
+  // otherwise one batched preview lookup per few rows. No picture = no hero.
+  function loadScrollHeroes(main, list) {
+    const byId = new Map(list.map(d => [String(d.id), d]));
+    const pending = new Set();
+    let timer = null;
+    const flush = async () => {
+      timer = null;
+      const ids = Array.from(pending); pending.clear();
+      for (let i = 0; i < ids.length; i += 20) {
+        const batch = ids.slice(i, i + 20);
+        let map = {};
+        try { map = await api(`/api/dispatches/thumbnails?ids=${encodeURIComponent(batch.join(","))}`) || {}; } catch (e) { /* nice-to-have */ }
+        batch.forEach(id => {
+          const img = document.getElementById(`hero-${id}`);
+          if (!img) return;
+          if (map[id]) img.src = map[id]; else img.remove();
+        });
+      }
+    };
+    const want = (row) => {
+      const id = row.dataset.id;
+      const d = byId.get(id);
+      const img = document.getElementById(`hero-${id}`);
+      if (!d || !img || img.getAttribute("src")) return;
+      if (d.image_url) img.src = d.image_url;
+      else { pending.add(id); if (!timer) timer = setTimeout(flush, 120); }
+    };
+    const rows = main.querySelectorAll(".mc-row");
+    if (typeof IntersectionObserver === "undefined") { Array.from(rows).slice(0, 30).forEach(want); return; }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(en => { if (en.isIntersecting) { io.unobserve(en.target); want(en.target); } });
+    }, { rootMargin: "700px 0px" });
+    rows.forEach(r => io.observe(r));
   }
 
   // Picture for the top row in mobile Classic. Uses the stored image if there

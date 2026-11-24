@@ -3376,3 +3376,6 @@ a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 
 .vid-pill-row { display: flex; gap: 8px; padding: 6px 0 10px; }
 .vid-pill-row .vid-pill { min-height: 40px; }
+
+/* Scroll view rows: a slightly taller picture than the Classic top-row hero. */
+#main.read-mobile-classic .mc-hero { max-height: 220px; }
