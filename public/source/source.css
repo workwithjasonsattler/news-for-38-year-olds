@@ -3373,3 +3373,6 @@ a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 .video-share-btn,
 .video-support-btn { min-height: 40px; box-sizing: border-box; }
 .tune-btn.video-tune { margin: 4px 0 14px 14px; }
+
+.vid-pill-row { display: flex; gap: 8px; padding: 6px 0 10px; }
+.vid-pill-row .vid-pill { min-height: 40px; }

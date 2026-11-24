@@ -418,6 +418,7 @@
   // Bottom action row for every card shape. Videos get Save/Support in the
   // top band instead, so only the Follow control stays down here.
   function cardActionsHtml(d, withShare) {
+    if (d.is_podcast) return `${tipSubscribeBadge(d)}${saveButton(d)}${withShare ? storyShareButton(d) : ""}${tuneButton(d, "video-tune")}`;
     return d.is_video ? tuneButton(d, "video-tune") : `${tipSubscribeBadge(d)}${sprayAddButton(d)}${saveButton(d)}${withShare ? storyShareButton(d) : ""}${tuneButton(d)}`;
   }
 
@@ -866,10 +867,17 @@
   const VIDEO_EDITS_KEY = "source_video_edits";
   const VIDEO_TOP_CAP = 10;
   let videoTopShown = false;
+  // Videos | Podcasts pill. Podcast tweaks use their own device-held list so the
+  // two never mix. Not remembered between launches: Videos is always the default.
+  let videosPill = "videos";
+  const PODCAST_EDITS_KEY = "source_podcast_edits";
+  const PODCAST_PACK_SLUG = "progressive-podcasts";
+  function onPodcasts() { return videosPill === "podcasts"; }
+  function videoEditsKey() { return onPodcasts() ? PODCAST_EDITS_KEY : VIDEO_EDITS_KEY; }
   function readVideoEdits() {
-    try { const v = JSON.parse(localStorage.getItem(VIDEO_EDITS_KEY) || "{}"); return v && typeof v === "object" && !Array.isArray(v) ? v : {}; } catch (e) { return {}; }
+    try { const v = JSON.parse(localStorage.getItem(videoEditsKey()) || "{}"); return v && typeof v === "object" && !Array.isArray(v) ? v : {}; } catch (e) { return {}; }
   }
-  function writeVideoEdits(m) { try { localStorage.setItem(VIDEO_EDITS_KEY, JSON.stringify(m)); } catch (e) { /* storage blocked */ } }
+  function writeVideoEdits(m) { try { localStorage.setItem(videoEditsKey(), JSON.stringify(m)); } catch (e) { /* storage blocked */ } }
   function videoModeFor(ch) { return readVideoEdits()[ch] || "on"; }
   function videoEditCounts() {
     const v = Object.values(readVideoEdits());
@@ -880,7 +888,7 @@
     if (mode === "on") delete m[ch];
     else {
       if (mode === "top" && m[ch] !== "top" && Object.values(m).filter(x => x === "top").length >= VIDEO_TOP_CAP) {
-        toast(`You can have up to ${VIDEO_TOP_CAP} top channels. Turn one off first.`);
+        toast(`You can have up to ${VIDEO_TOP_CAP} top ${onPodcasts() ? "shows" : "channels"}. Turn one off first.`);
         return false;
       }
       m[ch] = mode;
@@ -894,6 +902,8 @@
   }
   function videoChannelOf(d) { return (d.outlet || d.source || "").trim(); }
   const VIDEO_MODE_LABEL = { top: "Top channel", fold: "Showing fewer", hidden: "Hidden" };
+  const PODCAST_MODE_LABEL = { top: "Top show", fold: "Showing fewer", hidden: "Hidden" };
+  function modeLabel(m) { return (onPodcasts() ? PODCAST_MODE_LABEL : VIDEO_MODE_LABEL)[m] || m; }
 
   async function applyVideoMode(src, mode) {
     const ch = src.outlet || src.label || "";
@@ -902,17 +912,18 @@
     if (prev === mode) return;
     if (!setVideoMode(ch, mode)) return;
     let msg;
-    if (mode === "hidden") msg = `${ch} hidden from your videos.`;
-    else if (mode === "top") msg = `${ch} is a top channel. Its last 24 hours go first.`;
-    else if (mode === "fold") msg = `Showing fewer videos from ${ch}.`;
-    else msg = `Showing all videos from ${ch}.`;
+    if (mode === "hidden") msg = `${ch} hidden from your ${onPodcasts() ? "podcasts" : "videos"}.`;
+    else if (mode === "top") msg = onPodcasts() ? `${ch} is a top show. Its last 24 hours go first.` : `${ch} is a top channel. Its last 24 hours go first.`;
+    else if (mode === "fold") msg = `Showing fewer ${onPodcasts() ? "episodes" : "videos"} from ${ch}.`;
+    else msg = `Showing all ${onPodcasts() ? "episodes" : "videos"} from ${ch}.`;
     toastAction(msg, "Undo", () => { setVideoMode(ch, prev); afterVideoChange(); });
     afterVideoChange();
   }
 
   function openVideoTuneSheet(src) {
     closeTuneSheet();
-    const ch = src.outlet || src.label || "this channel";
+    const pod = !!src.podcast;
+    const ch = src.outlet || src.label || (pod ? "this show" : "this channel");
     const cur = videoModeFor(ch);
     const el = document.createElement("div");
     el.id = "tuneOverlay";
@@ -921,13 +932,13 @@
     el.innerHTML = `
       <div class="spray-picker-card">
         <div class="spray-picker-head">
-          <span><strong>${escapeHtml(ch)}</strong> in your videos</span>
+          <span><strong>${escapeHtml(ch)}</strong> in your ${pod ? "podcasts" : "videos"}</span>
           <button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button>
         </div>
-        <p class="spray-picker-sub">Changes only your own videos. Saved on this device.</p>
-        ${opt("top", "Top channel", "Their videos from the last 24 hours go first, in their own labeled section.")}
-        ${opt("on", "Show all their videos", "Everything they post, newest first.")}
-        ${opt("fold", "Show fewer", "Their newest video each day shows. The rest fold into one row.")}
+        <p class="spray-picker-sub">Changes only your own ${pod ? "podcasts" : "videos"}. Saved on this device.</p>
+        ${opt("top", pod ? "Top show" : "Top channel", pod ? "Their episodes from the last 24 hours go first, in their own labeled section." : "Their videos from the last 24 hours go first, in their own labeled section.")}
+        ${opt("on", pod ? "Show all their episodes" : "Show all their videos", pod ? "Every episode, newest first." : "Everything they post, newest first.")}
+        ${opt("fold", "Show fewer", pod ? "Their newest episode each day shows. The rest fold into one row." : "Their newest video each day shows. The rest fold into one row.")}
         ${opt("hidden", "Hide " + escapeHtml(ch), "Never shown here. Bring it back from the line under the header.")}
         <div class="tune-mute">
           <div class="tune-opt-title" style="margin-top:14px;">Mute a word</div>
@@ -935,7 +946,7 @@
             <input type="text" id="tuneMuteInput" placeholder="Word or phrase" maxlength="40" autocomplete="off">
             <button class="btn" id="tuneMuteBtn" type="button">Mute</button>
           </div>
-          <div class="tune-opt-sub">Leaves out videos with that whole word in the title. The same list as your stories.</div>
+          <div class="tune-opt-sub">Leaves out ${pod ? "episodes" : "videos"} with that whole word in the title. The same list as your stories.</div>
         </div>
         ${src.reader_added
           ? `<button type="button" class="tune-opt" id="tuneRemoveBtn" style="margin-top:12px;"><span class="tune-opt-title">Remove channel</span><span class="tune-opt-sub">Takes ${escapeHtml(ch)} out of your videos for good. You can add it again any time.</span></button>`
@@ -950,14 +961,14 @@
       const word = await addMute(mi.value);
       if (!word) return;
       closeTuneSheet();
-      toastAction(`Muted \u201c${word}\u201d in video titles.`, "Undo", () => removeMute(word));
+      toastAction(`Muted \u201c${word}\u201d in ${pod ? "episode" : "video"} titles.`, "Undo", () => removeMute(word));
     };
     el.querySelector("#tuneMuteBtn").addEventListener("click", doMute);
     mi.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); doMute(); } });
     const packBtn = el.querySelector("#tunePackBtn");
     if (packBtn) packBtn.addEventListener("click", () => {
       closeTuneSheet();
-      const plain = Object.assign({}, src); delete plain.video;
+      const plain = Object.assign({}, src); delete plain.video; delete plain.podcast;
       openSprayPicker(plain);
     });
     const rmBtn = el.querySelector("#tuneRemoveBtn");
@@ -1043,11 +1054,11 @@
     el.innerHTML = `
       <div class="spray-picker-card">
         <div class="spray-picker-head">
-          <span><strong>Your videos</strong></span>
+          <span><strong>Your ${onPodcasts() ? "podcasts" : "videos"}</strong></span>
           <button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button>
         </div>
         <p class="spray-picker-sub">Only what you changed. Saved on this device. Everything else shows newest first.</p>
-        ${rows.length ? rows.map(([ch, mode]) => `<div class="vr-row"><span><strong>${escapeHtml(ch)}</strong><br><span class="tune-opt-sub">${escapeHtml(VIDEO_MODE_LABEL[mode] || mode)}</span></span><button type="button" class="btn vr-restore" data-ch="${escapeHtml(ch)}">Restore</button></div>`).join("") : `<p class="tune-opt-sub">No channels changed.</p>`}
+        ${rows.length ? rows.map(([ch, mode]) => `<div class="vr-row"><span><strong>${escapeHtml(ch)}</strong><br><span class="tune-opt-sub">${escapeHtml(modeLabel(mode))}</span></span><button type="button" class="btn vr-restore" data-ch="${escapeHtml(ch)}">Restore</button></div>`).join("") : `<p class="tune-opt-sub">No ${onPodcasts() ? "shows" : "channels"} changed.</p>`}
         <div id="vrChannels"></div>
         <button type="button" class="tune-opt" id="vrWords" style="margin-top:12px;"><span class="tune-opt-title">Muted words</span><span class="tune-opt-sub">See, peek at and remove the words you muted.</span></button>
       </div>`;
@@ -1060,7 +1071,7 @@
       openVideoReviewSheet();
     }));
     el.querySelector("#vrWords").addEventListener("click", () => { closeTuneSheet(); openYourFeedScreen(); });
-    if (currentUser) {
+    if (currentUser && !onPodcasts()) {
       api("/api/my/custom-sources").then((list) => {
         const mine = (Array.isArray(list) ? list : []).filter(c => c.is_video);
         const box = el.querySelector("#vrChannels");
@@ -1096,6 +1107,21 @@
     return out;
   }
 
+  function videosPillRowHtml() {
+    const b = (k, label) => `<button type="button" class="spray-pill vid-pill${videosPill === k ? " active" : ""}" data-vpill="${k}" aria-pressed="${videosPill === k}"><span class="spray-pill-label">${label}</span></button>`;
+    return `<div class="vid-pill-row" role="group" aria-label="Videos or podcasts">${b("videos", "Videos")}${b("podcasts", "Podcasts")}</div>`;
+  }
+  function wireVideosPills(root) {
+    root.querySelectorAll("[data-vpill]").forEach(btn => btn.addEventListener("click", () => {
+      const k = btn.dataset.vpill;
+      if (k === videosPill) return;
+      videosPill = k;
+      videoTopShown = false;
+      window.scrollTo(0, 0);
+      renderVideos();
+    }));
+  }
+
   function addChannelBarHtml() {
     return `<div class="vid-add-bar"><button type="button" class="btn vid-add-btn" id="vidAddChannel">+ Add a channel</button></div>`;
   }
@@ -1108,24 +1134,27 @@
     const quiet = !!(opts && opts.quiet);
     const main = document.getElementById("main");
     const keepY = quiet ? (window.scrollY || 0) : 0;
-    if (!quiet) main.innerHTML = stateBlock({ title: "Loading Videos", body: "Best of YouTube", spin: true });
+    const pod = onPodcasts();
+    if (!quiet) main.innerHTML = stateBlock({ title: pod ? "Loading Podcasts" : "Loading Videos", body: pod ? "Progressive Podcasts" : "Best of YouTube", spin: true });
     try {
-      const items = await fetchItemsForSprayKey("__youtube");
+      const items = await fetchItemsForSprayKey(pod ? "__podcasts" : "__youtube");
       if (activeTab !== "videos") return;
+      const topBar = videosPillRowHtml() + (pod ? "" : addChannelBarHtml());
       const edits = readVideoEdits();
       const sorted = items
         .filter(d => edits[videoChannelOf(d)] !== "hidden")
         .sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0));
       if (items.length === 0) {
         videoTopShown = false;
-        main.innerHTML = `<div class="source-single-col-screen">${addChannelBarHtml()}</div>` + stateBlock({ glyph: "\u2205", title: "NO SIGNAL", body: "No videos available right now." });
-        wireAddChannelBar(main);
+        main.innerHTML = `<div class="source-single-col-screen">${topBar}</div>` + stateBlock({ glyph: "\u2205", title: "NO SIGNAL", body: pod ? "No episodes available right now." : "No videos available right now." });
+        wireAddChannelBar(main); wireVideosPills(main);
         refreshFeedCaption();
         return;
       }
       if (sorted.length === 0) {
         videoTopShown = false;
-        main.innerHTML = stateBlock({ glyph: "\u2205", title: "NOTHING SHOWING", body: "Every video is hidden by your changes. Tap the line under the header to restore." });
+        main.innerHTML = `<div class="source-single-col-screen">${videosPillRowHtml()}</div>` + stateBlock({ glyph: "\u2205", title: "NOTHING SHOWING", body: `Every ${pod ? "episode" : "video"} is hidden by your changes. Tap the line under the header to restore.` });
+        wireVideosPills(main);
         refreshFeedCaption();
         return;
       }
@@ -1138,7 +1167,7 @@
       videoTopShown = topItems.length > 0;
       if (topItems.length) {
         const names = []; topItems.forEach(d => { const c = videoChannelOf(d); if (c && !names.includes(c)) names.push(c); });
-        entries.push({ role: "group", label: "Your top channels \u00b7 last 24 hours", outlets: names });
+        entries.push({ role: "group", label: pod ? "Your top shows \u00b7 last 24 hours" : "Your top channels \u00b7 last 24 hours", outlets: names });
         topItems.forEach(d => entries.push({ d, role: "normal" }));
         entries.push({ role: "group", plain: true, label: "Everything else, newest first" });
       }
@@ -1150,8 +1179,9 @@
         if (e.role === "folded") return foldItemHtml(e, card);
         return e.role === "head" ? card + foldToggleHtml(e) : card;
       }).join("");
-      main.innerHTML = `<div class="source-single-col-screen">${addChannelBarHtml()}${html}</div>`;
+      main.innerHTML = `<div class="source-single-col-screen">${topBar}${html}</div>`;
       wireAddChannelBar(main);
+      wireVideosPills(main);
       wireSaveButtons(main);
       wireVideoShareButtons(main);
       main.insertAdjacentHTML("beforeend", readFootnoteHtml());
@@ -1504,6 +1534,21 @@
   // already applied server-side.
   function tagFeedItems(key, items) {
     if (!Array.isArray(items)) return items;
+    if (key === "__podcasts") {
+      // Episode titles only, same shared mute list as Read and Videos.
+      const regsP = muteRegexes();
+      if (!regsP.length) return items;
+      return items.filter(d => {
+        const hit = mutedWordsIn({ title: d.headline || d.title || "", excerpt: "" }, regsP);
+        if (!hit.length) return true;
+        hit.forEach(w => {
+          const arr = mutedCaught.get(w) || [];
+          if (!arr.some(x => x.link === d.link)) arr.push(d);
+          mutedCaught.set(w, arr);
+        });
+        return false;
+      });
+    }
     if (key === "__youtube") {
       // Videos use the same mute list as Read (default words plus the reader's
       // own), matched against titles only. Per-channel edits are not built yet.
@@ -1587,8 +1632,9 @@
     const src = sprayableSource(d);
     if (!src) return "";
     if (d.is_video) src.video = true;
+    if (d.is_podcast) { src.video = true; src.podcast = true; }
     if (d.is_video && d.reader_added) { src.reader_added = true; src.custom_source_id = d.custom_source_id; }
-    const name = escapeHtml(src.label || (d.is_video ? "this channel" : "this source"));
+    const name = escapeHtml(src.label || (d.is_podcast ? "this show" : d.is_video ? "this channel" : "this source"));
     return `<button type="button" class="tune-btn src-menu-btn${cls ? " " + cls : ""}" data-tune='${escapeHtml(JSON.stringify(src))}' aria-label="Options for ${name}" title="Options for ${name}">${DOTS_SVG}</button>`;
   }
 
@@ -1817,14 +1863,18 @@
       const gone = [];
       if (v.hidden) gone.push(`${v.hidden} channel${v.hidden === 1 ? "" : "s"}`);
       if (own) gone.push(`${own} muted word${own === 1 ? "" : "s"}`);
+      const pod = onPodcasts();
+      const unit = pod ? "show" : "channel";
+      const lead = pod ? "Your podcasts. As they come out." : "Your videos. As they come out.";
+      const gone2 = pod ? gone.map(g => g.replace(/ channels?$/, m => m.replace("channel", "show"))) : gone;
       const parts = [];
-      if (gone.length) parts.push(`Hidden by you: ${gone.join(", ")}`);
-      if (v.top && videoTopShown) parts.push(`${v.top} top channel${v.top === 1 ? "" : "s"} first`);
-      if (v.fold) parts.push(`${v.fold} channel${v.fold === 1 ? "" : "s"} showing fewer videos`);
+      if (gone2.length) parts.push(`Hidden by you: ${gone2.join(", ")}`);
+      if (v.top && videoTopShown) parts.push(`${v.top} top ${unit}${v.top === 1 ? "" : "s"} first`);
+      if (v.fold) parts.push(`${v.fold} ${unit}${v.fold === 1 ? "" : "s"} showing fewer ${pod ? "episodes" : "videos"}`);
       if (parts.length) {
-        el.innerHTML = `Your videos. As they come out. <button type="button" class="caption-link" id="feedReviewLink">${escapeHtml(parts.join(". "))}</button>`;
+        el.innerHTML = `${lead} <button type="button" class="caption-link" id="feedReviewLink">${escapeHtml(parts.join(". "))}</button>`;
       } else {
-        el.textContent = "Your videos. As they come out.";
+        el.textContent = lead;
       }
       return;
     }
@@ -2279,6 +2329,12 @@
       (Array.isArray(mine) ? mine : []).forEach((v, i) => { if (!seen.has(v.url)) out.push(toItem(v, `ytm-${i}`)); });
       return out;
     }
+    if (key === "__podcasts") {
+      // The house Progressive Podcasts Pack. Episodes are ordinary dispatches, marked so
+      // their cards use the podcast tune sheet instead of the My Feed one.
+      const mix = await api(`/api/mixes/${encodeURIComponent(PODCAST_PACK_SLUG)}`);
+      return (Array.isArray(mix.items) ? mix.items : []).map(d => Object.assign({}, d, { is_podcast: true }));
+    }
     if (key === "__bluesky") {
       const posts = await fetchBlueskyPopularCached();
       return (Array.isArray(posts) ? posts : []).map((p, i) => ({
@@ -2570,7 +2626,7 @@
     const onVideos = activeTab === "videos";
     const inDef = c.defs.length > 0 && (onVideos || Array.from(activeSprayKeys).some(k => defaultMuteApplies(k) || feedApplies(k)));
     if (!inDef) return "";
-    return `<div class="read-footnote">* ${c.defs.map(capWord).join(", ")} is muted by default${onVideos ? " in video titles" : ""}. <button type="button" class="caption-link" id="readFootnoteLink">See or turn off</button></div>`;
+    return `<div class="read-footnote">* ${c.defs.map(capWord).join(", ")} is muted by default${onVideos ? (onPodcasts() ? " in episode titles" : " in video titles") : ""}. <button type="button" class="caption-link" id="readFootnoteLink">See or turn off</button></div>`;
   }
   function relGroupHtml(e) {
     if (e.plain) return `<div class="rel-group plain"><div class="rel-group-label">${escapeHtml(e.label)}</div></div>`;
