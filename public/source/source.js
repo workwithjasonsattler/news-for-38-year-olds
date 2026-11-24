@@ -255,9 +255,18 @@
       localStorage.setItem("source_display_v2", "1");
       if (getLayoutMode() !== "desktop") localStorage.setItem(READ_DISPLAY_KEY, "classic");
     }
+    // Nov 2026: phones default to Scroll (a picture under each headline), desktop
+    // keeps Classic. One-time: phones still on the Oct migration's Classic move to
+    // Scroll once; any pick made in the VIEW menu afterwards is respected.
+    if (!localStorage.getItem("source_display_v3")) {
+      localStorage.setItem("source_display_v3", "1");
+      if (getLayoutMode() !== "desktop" && localStorage.getItem(READ_DISPLAY_KEY) === "classic") {
+        localStorage.setItem(READ_DISPLAY_KEY, "scroll");
+      }
+    }
     const saved = localStorage.getItem(READ_DISPLAY_KEY);
     if (saved) return saved;
-    return "classic";
+    return getLayoutMode() === "desktop" ? "classic" : "scroll";
   }
 
   function setReadDisplay(mode) {
@@ -6751,7 +6760,7 @@
     { key: "classic", label: "Classic", sub: "Dense list, newest first. Tap a headline to read it. The most stories per screen." },
     { key: "headlines", label: "Headlines only", sub: "Headlines in cards, with Save and Follow on each. Roomier than Classic." },
     { key: "expanded", label: "Expanded", sub: "Headline, a short excerpt and a thumbnail." },
-    { key: "scroll", label: "Scroll", sub: "Big images, full excerpts, one story at a time." },
+    { key: "scroll", label: "Scroll", sub: "A picture under each headline. Tap one to read more. The default on phones." },
   ];
 
   function readPendingOnboarding() {
