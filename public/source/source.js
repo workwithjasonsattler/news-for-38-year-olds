@@ -1361,6 +1361,7 @@
         <button type="button" class="tune-opt" data-act="browse"><span class="tune-opt-title">Browse RSS Packs</span><span class="tune-opt-sub">Ready-made collections of sources. Follow one in a tap.</span></button>
         <button type="button" class="tune-opt" data-act="feed"><span class="tune-opt-title">Add a feed</span><span class="tune-opt-sub">Paste any site's address. SOURCE! finds its feed.</span></button>
         <button type="button" class="tune-opt" data-act="create"><span class="tune-opt-title">Create an RSS Pack</span><span class="tune-opt-sub">Build your own collection and share it.</span></button>
+        <button type="button" class="tune-opt" data-act="import"><span class="tune-opt-title">Import from another reader</span><span class="tune-opt-sub">Bring your feeds from Feedly, Inoreader, NetNewsWire and others.</span></button>
       </div>`;
     document.body.appendChild(el);
     el.addEventListener("click", (e) => {
@@ -1372,6 +1373,26 @@
       if (act === "browse") openPublicPackPicker();
       else if (act === "feed") jumpToAddFeed();
       else if (act === "create") { switchTab("sources"); openCreateFlow(); }
+      else if (act === "import") openImportSheet();
+    });
+  }
+  // Entry point for OPML import from the "+ Add" menu and the first-session card.
+  // Importing needs an account (feeds are stored on it), so sign in first, in place.
+  // The file picker opens from a tap inside this sheet, which browsers require.
+  function openImportSheet() {
+    if (!requireSignIn("Sign in to import your feeds.", openImportSheet)) return;
+    const el = openOpmlSheet(`
+      <div class="spray-picker-head"><span><strong>Import from another reader</strong></span><button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button></div>
+      <p class="spray-picker-sub">In your other reader, export your feeds as an OPML file, then choose it here. Outlets SOURCE! already carries are matched for free. The rest are added as your own feeds, up to 50. Each folder becomes a private RSS Pack.</p>
+      <button class="btn primary" id="opmlPick" type="button" style="width:100%;">Choose OPML file</button>
+      <input type="file" id="opmlFileSheet" accept=".opml,.xml,text/xml,application/xml,text/x-opml" hidden>`);
+    el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
+    const input = el.querySelector("#opmlFileSheet");
+    el.querySelector("#opmlPick").addEventListener("click", () => input.click());
+    input.addEventListener("change", () => {
+      const f = input.files && input.files[0];
+      input.value = "";
+      if (f) startOpmlImport(f);
     });
   }
 
@@ -2791,11 +2812,12 @@
       el.id = "firstCard";
       el.className = "first-card";
       el.innerHTML = `
-        <div class="first-card-title">Three things to try</div>
+        <div class="first-card-title">A few things to try</div>
         <ol class="first-card-list">
           <li><button type="button" class="first-card-link" data-act="browse">Browse RSS Packs</button> and follow one in a tap.</li>
           <li>Tap the <strong>\u22ef</strong> on any headline to show fewer stories from a source, hide it, or mute a word.</li>
           <li>Switch on <strong>Sort by relevance</strong> above to see the stories your sources agree on.</li>
+          <li>Coming from another reader? <button type="button" class="first-card-link" data-act="import">Import your feeds</button>.</li>
         </ol>
         <button type="button" class="first-card-done" data-act="done">Got it</button>`;
       main.insertBefore(el, main.firstChild);
@@ -2804,6 +2826,7 @@
         if (!b) return;
         // Only "Got it" dismisses. Tapping the Browse link keeps the card up.
         if (b.dataset.act === "browse") { openPublicPackPicker(); return; }
+        if (b.dataset.act === "import") { openImportSheet(); return; }
         try { localStorage.setItem("source_first_card", "1"); } catch (_) {}
         el.remove();
       });
@@ -4433,7 +4456,7 @@
       if (n("added")) lines.push(`${n("added")} added as your own feeds`);
       if (n("exists")) lines.push(`${n("exists")} you already had`);
       if (failed.length) lines.push(`${failed.length} couldn't be read`);
-      if (n("capped")) lines.push(`${n("capped")} not added (50-feed limit)`);
+      if (n("capped")) lines.push(`${n("capped")} couldn't be added because you've reached 50 feeds of your own`);
       const ok = n("matched") + n("added") + n("exists");
       sheet.innerHTML = `
         <div class="spray-picker-head"><span>Imported ${ok} of ${results.length}</span><button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button></div>
