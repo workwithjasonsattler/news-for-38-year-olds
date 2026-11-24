@@ -958,8 +958,8 @@
           <div class="tune-opt-sub">Leaves out ${pod ? "episodes" : "videos"} with that whole word in the title. The same list as your stories.</div>
         </div>
         ${src.reader_added
-          ? `<button type="button" class="tune-opt" id="tuneRemoveBtn" style="margin-top:12px;"><span class="tune-opt-title">Remove channel</span><span class="tune-opt-sub">Takes ${escapeHtml(ch)} out of your videos for good. You can add it again any time.</span></button>`
-          : `<button type="button" class="tune-opt" id="tunePackBtn" style="margin-top:12px;"><span class="tune-opt-title">Add to an RSS Pack</span><span class="tune-opt-sub">Put this channel in one of your own RSS Packs.</span></button>`}
+          ? `<button type="button" class="tune-opt" id="tuneRemoveBtn" style="margin-top:12px;"><span class="tune-opt-title">${pod ? "Remove show" : "Remove channel"}</span><span class="tune-opt-sub">Takes ${escapeHtml(ch)} out of your ${pod ? "podcasts" : "videos"} for good. You can add it again any time.</span></button>`
+          : `<button type="button" class="tune-opt" id="tunePackBtn" style="margin-top:12px;"><span class="tune-opt-title">Add to an RSS Pack</span><span class="tune-opt-sub">Put this ${pod ? "show" : "channel"} in one of your own RSS Packs.</span></button>`}
       </div>`;
     document.body.appendChild(el);
     el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
@@ -987,14 +987,71 @@
   // ----- Reader-added YouTube channels (private to the reader) -----
   async function removeVideoChannel(id, name) {
     if (!id) return;
-    if (!confirm(`Remove ${name} from your videos?`)) return;
+    const what = onPodcasts() ? "podcasts" : "videos";
+    if (!confirm(`Remove ${name} from your ${what}?`)) return;
     closeTuneSheet();
     try {
       await api(`/api/my/custom-sources/${encodeURIComponent(id)}`, { method: "DELETE" });
       setVideoMode(name, "on"); // drop any leftover tweak for it
-      toast(`${name} removed from your videos.`);
+      toast(`${name} removed from your ${what}.`);
       afterVideoChange();
-    } catch (e) { toast(e.message || "Couldn't remove that channel."); }
+    } catch (e) { toast(e.message || `Couldn't remove that ${onPodcasts() ? "show" : "channel"}.`); }
+  }
+
+  function startAddPodcast(prefill) {
+    if (!requireSignIn("Sign in to add a podcast.", () => openAddPodcastSheet(prefill))) return;
+    openAddPodcastSheet(prefill);
+  }
+  // Same shape as Add a channel: one field, a Check step showing the show and its
+  // newest episode, then Add. Only you see the shows you add.
+  function openAddPodcastSheet(prefill) {
+    closeTuneSheet();
+    const el = document.createElement("div");
+    el.id = "tuneOverlay";
+    el.className = "spray-picker-overlay";
+    el.innerHTML = `
+      <div class="spray-picker-card">
+        <div class="spray-picker-head">
+          <span><strong>Add a podcast</strong></span>
+          <button class="spray-picker-close" id="tuneClose" aria-label="Close">\u00d7</button>
+        </div>
+        <p class="spray-picker-sub">Paste a podcast's RSS link, or the address of its website. It joins your podcasts, newest first. Only you see it.</p>
+        <div class="spray-picker-newrow">
+          <input type="text" id="addPodInput" placeholder="RSS link or website" maxlength="500" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="go">
+          <button class="btn" id="addPodCheck" type="button">Check</button>
+        </div>
+        <div id="addPodResult" class="tune-opt-sub" style="margin-top:12px;" aria-live="polite"></div>
+      </div>`;
+    document.body.appendChild(el);
+    el.addEventListener("click", (e) => { if (e.target === el) closeTuneSheet(); });
+    el.querySelector("#tuneClose").addEventListener("click", closeTuneSheet);
+    const input = el.querySelector("#addPodInput");
+    const check = el.querySelector("#addPodCheck");
+    const out = el.querySelector("#addPodResult");
+    const run = async () => {
+      const value = input.value.trim();
+      if (!value) { out.textContent = "Paste a podcast's RSS link or website first."; return; }
+      check.disabled = true; input.disabled = true;
+      out.textContent = "Checking\u2026";
+      try {
+        const r = await api("/api/my/podcasts", { method: "POST", body: JSON.stringify({ input: value }) });
+        out.innerHTML = `<strong>${escapeHtml(r.title)}</strong>${r.newest_title ? `<br>Newest: ${escapeHtml(r.newest_title)}` : ""}<div style="margin-top:10px;"><button class="btn" id="addPodConfirm" type="button">Add ${escapeHtml(r.title)}</button></div>`;
+        el.querySelector("#addPodConfirm").addEventListener("click", async (ev) => {
+          ev.target.disabled = true;
+          try {
+            const added = await api("/api/my/podcasts", { method: "POST", body: JSON.stringify({ input: r.feed_url, confirm: true }) });
+            closeTuneSheet();
+            toast(`${added.name} added to your podcasts.`);
+            afterVideoChange();
+          } catch (err) { ev.target.disabled = false; out.textContent = err.message || "Couldn't add that show."; }
+        });
+      } catch (err) {
+        out.textContent = err.message || "We couldn't find a podcast feed there.";
+      } finally { check.disabled = false; input.disabled = false; }
+    };
+    check.addEventListener("click", run);
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); run(); } });
+    if (prefill) { input.value = prefill; run(); } else { setTimeout(() => { try { input.focus(); } catch (e) { /* ignore */ } }, 50); }
   }
 
   // One field, a Check step that shows what was found, then Add.
@@ -1080,12 +1137,13 @@
       openVideoReviewSheet();
     }));
     el.querySelector("#vrWords").addEventListener("click", () => { closeTuneSheet(); openYourFeedScreen(); });
-    if (currentUser && !onPodcasts()) {
+    if (currentUser) {
+      const podList = onPodcasts();
       api("/api/my/custom-sources").then((list) => {
-        const mine = (Array.isArray(list) ? list : []).filter(c => c.is_video);
+        const mine = (Array.isArray(list) ? list : []).filter(c => podList ? c.is_podcast : c.is_video);
         const box = el.querySelector("#vrChannels");
         if (!box || !mine.length) return;
-        box.innerHTML = `<div class="tune-opt-title" style="margin-top:14px;">Your channels</div>` + mine.map(c => `<div class="vr-row"><span><strong>${escapeHtml(c.name)}</strong></span><button type="button" class="btn vr-restore" data-rm="${escapeHtml(String(c.id))}" data-name="${escapeHtml(c.name)}">Remove</button></div>`).join("");
+        box.innerHTML = `<div class="tune-opt-title" style="margin-top:14px;">${podList ? "Your shows" : "Your channels"}</div>` + mine.map(c => `<div class="vr-row"><span><strong>${escapeHtml(c.name)}</strong></span><button type="button" class="btn vr-restore" data-rm="${escapeHtml(String(c.id))}" data-name="${escapeHtml(c.name)}">Remove</button></div>`).join("");
         box.querySelectorAll("[data-rm]").forEach(b => b.addEventListener("click", () => removeVideoChannel(b.dataset.rm, b.dataset.name)));
       }).catch(() => { /* the list is optional */ });
     }
@@ -1134,9 +1192,14 @@
   function addChannelBarHtml() {
     return `<div class="vid-add-bar"><button type="button" class="btn vid-add-btn" id="vidAddChannel">+ Add a channel</button></div>`;
   }
+  function addPodcastBarHtml() {
+    return `<div class="vid-add-bar"><button type="button" class="btn vid-add-btn" id="vidAddPodcast">+ Add a podcast</button></div>`;
+  }
   function wireAddChannelBar(root) {
     const b = root.querySelector("#vidAddChannel");
     if (b) b.addEventListener("click", () => startAddChannel());
+    const pb = root.querySelector("#vidAddPodcast");
+    if (pb) pb.addEventListener("click", () => startAddPodcast());
   }
 
   async function renderVideos(opts) {
@@ -1148,7 +1211,7 @@
     try {
       const items = await fetchItemsForSprayKey(pod ? "__podcasts" : "__youtube");
       if (activeTab !== "videos") return;
-      const topBar = videosPillRowHtml() + (pod ? "" : addChannelBarHtml());
+      const topBar = videosPillRowHtml() + (pod ? addPodcastBarHtml() : addChannelBarHtml());
       const edits = readVideoEdits();
       const sorted = items
         .filter(d => edits[videoChannelOf(d)] !== "hidden")
@@ -1663,7 +1726,7 @@
     if (!src) return "";
     if (d.is_video) src.video = true;
     if (d.is_podcast) { src.video = true; src.podcast = true; }
-    if (d.is_video && d.reader_added) { src.reader_added = true; src.custom_source_id = d.custom_source_id; }
+    if ((d.is_video || d.is_podcast) && d.reader_added) { src.reader_added = true; src.custom_source_id = d.custom_source_id; }
     const name = escapeHtml(src.label || (d.is_podcast ? "this show" : d.is_video ? "this channel" : "this source"));
     return `<button type="button" class="tune-btn src-menu-btn${cls ? " " + cls : ""}" data-tune='${escapeHtml(JSON.stringify(src))}' aria-label="Options for ${name}" title="Options for ${name}">${DOTS_SVG}</button>`;
   }
@@ -2362,8 +2425,15 @@
     if (key === "__podcasts") {
       // The house Progressive Podcasts Pack. Episodes are ordinary dispatches, marked so
       // their cards use the podcast tune sheet instead of the My Feed one.
-      const mix = await api(`/api/mixes/${encodeURIComponent(PODCAST_PACK_SLUG)}`);
-      return (Array.isArray(mix.items) ? mix.items : []).map(d => Object.assign({}, d, { is_podcast: true }));
+      const [mix, mine] = await Promise.all([
+        api(`/api/mixes/${encodeURIComponent(PODCAST_PACK_SLUG)}`),
+        // The reader's own shows (signed in only). A failure here never hides the house list.
+        currentUser ? api("/api/my/podcast-feed").catch(() => []) : Promise.resolve([]),
+      ]);
+      const out = (Array.isArray(mix.items) ? mix.items : []).map(d => Object.assign({}, d, { is_podcast: true }));
+      const seen = new Set(out.map(d => d.link));
+      (Array.isArray(mine) ? mine : []).forEach(d => { if (!seen.has(d.link)) out.push(d); });
+      return out;
     }
     if (key === "__bluesky") {
       const posts = await fetchBlueskyPopularCached();

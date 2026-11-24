@@ -460,6 +460,7 @@ async function initSchema() {
     `ALTER TABLE feed_mixes ADD COLUMN forked_from_id INTEGER`,
     `ALTER TABLE feed_mixes ADD COLUMN description TEXT`,
     `ALTER TABLE user_top_lists ADD COLUMN admin_hidden INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE user_custom_sources ADD COLUMN is_podcast INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE feed_mixes ADD COLUMN is_official INTEGER NOT NULL DEFAULT 0`,
     // auto_sync is split out from is_official (see the note above
     // seedOfficialHeadlinesSpray()) so a real, editor-curated official Pack
@@ -2990,8 +2991,8 @@ async function addCustomToMyFeed(userId, customSourceId) {
     const mix = await dbGet(`SELECT id FROM feed_mixes WHERE creator_user_id = ? AND is_my_feed = 1 ORDER BY id ASC LIMIT 1`, [userId]);
     if (!mix || !customSourceId) return;
     // YouTube channels live on Videos, never in the Read wire or My Feed.
-    const cs = await dbGet(`SELECT feed_url FROM user_custom_sources WHERE id = ?`, [customSourceId]);
-    if (cs && isYoutubeRssUrl(cs.feed_url)) return;
+    const cs = await dbGet(`SELECT feed_url, is_podcast FROM user_custom_sources WHERE id = ?`, [customSourceId]);
+    if (cs && (isYoutubeRssUrl(cs.feed_url) || Number(cs.is_podcast) === 1)) return;
     const have = await dbGet(`SELECT id FROM feed_mix_sources WHERE mix_id = ? AND source_type = 'custom' AND custom_source_id = ?`, [mix.id, customSourceId]);
     if (have) return;
     const n = (await dbGet(`SELECT COUNT(*) AS n FROM feed_mix_sources WHERE mix_id = ?`, [mix.id])).n;
@@ -3063,10 +3064,10 @@ app.get("/api/my/custom-sources", async (req, res) => {
   const user = await getCurrentUser(req);
   if (!user) return res.status(401).json({ error: "not signed in" });
   const rows = await dbAll(
-    `SELECT id, name, feed_url, submission_status, created_at FROM user_custom_sources WHERE user_id = ? ORDER BY created_at DESC`,
+    `SELECT id, name, feed_url, submission_status, created_at, is_podcast FROM user_custom_sources WHERE user_id = ? ORDER BY created_at DESC`,
     [user.id]
   );
-  res.json(rows.map((r) => ({ ...r, is_video: isYoutubeRssUrl(r.feed_url) })));
+  res.json(rows.map((r) => ({ ...r, is_video: isYoutubeRssUrl(r.feed_url), is_podcast: Number(r.is_podcast) === 1 })));
 });
 
 app.post("/api/my/custom-sources", async (req, res) => {
@@ -3312,6 +3313,138 @@ app.get("/api/my/video-feed", async (req, res) => {
   results.filter((r) => r.status === "rejected").forEach((r) => console.error("My video channel fetch failed:", r.reason?.message || r.reason));
   const all = results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value);
   all.sort((a, b) => new Date(b.published_at) - new Date(a.published_at));
+  res.json(all);
+});
+
+// ---------- Podcasts: reader-added shows (slice 3) ----------
+// A reader pastes a podcast's RSS link (or a page that advertises one). Every
+// fetch goes through the SSRF guard. A feed only counts as a podcast if at least
+// one recent item carries an audio enclosure. It is stored as an ordinary
+// user_custom_sources row with is_podcast = 1, which keeps it out of the Read wire
+// and My Feed (see the is_podcast filters) and gives caps, privacy, account
+// deletion and OPML export for free. 25 shows inside the 50-source cap.
+const PODCAST_CAP = 25;
+const PODCAST_PER_SHOW = 5;
+const PODCAST_CACHE_TTL_MS = 30 * 60 * 1000;
+const podcastFeedCache = new Map(); // feed_url -> { data, fetchedAt }
+
+// -> { title, items, audio } for any parseable feed, or throws.
+async function loadPodcastFeed(url) {
+  const cached = podcastFeedCache.get(url);
+  if (cached && Date.now() - cached.fetchedAt < PODCAST_CACHE_TTL_MS) return cached.data;
+  const resp = await fetchWithSSRFGuard(url, { timeoutMs: 8000 });
+  if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+  const xml = await readCappedText(resp, 3 * 1024 * 1024);
+  const parsed = xmlParser.parse(xml);
+  const items = extractItems(parsed).filter((it) => it.title && it.link);
+  if (items.length === 0) throw new Error("no items");
+  const title = stripHtml(textOf(parsed?.rss?.channel?.title) || textOf(parsed?.feed?.title) || "").slice(0, 80);
+  const data = { title: title || (() => { try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return "Podcast"; } })(), items, audio: items.some((it) => it.isAudio) };
+  podcastFeedCache.set(url, { data, fetchedAt: Date.now() });
+  return data;
+}
+
+function podcastEpisodeItems(feed, name, extra) {
+  return feed.items
+    .map((it) => {
+      const t = Date.parse(it.pubDate || "");
+      return {
+        id: "pod-" + linkIdHash(it.link),
+        headline: stripHtml(it.title),
+        title: stripHtml(it.title),
+        outlet: name,
+        link: it.link,
+        date: Number.isFinite(t) ? new Date(t).toISOString() : null,
+        excerpt: cleanPodcastText(it.summary || "").slice(0, 300),
+        image_url: it.image || null,
+        is_podcast: true,
+        ...extra,
+      };
+    })
+    .sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0))
+    .slice(0, PODCAST_PER_SHOW);
+}
+
+async function countPodcasts(userId) {
+  return (await dbGet(`SELECT COUNT(*) AS n FROM user_custom_sources WHERE user_id = ? AND is_podcast = 1`, [userId])).n;
+}
+
+// Finds the podcast feed for what the reader pasted: the feed itself, or a page
+// that advertises one. Returns { url, feed } or { error, status }.
+async function resolvePodcastInput(rawInput) {
+  let input = String(rawInput || "").trim().slice(0, 500);
+  if (!input) return { error: "Paste a podcast's RSS link or its web address.", status: 400 };
+  if (!/^https?:\/\//i.test(input)) input = "https://" + input;
+  let u;
+  try { u = new URL(input); } catch { return { error: "That doesn't look like a web address.", status: 400 }; }
+  if (!/^https?:$/.test(u.protocol)) return { error: "Only http and https links work.", status: 400 };
+  let sawFeedWithoutAudio = false;
+  const tryFeed = async (url) => {
+    try {
+      const feed = await loadPodcastFeed(url);
+      if (feed.audio) return { url, feed };
+      sawFeedWithoutAudio = true;
+    } catch { /* not a feed */ }
+    return null;
+  };
+  let hit = await tryFeed(input);
+  if (!hit) {
+    let candidates = [];
+    try {
+      const resp = await fetchWithSSRFGuard(input, { timeoutMs: 8000 });
+      if (resp.ok) {
+        const html = await readCappedText(resp, FEED_DISCOVERY_HEAD_SCAN_CAP);
+        candidates = extractFeedLinksFromHtml(html, input);
+      }
+    } catch { /* fall through */ }
+    for (const c of candidates.slice(0, 4)) { hit = await tryFeed(c.url); if (hit) break; }
+  }
+  if (hit) return hit;
+  if (sawFeedWithoutAudio) return { error: "That feed has no audio episodes. For articles, use + Add a Feed instead.", status: 400 };
+  return { error: "We couldn't find a podcast feed there. Paste the show's RSS link.", status: 404 };
+}
+
+// Check (no confirm) or add (confirm:true).
+app.post("/api/my/podcasts", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  if (!videoChannelCheckAllowed(user.id)) return res.status(429).json({ error: "Slow down a little and try again in a few minutes." });
+  try {
+    const found = await resolvePodcastInput(req.body?.input);
+    if (found.error) return res.status(found.status).json({ error: found.error });
+    const existing = await dbGet(`SELECT id, name FROM user_custom_sources WHERE user_id = ? AND feed_url = ?`, [user.id, found.url]);
+    if (existing) return res.status(409).json({ error: "You've already added that show.", id: existing.id, name: existing.name });
+    if ((await countPodcasts(user.id)) >= PODCAST_CAP) return res.status(400).json({ error: `You've added ${PODCAST_CAP} shows, the most you can have. Remove one to add another.` });
+    const total = (await dbGet(`SELECT COUNT(*) AS n FROM user_custom_sources WHERE user_id = ?`, [user.id])).n;
+    if (total >= CUSTOM_SOURCE_CAP) return res.status(400).json({ error: `You've reached the ${CUSTOM_SOURCE_CAP}-source limit for your own feeds.` });
+    const newest = podcastEpisodeItems(found.feed, found.feed.title, {})[0];
+    if (req.body?.confirm !== true) {
+      // The resolved feed address goes back so Add re-checks exactly what was shown.
+      return res.json({ ok: true, feed_url: found.url, title: found.feed.title, newest_title: newest?.title || null });
+    }
+    const info = await dbRun(
+      `INSERT INTO user_custom_sources (user_id, name, feed_url, validated, submission_status, is_podcast) VALUES (?, ?, ?, 1, 'pending', 1)`,
+      [user.id, found.feed.title, found.url]
+    );
+    res.json({ ok: true, id: Number(info.lastInsertRowid), name: found.feed.title });
+  } catch (e) {
+    console.error("podcast add failed:", e?.message || e);
+    res.status(500).json({ error: "Couldn't add that show. Try again." });
+  }
+});
+
+// The reader's own shows, newest episodes first. Cached per feed, not per reader.
+app.get("/api/my/podcast-feed", async (req, res) => {
+  const user = await getCurrentUser(req);
+  if (!user) return res.status(401).json({ error: "not signed in" });
+  const rows = await dbAll(`SELECT id, name, feed_url FROM user_custom_sources WHERE user_id = ? AND is_podcast = 1 ORDER BY id ASC`, [user.id]);
+  const results = await Promise.allSettled(rows.map(async (r) => {
+    const feed = await loadPodcastFeed(r.feed_url);
+    return podcastEpisodeItems(feed, r.name, { reader_added: true, custom_source_id: r.id, tip_url: null, subscribe_url: null });
+  }));
+  results.filter((r) => r.status === "rejected").forEach((r) => console.error("My podcast fetch failed:", r.reason?.message || r.reason));
+  const all = results.filter((r) => r.status === "fulfilled").flatMap((r) => r.value);
+  all.sort((a, b) => (Date.parse(b.date) || 0) - (Date.parse(a.date) || 0));
   res.json(all);
 });
 
@@ -4766,7 +4899,7 @@ async function ensureMyFeedInner(user) {
   }
   try {
     const outlets = await dbAll(WIRE_OUTLETS_SQL);
-    const customs = await dbAll(`SELECT id FROM user_custom_sources WHERE user_id = ? AND feed_url NOT LIKE ? ORDER BY id ASC`, [user.id, YT_RSS_PREFIX + "%"]);
+    const customs = await dbAll(`SELECT id FROM user_custom_sources WHERE user_id = ? AND feed_url NOT LIKE ? AND COALESCE(is_podcast, 0) = 0 ORDER BY id ASC`, [user.id, YT_RSS_PREFIX + "%"]);
     const rows = [
       ...outlets.map((o) => ["admin_outlet", o.outlet, null]),
       ...customs.map((c) => ["custom", null, c.id]),
@@ -6010,7 +6143,7 @@ app.get("/api/dispatches", async (req, res) => {
   // the wire. Only blended into the main unfiltered wire, not a beat-
   // filtered view — custom sources aren't categorized into a beat.
   if (user && !beat) {
-    const customSources = await dbAll(`SELECT id, name, feed_url FROM user_custom_sources WHERE user_id = ? AND feed_url NOT LIKE ?`, [user.id, YT_RSS_PREFIX + "%"]);
+    const customSources = await dbAll(`SELECT id, name, feed_url FROM user_custom_sources WHERE user_id = ? AND feed_url NOT LIKE ? AND COALESCE(is_podcast, 0) = 0`, [user.id, YT_RSS_PREFIX + "%"]);
     if (customSources.length > 0) {
       const results = await Promise.allSettled(
         customSources.map(async (cs) => {
