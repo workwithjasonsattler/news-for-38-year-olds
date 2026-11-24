@@ -6322,7 +6322,7 @@
   function youDidReadRowHtml() {
     return `
       <button class="card you-sources-row" id="youDidReadRow" type="button" style="width:100%; text-align:left; cursor:pointer; margin-bottom:18px;">
-        <div class="card-meta"><span>DID READ</span></div>
+        <div class="card-meta"><span>NOTES</span></div>
         <div class="card-title" style="margin-bottom:4px;">Your notes on stories \u203a</div>
         <div class="section-sub" style="margin:0; font-size:13px;">What you made of the news. Private, and they stay attached to the story.</div>
       </button>`;
@@ -7027,7 +7027,7 @@
     const link = d && d.link;
     if (!link || !/^https?:\/\//i.test(link)) return "";
     const payload = { link, headline: (d.title || d.headline || "").slice(0, 300), outlet: (d.outlet || d.source || "").trim().slice(0, 120) };
-    return `<button type="button" class="did-read-btn" data-dr='${escapeHtml(JSON.stringify(payload))}'>\u270e Did Read</button>`;
+    return `<button type="button" class="did-read-btn" data-dr='${escapeHtml(JSON.stringify(payload))}'>\u270e Note</button>`;
   }
   function closeDidRead() { const el = document.getElementById("didReadOverlay"); if (el) el.remove(); }
   async function openDidReadSheet(item) {
@@ -7039,14 +7039,14 @@
     el.className = "spray-picker-overlay";
     el.innerHTML = `
       <div class="spray-picker-card">
-        <div class="spray-picker-head"><span><strong>Did Read</strong></span><button class="spray-picker-close" id="drClose" aria-label="Close">\u00d7</button></div>
+        <div class="spray-picker-head"><span><strong>Note</strong></span><button class="spray-picker-close" id="drClose" aria-label="Close">\u00d7</button></div>
         <p class="spray-picker-sub">${escapeHtml(item.headline || item.link)}${item.outlet ? ` \u00b7 ${escapeHtml(item.outlet)}` : ""}</p>
         <textarea class="create-flow-input" id="drBody" rows="5" maxlength="2000" placeholder="What did you make of it?">${escapeHtml(existing ? existing.body : "")}</textarea>
         <fieldset class="dr-vis">
           <legend>Who can see this</legend>
           <label class="dr-opt"><input type="radio" name="drVis" value="device"><span><strong>\ud83d\udd12 Just me, on this device</strong><small>Saved on this phone or browser only. Never sent anywhere. Clearing the app\u2019s data deletes it.</small></span></label>
           <label class="dr-opt"><input type="radio" name="drVis" value="account"><span><strong>\ud83d\udd12 Just me, all my devices</strong><small>Saved in your SOURCE! account so it follows you to a new phone. Private. Deleted when you delete your account.</small></span></label>
-          <label class="dr-opt dr-off"><input type="radio" name="drVis" value="public" disabled><span><strong>\ud83c\udf10 Public on Bluesky</strong><small>Coming soon. Nothing is ever posted unless you tap Post.</small></span></label>
+          <label class="dr-opt dr-off"><input type="radio" name="drVis" value="public" disabled><span><strong>\ud83c\udf10 Comment on Bluesky</strong><small>Coming soon. Nothing is ever posted unless you tap Post.</small></span></label>
         </fieldset>
         <div class="pack-actions">
           <button type="button" class="btn primary" id="drSave">Save note</button>
@@ -7111,7 +7111,7 @@
     el.className = "spray-picker-overlay";
     el.innerHTML = `
       <div class="spray-picker-card">
-        <div class="spray-picker-head"><span><strong>Did Read</strong></span><button class="spray-picker-close" id="drClose" aria-label="Close">\u00d7</button></div>
+        <div class="spray-picker-head"><span><strong>Note</strong></span><button class="spray-picker-close" id="drClose" aria-label="Close">\u00d7</button></div>
         <p class="spray-picker-sub">Your notes on stories, newest first. Only you can see them.</p>
         <div id="drList">${notes.length ? notes.map((n, i) => `
           <div class="dr-note">
@@ -7119,7 +7119,7 @@
             <a class="dr-note-title" href="${escapeHtml(n.link)}" target="_blank" rel="noopener noreferrer">${escapeHtml(n.headline || n.link)}</a>
             <p class="dr-note-body">${escapeHtml(n.body)}</p>
             <button type="button" class="caption-link" data-edit="${i}">Edit</button>
-          </div>`).join("") : `<div class="spray-picker-empty">Nothing here yet. Tap \u201c\u270e Did Read\u201d on any story to write your first note.</div>`}</div>
+          </div>`).join("") : `<div class="spray-picker-empty">Nothing here yet. Tap \u201c\u270e Note\u201d on any story to write your first one.</div>`}</div>
       </div>`;
     document.body.appendChild(el);
     el.addEventListener("click", (e) => { if (e.target === el) closeDidRead(); });
