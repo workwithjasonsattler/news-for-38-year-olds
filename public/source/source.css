@@ -3387,3 +3387,14 @@ a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 .mc-rows { margin-top: 10px; border-top: 1px solid var(--line); }
 .mc-rows > * { display: flex; width: 100%; box-sizing: border-box; min-height: 48px; align-items: center; justify-content: space-between; border: 0 !important; border-bottom: 1px solid var(--line) !important; border-radius: 0 !important; background: none !important; padding: 0; font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); text-align: left; }
 .mc-rows > *::after { content: "\203a"; color: var(--ink-muted); }
+
+/* Desktop reader pane: one main action with Support and full screen beside it, then a ruled list of actions. */
+.reader-readbar { display: flex; align-items: center; gap: 10px; margin-top: 16px; }
+.reader-readbar .reader-open-link { flex: 1; min-height: 48px; display: flex; align-items: center; justify-content: center; font-family: var(--display); font-weight: 700; font-size: 16px; }
+.reader-readbar .tip-btn { white-space: nowrap; }
+.reader-rows { margin-top: 12px; border-top: 1px solid var(--line); }
+.reader-rows > * { display: flex; width: 100%; box-sizing: border-box; min-height: 48px; align-items: center; justify-content: space-between; border: 0 !important; border-bottom: 1px solid var(--line) !important; border-radius: 0 !important; background: none !important; padding: 0 2px; font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); text-align: left; cursor: pointer; }
+.reader-rows > *::after { content: "\203a"; color: var(--ink-muted); }
+.reader-rows .src-menu-btn { width: 100%; height: auto; }
+.reader-rows .src-menu-btn > * { display: none; }
+.reader-rows .src-menu-btn::before { content: "Options for this source"; font-size: 14px; }

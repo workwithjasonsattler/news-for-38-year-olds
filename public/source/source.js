@@ -3360,16 +3360,19 @@
         <h2 class="reader-title${noImage ? " reader-title-large" : ""}${scrollMode ? " reader-title-scroll" : ""}">${d.link ? `<a class="reader-title-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">${escapeHtml(title)}</a>` : escapeHtml(title)}</h2>
         ${excerpt ? `<p class="reader-excerpt${scrollMode ? " reader-excerpt-scroll" : ""}">${escapeHtml(excerpt)}</p>` : ""}
         ${scrollMode && discussUrl ? `<a class="reader-discuss-scroll" href="${escapeHtml(discussUrl)}" target="_blank" rel="noopener">See the conversation on Bluesky ↗</a>` : ""}
-        <div class="reader-actions">
-          ${d.link ? `<a class="btn primary reader-open-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">${d.is_video ? "Watch on YouTube ↗" : "Open original ↗"}</a>
-          ${d.is_video ? "" : `<button class="btn" id="readerMoreBtn">Try reader view</button>`}` : ""}
+        <div class="reader-readbar">
+          ${d.link ? `<a class="btn primary reader-open-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">${d.is_video ? "Watch on YouTube ↗" : "Read the story ↗"}</a>` : ""}
           ${tipSubscribeButton(d)}
-          ${sprayAddButton(d)}
+          <button class="btn reader-fullscreen-btn" id="readerFullscreenBtn" title="${readerFullscreen ? "Exit full screen" : "Full screen"}" aria-label="${readerFullscreen ? "Exit full screen" : "Full screen"}">${readerFullscreen ? "⤡" : "⛶"}</button>
+        </div>
+        <div class="reader-rows">
+          ${talkButton(d)}
+          ${d.link && !d.is_video ? `<button class="btn" id="readerMoreBtn">Try reader view</button>` : ""}
           ${saveButton(d)}
           ${didReadButton(d)}
-          ${tuneButton(d)}
+          ${sprayAddButton(d)}
           ${shareButton(d)}
-          <button class="btn reader-fullscreen-btn" id="readerFullscreenBtn" title="${readerFullscreen ? "Exit full screen" : "Full screen"}" aria-label="${readerFullscreen ? "Exit full screen" : "Full screen"}">${readerFullscreen ? "⤡" : "⛶"}</button>
+          ${tuneButton(d)}
         </div>
         ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
         <div class="reader-frame-wrap" id="readerFrameWrap" hidden></div>
