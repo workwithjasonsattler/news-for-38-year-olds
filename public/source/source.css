@@ -3379,3 +3379,15 @@ a.top-pub-main:hover .top-pub-headline { color: var(--live-ink, #C42A0E); }
 
 /* Scroll view rows: a slightly taller picture than the Classic top-row hero. */
 #main.read-mobile-classic .mc-hero { max-height: 220px; }
+
+/* Scroll view, opened row: one main action, a four-button row, a Who's talking row, then the source line. */
+.mc-row .mc-open-main { display: flex; align-items: center; justify-content: center; width: 100%; min-height: 48px; box-sizing: border-box; margin-top: 12px; border-radius: 6px; border: 0; background: var(--ink); color: #fff; font-family: var(--display); font-weight: 700; font-size: 16px; }
+.mc-quick { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 8px; border-top: 1px solid var(--line); }
+.mc-quick > * { min-height: 48px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; border: 0 !important; background: none !important; border-radius: 0 !important; font-size: 13px; padding: 0 4px; width: auto; height: auto; }
+.mc-quick .src-menu-btn { width: auto; height: 48px; }
+.mc-talk-row { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+.mc-talk-row .story-talk-btn { display: flex; width: 100%; min-height: 48px; align-items: center; justify-content: space-between; border: 0; background: none; font: inherit; font-size: 14px; font-weight: 600; color: var(--ink); padding: 0; }
+.mc-talk-row .story-talk-btn::after { content: "\203a"; }
+.mc-source-line-scroll { border-top: 0; margin-top: 4px; padding-top: 0; justify-content: space-between; }
+.mc-source-line-scroll .mc-support { border: 0; background: none; padding: 0; text-decoration: underline; font-weight: 600; }
+.mc-quick-more::after { content: "More"; margin-left: 6px; font-weight: 600; }

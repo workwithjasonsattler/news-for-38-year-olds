@@ -3489,6 +3489,19 @@
           <div class="mc-body" hidden>
             ${d.link ? `<a class="mc-img-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener"><img class="mc-img" id="thumb-${id}" alt="" ${d.image_url ? `data-src="${escapeHtml(d.image_url)}"` : ""} onload="this.classList.add('loaded')" onerror="this.remove()"></a>` : ""}
             ${excerpt ? `<p class="mc-excerpt">${escapeHtml(excerpt)}</p>` : ""}
+            ${scroll ? `
+            ${d.link ? `<a class="mc-open mc-open-main" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read the story ↗</a>` : ""}
+            <div class="mc-quick">
+              ${saveButton(d)}
+              ${didReadButton(d)}
+              ${storyShareButton(d)}
+              ${tuneButton(d, "mc-quick-more")}
+            </div>
+            ${talkButton(d) ? `<div class="mc-talk-row">${talkButton(d)}</div>` : ""}
+            <div class="mc-source-line mc-source-line-scroll">
+              <div class="mc-source-id"><span class="mc-source-label">Source</span><span class="mc-source-name">${escapeHtml((d.outlet || d.source || "").trim())}</span></div>
+              ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener" aria-label="${escapeHtml(support.label)}">Support ${outlet}</a>` : ""}
+            </div>` : `
             <div class="mc-actions">
               ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
               ${saveButton(d)}
@@ -3500,7 +3513,7 @@
               <div class="mc-source-id"><span class="mc-source-label">Source</span><span class="mc-source-name">${escapeHtml((d.outlet || d.source || "").trim())}</span></div>
               ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener" aria-label="${escapeHtml(support.label)}">💛 Support</a>` : ""}
               ${tuneButton(d)}
-            </div>
+            </div>`}
           </div>
         </div>`;
       return foldItemHtml(e, rowHtml) + (e.role === "head" ? foldToggleHtml(e) : "");
