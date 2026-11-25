@@ -1941,8 +1941,52 @@
     const v = Object.values(readHeldFeedEdits());
     return { hidden: v.filter(m => m === "hidden").length, fold: v.filter(m => m === "fold").length, top: v.filter(m => m === "top").length, muted, defs };
   }
+  // Oldest first, per RSS Pack. The reader's own switch, saved on this device. It only
+  // applies while that one Pack is open on its own: merged views and All stay newest
+  // first, and the caption says so plainly. (Serial blogs read best oldest first.)
+  const OLDEST_FIRST_KEY = "source_oldest_first";
+  function readOldestFirstKeys() {
+    try { const v = JSON.parse(localStorage.getItem(OLDEST_FIRST_KEY) || "[]"); return Array.isArray(v) ? v.filter(k => typeof k === "string") : []; } catch (e) { return []; }
+  }
+  function writeOldestFirstKeys(list) { try { localStorage.setItem(OLDEST_FIRST_KEY, JSON.stringify(list.slice(0, 100))); } catch (e) { /* ignore */ } }
+  function oldestFirstEligibleKey() {
+    if (activeTab !== "read" || activeSprayKeys.size !== 1) return null;
+    const k = Array.from(activeSprayKeys)[0];
+    if (!k || k === "all" || k.startsWith("__")) return null;
+    return mixMetaCache.has(k) ? k : null;
+  }
+  function oldestFirstActive() {
+    const k = oldestFirstEligibleKey();
+    return !!k && readOldestFirstKeys().includes(k);
+  }
+  function setOldestFirst(on) {
+    const k = oldestFirstEligibleKey();
+    if (!k) return;
+    const list = readOldestFirstKeys().filter(x => x !== k);
+    if (on) list.push(k);
+    writeOldestFirstKeys(list);
+    const meta = mixMetaCache.get(k);
+    toast(on ? `${(meta && meta.name) || "This Pack"} now reads oldest first.` : "Back to newest first.");
+    refreshFeedCaption();
+    if (activeTab !== "read" || !Array.isArray(lastShown) || !lastShown.length) return;
+    // lastShown is already ordered; flip it to the new direction by date.
+    const dir = on ? 1 : -1;
+    lastShown = lastShown.slice().sort((a, b) => dir * (new Date(a.date || 0) - new Date(b.date || 0)));
+    getTrendingLinks().then(t => { if (activeTab === "read") renderReadBody(lastShown, t); });
+  }
+
   function refreshFeedCaption() {
     refreshFeedCaptionBase();
+    const elOF = document.getElementById("readPromiseCaption");
+    const okey = oldestFirstEligibleKey();
+    if (elOF && okey) {
+      if (oldestFirstActive()) {
+        const meta = mixMetaCache.get(okey);
+        elOF.innerHTML = `Sorted oldest first. You chose this for ${escapeHtml((meta && meta.name) || "this Pack")}. <button type="button" class="caption-link" id="oldestToggle">Switch back</button>`;
+        return;
+      }
+      elOF.innerHTML += ` <button type="button" class="caption-link" id="oldestToggle">Read oldest first</button>`;
+    }
     if (!relevanceActive()) return;
     const el = document.getElementById("readPromiseCaption");
     if (el) el.innerHTML = el.innerHTML.replace("Sorted by time.", "Sorted by relevance: stories your sources agree on come first.");
@@ -2331,6 +2375,7 @@
       if (act) act.textContent = open ? "Hide" : "Show";
       return;
     }
+    if (t.closest("#oldestToggle")) { setOldestFirst(!oldestFirstActive()); return; }
     if (t.closest("#feedReviewLink")) { if (activeTab === "videos") openVideoReviewSheet(); else openYourFeedScreen(); return; }
     if (t.closest("#readFootnoteLink")) openYourFeedScreen();
   });
@@ -2584,7 +2629,7 @@
     if (m === "columns") return false;
     return getLayoutMode() !== "desktop" || m === "scroll";
   }
-  function relevanceAvailable() { return listLayerAvailable(); }
+  function relevanceAvailable() { return listLayerAvailable() && !oldestFirstActive(); }
   function relevanceActive() { return relevanceOn && relevanceAvailable(); }
 
   /* RELEVANCE-BEGIN */
@@ -2707,6 +2752,8 @@
     return { top, rest };
   }
   function readEntries(shown, foldOn) {
+    // Oldest first is plain on purpose: no top section, folds or relevance groups.
+    if (oldestFirstActive()) return shown.map(d => ({ d, role: "normal" }));
     if (foldOn === undefined) foldOn = true;
     const { top, rest } = topSplit(shown);
     const base = (list) => relevanceActive() ? relevanceEntries(list) : foldEntriesFor(list, foldOn);
@@ -2824,6 +2871,7 @@
         main.innerHTML = stateBlock({ glyph: "∅", title: "NO SIGNAL", body: "No dispatches available right now." });
         return;
       }
+      refreshFeedCaption(); // the Pack's details are known now (oldest-first offer)
       // A single active source stays capped at 60 (unchanged, matches every
       // prior session's behavior). With MULTIPLE sources merged, ANY fixed
       // cap can mathematically exclude an entire lower-volume source — e.g.
@@ -2839,6 +2887,8 @@
         .slice()
         .sort((a, b) => new Date(b.date) - new Date(a.date))
         .slice(0, cap);
+      // Oldest first applies to the recent window the Pack gives us, read from its start.
+      if (oldestFirstActive()) shown.reverse();
 
       updateLiveStrip(shown);
 
