@@ -4683,6 +4683,13 @@
         switchTab("videos");
         return;
       }
+      if (created.is_podcast) {
+        toast(`"${created.name || feedUrl}" added to your podcasts.`);
+        videosPill = "podcasts";
+        videoTopShown = false;
+        switchTab("videos");
+        return;
+      }
       toast(`"${created.name || feedUrl}" added — it's already in your reading list.`);
       // Optional next step, not required: offer to fold it straight into
       // an existing RSS Pack (or start a new one) via the same picker every

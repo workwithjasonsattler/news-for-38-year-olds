@@ -3101,7 +3101,18 @@ app.post("/api/my/custom-sources", async (req, res) => {
     return res.status(400).json({ error: "Couldn't read that as an RSS/Atom feed — double-check the URL." });
   }
 
+  // A feed with audio episodes is a podcast: it goes to the reader's podcasts (and
+  // stays out of the Read wire) exactly as if added from the Podcasts pill.
+  let podcastFeed = null;
+  if (!isVideo) {
+    try { const pf = await loadPodcastFeed(feedUrl); if (pf.audio) podcastFeed = pf; } catch { /* just an ordinary feed */ }
+    if (podcastFeed && (await countPodcasts(user.id)) >= PODCAST_CAP) {
+      return res.status(400).json({ error: `You've added ${PODCAST_CAP} shows, the most you can have. Remove one to add another.` });
+    }
+  }
+
   let sourceName = name;
+  if (!sourceName && podcastFeed) sourceName = podcastFeed.title;
   if (!sourceName && isVideo) {
     // A pasted YouTube channel feed: name it after the channel, not "youtube.com".
     try {
@@ -3115,11 +3126,11 @@ app.post("/api/my/custom-sources", async (req, res) => {
   }
 
   const info = await dbRun(
-    `INSERT INTO user_custom_sources (user_id, name, feed_url, validated, submission_status) VALUES (?, ?, ?, 1, 'pending')`,
-    [user.id, sourceName, feedUrl]
+    `INSERT INTO user_custom_sources (user_id, name, feed_url, validated, submission_status, is_podcast) VALUES (?, ?, ?, 1, 'pending', ?)`,
+    [user.id, sourceName, feedUrl, podcastFeed ? 1 : 0]
   );
   await addCustomToMyFeed(user.id, Number(info.lastInsertRowid));
-  res.json({ id: info.lastInsertRowid, name: sourceName, feed_url: feedUrl, is_video: isVideo });
+  res.json({ id: info.lastInsertRowid, name: sourceName, feed_url: feedUrl, is_video: isVideo, is_podcast: !!podcastFeed });
 });
 
 app.delete("/api/my/custom-sources/:id", async (req, res) => {
