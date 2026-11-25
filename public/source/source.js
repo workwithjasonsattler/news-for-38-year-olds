@@ -7105,17 +7105,17 @@
         <div class="spray-picker-head"><span><strong>Note</strong></span><button class="spray-picker-close" id="drClose" aria-label="Close">\u00d7</button></div>
         <p class="spray-picker-sub">${escapeHtml(item.headline || item.link)}${item.outlet ? ` \u00b7 ${escapeHtml(item.outlet)}` : ""}</p>
         <textarea class="create-flow-input" id="drBody" rows="5" maxlength="2000" placeholder="What did you make of it?">${escapeHtml(existing ? existing.body : "")}</textarea>
+        <div class="pack-actions">
+          <button type="button" class="btn primary" id="drSave">Save note</button>
+          <button type="button" class="btn" id="drBsky">Post on Bluesky</button>
+          ${existing ? `<button type="button" class="btn" id="drDelete">Delete</button>` : ""}
+        </div>
+        <p class="spray-picker-sub" style="margin:10px 0 4px;">Want to say it in public? <strong>Post on Bluesky</strong> opens Bluesky\u2019s own composer with your text and the story link filled in. Nothing is posted until you tap Post there. SOURCE! never sees it.</p>
         <fieldset class="dr-vis">
           <legend>Who can see this</legend>
           <label class="dr-opt"><input type="radio" name="drVis" value="device"><span><strong>\ud83d\udd12 Just me, on this device</strong><small>Saved on this phone or browser only. Never sent anywhere. Clearing the app\u2019s data deletes it.</small></span></label>
           <label class="dr-opt"><input type="radio" name="drVis" value="account"><span><strong>\ud83d\udd12 Just me, all my devices</strong><small>Saved in your SOURCE! account so it follows you to a new phone. Private. Deleted when you delete your account.</small></span></label>
         </fieldset>
-        <p class="spray-picker-sub" style="margin-top:10px;">Want to say it in public? <strong>Comment on Bluesky</strong> opens Bluesky\u2019s own composer with your text and the story link filled in. Nothing is posted until you tap Post there. SOURCE! never sees it.</p>
-        <div class="pack-actions">
-          <button type="button" class="btn primary" id="drSave">Save note</button>
-          <button type="button" class="btn" id="drBsky">Comment on Bluesky</button>
-          ${existing ? `<button type="button" class="btn" id="drDelete">Delete</button>` : ""}
-        </div>
       </div>`;
     document.body.appendChild(el);
     const visInit = existing ? existing.vis : "device";
@@ -7149,7 +7149,7 @@
     });
     el.querySelector("#drBsky").addEventListener("click", () => {
       const body = bodyEl.value.trim();
-      if (!body) { toast("Write your comment first."); return; }
+      if (!body) { toast("Write something first."); return; }
       const url = blueskyComposeUrl(body, item.link);
       closeDidRead();
       window.open(url, "_blank", "noopener,noreferrer");
