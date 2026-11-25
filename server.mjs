@@ -7603,6 +7603,25 @@ async function buildRising({ days, minSharers, refresh }) {
     .map((g) => ({ host: g.host, sharers: [...g.sharers].map(([handle, outlet]) => ({ handle, outlet })), example: g.example }));
   return { generated_at: new Date(risingCache.at).toISOString(), handles_scanned: risingCache.handles, candidates };
 }
+// Admin: reads every house podcast feed the way the importer would, from Render's network.
+app.get("/api/admin/podcast-check", requireAdmin, async (req, res) => {
+  const rows = await dbAll(`SELECT outlet, feed_url FROM feeds WHERE fallback_beat = 'Podcast' AND feed_url IS NOT NULL AND feed_url != '' ORDER BY outlet`);
+  const out = await Promise.all(rows.map(async (r) => {
+    const base = { outlet: r.outlet, feed_url: r.feed_url };
+    try {
+      const resp = await fetchWithSSRFGuard(r.feed_url, { timeoutMs: 10000 });
+      if (!resp.ok) return { ...base, http: resp.status, result: "HTTP " + resp.status };
+      const xml = await readCappedText(resp, 3 * 1024 * 1024);
+      const items = extractItems(xmlParser.parse(xml)).filter((it) => it.title && it.link);
+      const dates = items.map((it) => Date.parse(it.pubDate || "")).filter(Number.isFinite).sort((a, b) => b - a);
+      return { ...base, http: resp.status, items: items.length, audio: items.filter((it) => it.isAudio).length, newest: dates.length ? new Date(dates[0]).toISOString() : null, result: items.length ? "ok" : "no items" };
+    } catch (e) {
+      return { ...base, http: 0, result: String(e?.message || e).slice(0, 120) };
+    }
+  }));
+  res.json(out);
+});
+
 app.get("/api/admin/rising", requireAdmin, async (req, res) => {
   const days = Math.min(Math.max(parseInt(req.query.days, 10) || 7, 1), 30);
   const minSharers = Math.min(Math.max(parseInt(req.query.minSharers, 10) || 2, 1), 10);

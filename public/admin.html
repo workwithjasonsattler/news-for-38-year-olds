@@ -78,6 +78,13 @@
     <table><thead><tr><th>Site</th><th>Shared by</th><th>Latest link</th><th></th></tr></thead><tbody id="risingRows"></tbody></table>
   </div>
 
+  <div class="panel" id="podcastCheckPanel">
+    <h2 style="font-family:var(--mono);font-size:14px;">PODCAST FEEDS</h2>
+    <p style="font-size:12px;color:#666;margin:0 0 10px;">Reads each house podcast feed from the server, the way the importer does. Healthy means HTTP 200, audio above 0 and a recent newest date.</p>
+    <div style="margin-bottom:10px;font-family:var(--mono);font-size:12px;"><button type="button" onclick="checkPodcasts()">Check podcast feeds</button> <span id="podcastCheckNote" style="color:#666;"></span></div>
+    <table><thead><tr><th>Show</th><th>Result</th><th>Items</th><th>Audio</th><th>Newest</th></tr></thead><tbody id="podcastCheckRows"></tbody></table>
+  </div>
+
   <div class="panel" id="doctorPanel">
     <h2 style="font-family:var(--mono);font-size:14px;">SOURCE DOCTOR</h2>
     <p style="font-size:12px;color:#666;margin:0 0 10px;">Checks every feed in the registry, then looks on each outlet's own site for a place to support it. Nothing changes until you approve a link. Corporate outlets are skipped. The scan runs in small batches and takes a few minutes the first time.</p>
@@ -344,6 +351,20 @@ async function loadRising(refresh){
 async function ignoreRising(host){
   await fetch('/api/admin/rising/ignore', {method:'POST', headers: authHeaders(), body: JSON.stringify({host})});
   await loadRising(false);
+}
+
+async function checkPodcasts(){
+  const note = document.getElementById('podcastCheckNote');
+  note.textContent = 'Checking...';
+  let res;
+  try { res = await fetch('/api/admin/podcast-check', {headers: authHeaders()}); } catch (e) { note.textContent = 'Lost connection.'; return; }
+  if (!res.ok) { note.textContent = 'Failed (' + res.status + ').'; return; }
+  const rows = await res.json();
+  note.textContent = rows.filter(r => r.result === 'ok' && r.audio > 0).length + ' of ' + rows.length + ' look healthy.';
+  document.getElementById('podcastCheckRows').innerHTML = rows.map(r => {
+    const good = r.result === 'ok' && r.audio > 0;
+    return '<tr><td>' + esc(r.outlet) + '</td><td style="color:' + (good ? '#1a7f37' : '#b8123a') + ';">' + esc(good ? 'OK' : r.result + (r.result === 'ok' ? ' (no audio)' : '')) + '</td><td>' + esc(r.items == null ? '' : r.items) + '</td><td>' + esc(r.audio == null ? '' : r.audio) + '</td><td>' + esc(r.newest ? r.newest.slice(0, 10) : '') + '</td></tr>';
+  }).join('');
 }
 
 const DOCTOR_LABEL = {ok:'OK', stale:'Stale', gone:'Gone (404)', blocked:'Blocked (403/402)', broken_xml:'Broken XML', error:'Server error', timeout:'Timed out', network:'Unreachable'};
