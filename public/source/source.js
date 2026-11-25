@@ -7096,10 +7096,11 @@
           <legend>Who can see this</legend>
           <label class="dr-opt"><input type="radio" name="drVis" value="device"><span><strong>\ud83d\udd12 Just me, on this device</strong><small>Saved on this phone or browser only. Never sent anywhere. Clearing the app\u2019s data deletes it.</small></span></label>
           <label class="dr-opt"><input type="radio" name="drVis" value="account"><span><strong>\ud83d\udd12 Just me, all my devices</strong><small>Saved in your SOURCE! account so it follows you to a new phone. Private. Deleted when you delete your account.</small></span></label>
-          <label class="dr-opt dr-off"><input type="radio" name="drVis" value="public" disabled><span><strong>\ud83c\udf10 Comment on Bluesky</strong><small>Coming soon. Nothing is ever posted unless you tap Post.</small></span></label>
         </fieldset>
+        <p class="spray-picker-sub" style="margin-top:10px;">Want to say it in public? <strong>Comment on Bluesky</strong> opens Bluesky\u2019s own composer with your text and the story link filled in. Nothing is posted until you tap Post there. SOURCE! never sees it.</p>
         <div class="pack-actions">
           <button type="button" class="btn primary" id="drSave">Save note</button>
+          <button type="button" class="btn" id="drBsky">Comment on Bluesky</button>
           ${existing ? `<button type="button" class="btn" id="drDelete">Delete</button>` : ""}
         </div>
       </div>`;
@@ -7133,6 +7134,13 @@
         drRefreshButtons();
       } catch (e) { toast((e && e.message) || "Couldn\u2019t save that note."); btn.disabled = false; }
     });
+    el.querySelector("#drBsky").addEventListener("click", () => {
+      const body = bodyEl.value.trim();
+      if (!body) { toast("Write your comment first."); return; }
+      const url = blueskyComposeUrl(body, item.link);
+      closeDidRead();
+      window.open(url, "_blank", "noopener,noreferrer");
+    });
     const del = el.querySelector("#drDelete");
     if (del) del.addEventListener("click", async () => {
       try {
@@ -7143,6 +7151,14 @@
         drRefreshButtons();
       } catch (e) { toast("Couldn\u2019t delete that note."); }
     });
+  }
+  // Bluesky's compose link (a documented web intent). Posts are capped at 300
+  // characters and the link counts, so the comment is trimmed to fit with the link.
+  function blueskyComposeUrl(body, link) {
+    const room = Math.max(0, 300 - link.length - 2);
+    let text = body.replace(/\s+/g, " ").trim();
+    if (text.length > room) text = text.slice(0, Math.max(0, room - 1)).trimEnd() + "\u2026";
+    return "https://bsky.app/intent/compose?text=" + encodeURIComponent(text + "\n\n" + link);
   }
   function drRefreshButtons() {
     document.querySelectorAll(".did-read-btn").forEach(b => {
