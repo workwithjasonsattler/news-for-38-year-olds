@@ -3490,17 +3490,15 @@
             ${d.link ? `<a class="mc-img-link" href="${escapeHtml(d.link)}" target="_blank" rel="noopener"><img class="mc-img" id="thumb-${id}" alt="" ${d.image_url ? `data-src="${escapeHtml(d.image_url)}"` : ""} onload="this.classList.add('loaded')" onerror="this.remove()"></a>` : ""}
             ${excerpt ? `<p class="mc-excerpt">${escapeHtml(excerpt)}</p>` : ""}
             ${scroll ? `
-            ${d.link ? `<a class="mc-open mc-open-main" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read the story ↗</a>` : ""}
-            <div class="mc-quick">
+            <div class="mc-readbar">
+              ${d.link ? `<a class="mc-open mc-open-main" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read the story ↗</a>` : ""}
+              ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener" aria-label="${escapeHtml(support.label)}">Support</a>` : ""}
+            </div>
+            <div class="mc-rows">
+              ${talkButton(d)}
               ${saveButton(d)}
               ${didReadButton(d)}
               ${storyShareButton(d)}
-              ${tuneButton(d, "mc-quick-more")}
-            </div>
-            ${talkButton(d) ? `<div class="mc-talk-row">${talkButton(d)}</div>` : ""}
-            <div class="mc-source-line mc-source-line-scroll">
-              <div class="mc-source-id"><span class="mc-source-label">Source</span><span class="mc-source-name">${escapeHtml((d.outlet || d.source || "").trim())}</span></div>
-              ${support ? `<a class="mc-support" href="${escapeHtml(support.url)}" target="_blank" rel="noopener" aria-label="${escapeHtml(support.label)}">Support ${outlet}</a>` : ""}
             </div>` : `
             <div class="mc-actions">
               ${d.link ? `<a class="mc-open" href="${escapeHtml(d.link)}" target="_blank" rel="noopener">Read ↗</a>` : ""}
@@ -3543,6 +3541,8 @@
         }
       });
       row.querySelector(".mc-open")?.addEventListener("click", () => { mobileClassicSeen.add(row.dataset.id); row.classList.add("seen"); });
+      // Tapping the picture opens the row too, same as tapping the headline.
+      row.querySelector(".mc-hero")?.addEventListener("click", () => { if (body.hidden) head.click(); });
     });
     wireSaveButtons(main);
     wireStoryShareButtons(main);
