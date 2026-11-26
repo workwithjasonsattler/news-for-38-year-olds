@@ -7392,12 +7392,12 @@ app.post("/api/track-view", async (req, res) => {
 });
 
 // Homepage headline A/B test. Anonymous: stores only variant + event + day + a count.
-const HOME_AB_EVENTS = new Set(["view", "ios_click", "android_click", "xoff_click"]);
+const HOME_AB_EVENTS = new Set(["view", "ios_click", "android_click", "web_click", "xoff_click"]);
 const homeAbHits = new Map(); // ip -> { start, count } (in-memory rate limit, never persisted)
 app.post("/api/home-ab", async (req, res) => {
   try {
     const { v, e } = req.body || {};
-    if ((v !== "a" && v !== "b") || !HOME_AB_EVENTS.has(e)) return res.status(400).json({ ok: false });
+    if (!["a", "b", "c", "d"].includes(v) || !HOME_AB_EVENTS.has(e)) return res.status(400).json({ ok: false });
     const ip = req.ip || req.headers["x-forwarded-for"] || "unknown";
     const now = Date.now();
     const rec = homeAbHits.get(ip);
@@ -7999,7 +7999,7 @@ app.get("/api/admin/usage", requireAdmin, async (req, res) => {
 
     // Homepage headline test, last 30 days (variant a = "News first. Escape the algorithm.", b = "Take Back Your Morning.")
     const abRows = await dbAll(`SELECT variant, event, SUM(n) AS n FROM home_ab WHERE day >= date('now','-30 day') GROUP BY variant, event`);
-    out.home_ab = { a: {}, b: {} };
+    out.home_ab = { a: {}, b: {}, c: {}, d: {} };
     for (const r of abRows) if (out.home_ab[r.variant]) out.home_ab[r.variant][r.event] = r.n;
 
     if (String(req.query.traffic || "") === "1") {

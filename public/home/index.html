@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SOURCE! | News first. Escape the algorithm.</title>
+<title>SOURCE! | The news app you check first.</title>
 <meta name="description" content="The news app you check first. The best independent journalism as it’s published, not when a billionaire flings it at you.">
-<meta property="og:title" content="SOURCE! | News first. Escape the algorithm.">
+<meta property="og:title" content="SOURCE! | The news app you check first.">
 <meta property="og:description" content="The news app you check first. The best independent journalism as it’s published, not when a billionaire flings it at you.">
 <meta property="og:image" content="https://news-for-38-year-olds.onrender.com/home/og.png">
 <meta name="twitter:card" content="summary_large_image">
@@ -36,8 +36,8 @@ a{color:#14161B}a:hover{color:#C42A0E}
 
 <div style="display:flex;flex-wrap:wrap;gap:56px;align-items:center;padding:88px 0 80px">
 <div style="flex:1 1 480px">
-<h1 style="margin:0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:clamp(44px,7vw,84px);line-height:1;letter-spacing:-0.03em">News first.<br>Escape the algorithm<span style="color:#FF3E1D">.</span></h1>
-<p style="margin:28px 0 0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;font-size:26px;line-height:1.25">You control the news. Not versa vice.</p>
+<h1 id="heroHead" style="margin:0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:700;font-size:clamp(44px,7vw,84px);line-height:1;letter-spacing:-0.03em">Make some space<br>for news<span style="color:#FF3E1D">.</span></h1>
+<p style="margin:28px 0 0;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;font-size:26px;line-height:1.25">You control the news. Not vice versa.</p>
 <p style="max-width:560px;margin:20px 0 0;font-size:20px;color:#3a3d44">The news app you check first. The best independent journalism as it’s published, not when a billionaire flings it at you.</p>
 <div style="display:flex;flex-wrap:wrap;gap:14px;margin-top:36px">
 <a href="https://apps.apple.com/us/app/source-news-reader/id6814234005" style="background:#14161B;color:#ffffff;text-decoration:none;padding:15px 26px;font-family:'Space Grotesk',Arial,sans-serif;font-weight:500;min-height:44px;box-sizing:border-box">iPhone and iPad</a>
@@ -177,5 +177,31 @@ document.getElementById("promoPlay").addEventListener("click",function(){
 </div>
 </div>
 
+<script>
+/* Headline test, started Nov 26 2026. Variants: c = "Make some space for news.", d = "Take back your morning."
+   Stores one localStorage key per browser. Sends only variant + event; no ids, no cookies. */
+(function(){
+  var HEADS={c:["Make some space","for news"],d:["Take back","your morning"]};
+  var KEY="xo_home_h2",SENT="xo_home_h2_sent",v=null;
+  try{v=localStorage.getItem(KEY);}catch(e){}
+  if(v!=="c"&&v!=="d"){v=Math.random()<0.5?"c":"d";try{localStorage.setItem(KEY,v);}catch(e){}}
+  var h=document.getElementById("heroHead");
+  if(h){var dot=h.querySelector("span");h.textContent="";h.appendChild(document.createTextNode(HEADS[v][0]));h.appendChild(document.createElement("br"));h.appendChild(document.createTextNode(HEADS[v][1]));if(dot)h.appendChild(dot);}
+  function sent(){try{return JSON.parse(localStorage.getItem(SENT)||"{}");}catch(e){return {};}}
+  function mark(ev){try{var o=sent();o[ev]=1;localStorage.setItem(SENT,JSON.stringify(o));}catch(e){}}
+  function send(ev){
+    var o=sent();if(o[ev])return;mark(ev);
+    try{fetch("/api/home-ab",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({v:v,e:ev}),keepalive:true});}catch(e){}
+  }
+  send("view");
+  document.addEventListener("click",function(ev){
+    var a=ev.target.closest&&ev.target.closest("a[href]");if(!a)return;
+    var href=a.getAttribute("href")||"";
+    if(href.indexOf("apps.apple.com")>-1)send("ios_click");
+    else if(href.indexOf("play.google.com")>-1)send("android_click");
+    else if(/onrender\.com\/source\/?$/.test(href))send("web_click");
+  });
+})();
+</script>
 </body>
 </html>
