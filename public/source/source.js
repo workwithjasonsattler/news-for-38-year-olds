@@ -3367,6 +3367,7 @@
         </div>
         <div class="reader-rows">
           ${talkButton(d)}
+          ${relatedButton(d)}
           ${d.link && !d.is_video ? `<button class="btn" id="readerMoreBtn">Try reader view</button>` : ""}
           ${saveButton(d)}
           ${didReadButton(d)}
@@ -3499,6 +3500,7 @@
             </div>
             <div class="mc-rows">
               ${talkButton(d)}
+              ${relatedButton(d)}
               ${saveButton(d)}
               ${didReadButton(d)}
               ${storyShareButton(d)}
@@ -7222,6 +7224,100 @@
   });
 
   // ----- Who's talking about this story (tap to look up, on Bluesky) -----
+
+  // ---------------------------------------------------------------
+  // Related (Story Links, slice 1). Tap "Related" on an opened story, then tap
+  // "Possibly related" to see podcast episodes and videos from the 48 hours around
+  // it that share uncommon words with its headline. Runs on the device against the
+  // lists Play already loads. Nothing is stored or sent. Each item says why it is
+  // here, newest first, with no counts. Scope: "All me" = shows and channels you
+  // added; "Me + SOURCE!" (default) also includes SOURCE!'s house lists.
+  // ---------------------------------------------------------------
+  const RELATED_SCOPE_KEY = "source_related_scope";
+  const RELATED_WINDOW_MS = 48 * 3600 * 1000;
+  const relatedStore = new Map();
+  function relatedScope() { return localStorage.getItem(RELATED_SCOPE_KEY) === "mine" ? "mine" : "plus"; }
+  function relatedButton(d) {
+    const link = d && d.link;
+    if (!link || !/^https?:\/\//i.test(link) || d.is_video || d.is_podcast) return "";
+    relatedStore.set(link, d);
+    return `<button type="button" class="related-btn" data-link="${escapeHtml(link)}">Related</button>`;
+  }
+  // Pure: story title + candidates -> [{item, shared:[display words]}], newest first.
+  function relatedMatches(story, candidates) {
+    const base = relTerms(story.title || story.headline || "");
+    const t0 = Date.parse(story.date || "");
+    const out = [];
+    for (const c of candidates) {
+      if (!c || !c.link || c.link === story.link) continue;
+      const tc = Date.parse(c.date || "");
+      if (Number.isFinite(t0) && Number.isFinite(tc) && Math.abs(tc - t0) > RELATED_WINDOW_MS) continue;
+      const theirs = relTerms(c.title || c.headline || "");
+      const shared = [];
+      let specific = 0;
+      base.forEach((disp, k) => { if (theirs.has(k)) { shared.push(disp); if (!REL_GENERIC.has(k)) specific++; } });
+      if (shared.length >= 2 && specific >= 1) out.push({ item: c, shared: shared.slice(0, 3) });
+    }
+    out.sort((a, b) => (Date.parse(b.item.date) || 0) - (Date.parse(a.item.date) || 0));
+    return out.slice(0, 5);
+  }
+  async function loadRelatedGroups(story, scope) {
+    const [pods, vids] = await Promise.all([
+      fetchItemsForSprayKey("__podcasts").catch(() => []),
+      fetchItemsForSprayKey("__youtube").catch(() => []),
+    ]);
+    const keep = (list) => (scope === "mine" ? list.filter(x => x.reader_added) : list);
+    return { podcasts: relatedMatches(story, keep(pods)), videos: relatedMatches(story, keep(vids)) };
+  }
+  function relatedGroupHtml(label, rows) {
+    if (!rows.length) return "";
+    return `<div class="related-group"><div class="related-label">${label}</div>${rows.map(r => `
+      <a class="related-item" href="${escapeHtml(r.item.link)}" target="_blank" rel="noopener">
+        <span class="related-title">${escapeHtml(r.item.title || r.item.headline || "")}</span>
+        <span class="related-meta">${escapeHtml(r.item.outlet || "")} \u00b7 ${escapeHtml(relTime(r.item.date))} \u00b7 Shares: ${escapeHtml(r.shared.join(", "))}</span>
+      </a>`).join("")}</div>`;
+  }
+  async function fillRelated(panel, story) {
+    const res = panel.querySelector(".related-results");
+    res.hidden = false;
+    res.innerHTML = `<div class="related-meta">Looking\u2026</div>`;
+    const scope = relatedScope();
+    const g = await loadRelatedGroups(story, scope);
+    const html = relatedGroupHtml("Podcasts", g.podcasts) + relatedGroupHtml("Videos", g.videos);
+    res.innerHTML = html || `<div class="related-meta">Nothing close in the 48 hours around this story${scope === "mine" ? ". Try Me + SOURCE!" : ""}.</div>`;
+  }
+  document.addEventListener("click", (e) => {
+    const sc = e.target.closest && e.target.closest(".related-scope button");
+    if (sc) {
+      const panel = sc.closest(".related-panel");
+      localStorage.setItem(RELATED_SCOPE_KEY, sc.dataset.scope);
+      panel.querySelectorAll(".related-scope button").forEach(b => { const on = b.dataset.scope === sc.dataset.scope; b.classList.toggle("active", on); b.setAttribute("aria-pressed", on); });
+      if (!panel.querySelector(".related-results").hidden) fillRelated(panel, relatedStore.get(panel.dataset.link));
+      return;
+    }
+    const more = e.target.closest && e.target.closest(".related-more");
+    if (more) { const panel = more.closest(".related-panel"); more.hidden = true; fillRelated(panel, relatedStore.get(panel.dataset.link)); return; }
+    const b = e.target.closest && e.target.closest(".related-btn");
+    if (!b) return;
+    const rows = b.parentElement;
+    let panel = rows.parentElement.querySelector(".related-panel");
+    if (panel) { panel.hidden = !panel.hidden; return; }
+    const link = b.dataset.link;
+    const scope = relatedScope();
+    panel = document.createElement("div");
+    panel.className = "related-panel";
+    panel.dataset.link = link;
+    panel.innerHTML = `
+      <div class="related-scope" role="group" aria-label="What to look through">
+        <button type="button" data-scope="mine" class="${scope === "mine" ? "active" : ""}" aria-pressed="${scope === "mine"}">All me</button>
+        <button type="button" data-scope="plus" class="${scope === "plus" ? "active" : ""}" aria-pressed="${scope === "plus"}">Me + SOURCE!</button>
+      </div>
+      <p class="related-meta">Podcast episodes and videos from the 48 hours around this story that share words with its headline. Newest first. Each says why it is here.</p>
+      <button type="button" class="btn related-more">Possibly related</button>
+      <div class="related-results" hidden></div>`;
+    rows.insertAdjacentElement("afterend", panel);
+  });
+
   function talkButton(d) {
     const link = d && d.link;
     if (!link || !/^https?:\/\//i.test(link)) return "";
