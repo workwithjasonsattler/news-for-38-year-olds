@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>SOURCE!</title>
+<style>
+  :root { color-scheme: light dark; --bg:#ffffff; --fg:#111111; --mute:#555555; --live:#FF3E1D; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111111; --fg:#f5f5f5; --mute:#b5b5b5; } }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font-family:-apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  body { display:flex; align-items:center; justify-content:center; padding:24px; box-sizing:border-box; }
+  main { max-width:360px; }
+  .mark { font-weight:700; font-size:28px; letter-spacing:-0.02em; margin-bottom:28px; }
+  .mark span { color:var(--live); }
+  h1 { font-size:24px; line-height:1.2; margin:0 0 12px; }
+  p { font-size:17px; line-height:1.5; color:var(--mute); margin:0 0 28px; }
+  button { font:inherit; font-weight:600; background:var(--fg); color:var(--bg); border:0;
+    padding:14px 28px; min-height:48px; border-radius:6px; }
+  .status { margin-top:18px; font-size:14px; color:var(--mute); min-height:1.2em; }
+</style>
+</head>
+<body>
+<main>
+  <div class="mark">SOURCE<span>!</span></div>
+  <h1>Can't reach SOURCE!</h1>
+  <p>Check your Wi-Fi or mobile data. If you're connected, the site may be restarting, so try again in a minute.</p>
+  <button type="button" id="retry">Try again</button>
+  <div class="status" id="status" role="status"></div>
+</main>
+<script>
+(function () {
+  var TARGET = "https://news-for-38-year-olds.onrender.com/source/";
+  var status = document.getElementById("status");
+  var busy = false;
+  function go() {
+    if (busy) return;
+    busy = true;
+    status.textContent = "Trying\u2026";
+    // If the network is still down the webview lands back here, so reset after a moment.
+    setTimeout(function () { busy = false; status.textContent = "Still can't connect."; }, 6000);
+    location.replace(TARGET);
+  }
+  document.getElementById("retry").addEventListener("click", go);
+  // Try again by itself the moment the phone reports a connection.
+  window.addEventListener("online", go);
+})();
+</script>
+</body>
+</html>

@@ -4,7 +4,8 @@
   "webDir": "www",
   "server": {
     "url": "https://news-for-38-year-olds.onrender.com/source/",
-    "cleartext": false
+    "cleartext": false,
+    "errorPath": "offline.html"
   },
   "ios": {
     "contentInset": "automatic"
