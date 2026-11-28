@@ -6075,19 +6075,17 @@
 
     // Phones get the reader's top publications at the top of Buzz (desktop has
     // them in the right rail). They show even when the chatter feeds are quiet.
+    const notesRowHtml = youDidReadRowHtml();
     const topPubsHtml = getLayoutMode() !== "desktop"
       ? `<div class="section-label">YOUR TOP PUBLICATIONS <button type="button" class="btn top-pub-edit">Edit</button></div><div class="top-pubs">${topPublicationsBodyHtml(await topPublicationRows())}</div>`
       : "";
     if (actions.length === 0 && posts.length === 0 && stories.length === 0) {
-      if (!topPubsHtml) {
-        main.innerHTML = stateBlock({ glyph: "∅", title: "QUIET RIGHT NOW", body: "No chatter picked up in the current window." });
-        return;
-      }
-      main.innerHTML = `<div class="source-single-col-screen">${topPubsHtml}</div>` + stateBlock({ glyph: "∅", title: "QUIET RIGHT NOW", body: "No chatter picked up in the current window." });
+      main.innerHTML = `<div class="source-single-col-screen">${notesRowHtml}${topPubsHtml}</div>` + stateBlock({ glyph: "∅", title: "QUIET RIGHT NOW", body: "No chatter picked up in the current window." });
       return;
     }
 
     let html = `<div class="source-single-col-screen">`;
+    html += notesRowHtml;
     html += topPubsHtml;
     if (actions.length > 0) {
       html += `<div class="section-label">WHAT YOU CAN DO</div>` + renderActionsSection(actions);
@@ -6667,7 +6665,7 @@
     if (!currentUser) {
       main.innerHTML = `
         <div class="source-single-col-screen">
-        ${youSourcesRowHtml()}${youDidReadRowHtml()}
+        ${youSourcesRowHtml()}
         <div id="youSupportCard" style="margin-bottom:20px;"></div>
         <div class="section-label" style="margin-top:2px;">WHY SIGN IN</div>
         <div class="section-sub" style="font-size:13.5px; line-height:1.5; margin:0 2px 20px;">
@@ -6704,7 +6702,7 @@
 
     main.innerHTML = `
       <div class="source-single-col-screen">
-      ${youSourcesRowHtml()}${youDidReadRowHtml()}
+      ${youSourcesRowHtml()}
       <div id="youSupportCard" style="margin-bottom:18px;"></div>
       <div class="card">
         <div class="card-meta"><span>SIGNED IN</span><span class="stamp">VERIFIED</span></div>
