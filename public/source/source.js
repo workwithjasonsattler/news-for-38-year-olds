@@ -769,8 +769,8 @@
 
   const TABS = [
     { key: "read", label: "READ", prompt: ">" },
-    { key: "videos", label: "VIDEOS", prompt: ">" },
-    { key: "buzz", label: "BUZZ", prompt: ">" },
+    { key: "videos", label: "PLAY", prompt: ">" },
+    { key: "buzz", label: "TALK", prompt: ">" },
     { key: "you", label: "YOU", prompt: ">" },
   ];
   // Sources lives under You now (a sub-screen reached from the You tab),
@@ -3375,7 +3375,7 @@
           ${shareButton(d)}
           ${tuneButton(d)}
         </div>
-        ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
+        ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Talk</button>` : ""}
         <div class="reader-frame-wrap" id="readerFrameWrap" hidden></div>
       </div>`;
     const moreBtn = document.getElementById("readerMoreBtn");
@@ -3798,7 +3798,7 @@
           </a>
           ${headlinesOnly && !d.is_video ? cardExpandHtml(d) : ""}
           ${cardActionsHtml(d, !headlinesOnly)}
-          ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
+          ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Talk</button>` : ""}
         </div>`;
     }
 
@@ -3812,7 +3812,7 @@
           </a>
           ${d.is_video ? "" : cardExpandHtml(d)}
           ${cardActionsHtml(d)}
-          ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
+          ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Talk</button>` : ""}
         </div>`;
     }
 
@@ -3830,7 +3830,7 @@
           </div>
         </a>
         ${cardActionsHtml(d, true)}
-        ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Buzz</button>` : ""}
+        ${isTrending ? `<button class="buzz-badge">🔥 Trending on Bluesky — see Talk</button>` : ""}
       </div>`;
   }
 
@@ -6800,7 +6800,7 @@
       </div>`;
 
     if (saves.length === 0) {
-      return shareRow + `<div class="card"><div class="card-meta">Nothing saved yet — tap "☆ Save" on any post in Read or Buzz to keep it here.</div></div>`;
+      return shareRow + `<div class="card"><div class="card-meta">Nothing saved yet — tap "☆ Save" on any post in Read or Talk to keep it here.</div></div>`;
     }
 
     const rows = saves.map(s => `
