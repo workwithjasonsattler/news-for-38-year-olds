@@ -7995,7 +7995,23 @@ app.get("/api/admin/usage", requireAdmin, async (req, res) => {
       ),
     };
 
-    const out = { generated_at: new Date().toISOString(), excluded_user_ids: excludeIds, accounts, engagement, packs };
+    // Came back after signup day, accounts at least 7 days old. Proxy only:
+    // last_active_at holds the LATEST day seen (throttled to once a day), so a
+    // reader who returned once and then left still counts as "came back".
+    const retRows = await dbAll(
+      `SELECT strftime('%Y-%W', created_at) AS week, COUNT(*) AS eligible,
+              SUM(CASE WHEN last_active_at IS NOT NULL AND date(last_active_at) > date(created_at) THEN 1 ELSE 0 END) AS came_back
+         FROM users
+        WHERE date(created_at) <= date('now','-7 days') ${notIn}
+        GROUP BY week ORDER BY week DESC LIMIT 8`, ex);
+    const retTotal = retRows.reduce((t, r) => ({ eligible: t.eligible + (r.eligible || 0), came_back: t.came_back + (r.came_back || 0) }), { eligible: 0, came_back: 0 });
+    const returning = {
+      eligible: retTotal.eligible, came_back: retTotal.came_back,
+      share: retTotal.eligible ? retTotal.came_back / retTotal.eligible : null,
+      by_signup_week: retRows.map((r) => ({ week: r.week, eligible: r.eligible || 0, came_back: r.came_back || 0 })),
+    };
+
+    const out = { generated_at: new Date().toISOString(), excluded_user_ids: excludeIds, accounts, engagement, packs, returning };
 
     // Homepage headline test, last 30 days (variant a = "News first. Escape the algorithm.", b = "Take Back Your Morning.")
     const abRows = await dbAll(`SELECT variant, event, SUM(n) AS n FROM home_ab WHERE day >= date('now','-30 day') GROUP BY variant, event`);

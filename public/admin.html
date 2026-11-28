@@ -486,6 +486,11 @@ async function loadUsage(withTraffic){
     html += box(u.traffic.last_1d.page_views,'Page views, 24h') + box(u.traffic.last_7d.page_views,'Page views, 7d')
       + box(u.traffic.last_1d.clicks,'Outbound clicks, 24h') + box(u.traffic.last_7d.clicks,'Outbound clicks, 7d');
   }
+  const rt = u.returning;
+  if (rt){
+    const pct = rt.share == null ? '-' : Math.round(rt.share * 100) + '%';
+    html += box(pct, 'Came back after signup day (accounts 7+ days old)');
+  }
   document.getElementById('usageBoxes').innerHTML = html;
   const ab = u.home_ab || {a:{}, b:{}, c:{}, d:{}};
   const abRow = (label, d) => {
@@ -503,6 +508,11 @@ async function loadUsage(withTraffic){
       <div class="bar-track"><div class="bar-fill" style="width:${(t.bar_follows/maxF*100)}%;"></div></div>
       <div>${esc(t.bar_follows)} follows · ${esc(t.clone_count)} clones</div>
     </div>`).join('') || '<p style="font-size:12px;color:#666;">No public Packs yet.</p>';
+  if (rt && rt.by_signup_week){
+    const rows = rt.by_signup_week.map(w => `<div>${esc(w.week)}: ${esc(w.came_back)} of ${esc(w.eligible)} came back</div>`).join('');
+    { const old = document.getElementById('usageReturning'); if (old) old.remove(); }
+    document.getElementById('usageNote').insertAdjacentHTML('beforebegin', `<div id="usageReturning" style="font-size:12px;color:#444;margin-top:8px;"><b>Came back after signup day: ${esc(rt.came_back)} of ${esc(rt.eligible)}.</b> By signup week (YYYY-WW):${rows}<div style="color:#666;">A ceiling, not a floor: someone who returned once and left still counts. Leave out your own, test and reviewer ids above.</div></div>`);
+  }
   document.getElementById('usageNote').textContent = 'Active = signed in or created in the window (checked at most once a day per reader). Updated ' + new Date(u.generated_at).toLocaleString() + '.';
 }
 
